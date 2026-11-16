@@ -26,9 +26,10 @@ ${place('frmLTiMSTop_lblUser', '16px', 12, 'calc(100% - 32px)', 24)}
 #frmLTiMSTop_lblUser .tcc-label-text { text-align: left !important; }
 #frmLTiMSTop_lblUser * { font-size: 15px !important; font-weight: 400 !important; color: var(--myapp-text2) !important; }
 ${row('frmLTiMSTop_btnAttendance', 48, 76)}
-${place('frmLTiMSTop_lbl1', '32px', 90, 'calc(100% - 88px)', 22)}
+/* 説明は、見出しの文字（印の右）の下にそろえる */
+${place('frmLTiMSTop_lbl1', '56px', 90, 'calc(100% - 112px)', 22)}
 ${row('frmLTiMSTop_btnApply', 136, 76)}
-${place('frmLTiMSTop_lbl5', '32px', 178, 'calc(100% - 88px)', 22)}
+${place('frmLTiMSTop_lbl5', '56px', 178, 'calc(100% - 112px)', 22)}
 /* システム設定は、管理する人の仕事（パソコンで使う）。ふつうの人が押すと「権限がありません」になるので、スマホでは出さない */
 #frmLTiMSTop_btnSettings { display: none !important; }
 ${fillButton('frmLTiMSTop_btnAttendance')}
@@ -38,6 +39,8 @@ ${fillButton('frmLTiMSTop_btnApply')}
    1件だけのときに、下に空の白い面が残らないように）。その下の「各種申請」も、それに合わせて上下する */
 #frmLTiMSTop_R2_C1, #frmLTiMSTop_blank2 { height: calc(290px + var(--myapp-ann, 150px)) !important; }
 ${place('frmLTiMSTop_lbl_announcement_title', '16px', 8, '160px', 24)}
+/* 小見出し（お知らせ・各種申請）は、ほかの画面の小見出しと同じく文字だけに（ベル・紙の印は、文字にくっついて見える） */
+#frmLTiMSTop_lbl_announcement_title i, #frmLTiMSTop_lbl12 i { display: none !important; }
 ${row('frmLTiMSTop_grdAnnouncement', 36, 150)}
 #frmLTiMSTop #frmLTiMSTop_grdAnnouncement { height: var(--myapp-ann, 150px) !important; }
 ${cardGrid('frmLTiMSTop_grdAnnouncement', [[3], [1, 2]])}
@@ -1153,6 +1156,8 @@ ${place(Y(area), '16px', top + 24, 'calc(100% - 32px)', 88)}
 #${Y(area)} textarea { box-sizing: border-box !important; width: 100% !important; height: 100% !important; }`;
 }
 const YUKYU_CSS = `
+/* 付与・ステータスの切り替え: パソコン向けの小さな飾りの印（画びょう・道・ベル）は出さない */
+#frmApply_yukyu_tabApply > ul.tcc-tab-head i { display: none !important; }
 ${fullWidth('frmApply_yukyu')}
 #frmApply_yukyu { height: auto !important; }
 #frmApply_yukyu .tcc-tile.col { float: none !important; }
@@ -2949,8 +2954,37 @@ const SCRIPT = `
     if (form.style.getPropertyValue('--myapp-ann') !== px) form.style.setProperty('--myapp-ann', px);
   }
 
+  // 有給の日数（「27日＋6:00」「0日+00:00」）は、日と時間が読みにくい。「27日 6時間」「0日」と書き直す（表示だけ。データはそのまま）。
+  // 有給休暇申請の付与数・使用数・残数と、休暇照会の表（ここは「27日 6:00」と空白で区切ってある）
+  function dayTime(text, plusOnly) {
+    var re = plusOnly ? /(\\d+)日\\s*[+＋]\\s*(\\d{1,2}):(\\d{2})/g : /(\\d+)日\\s*[+＋]?\\s*(\\d{1,2}):(\\d{2})/g;
+    return text.replace(re, function (all, d, h, m) {
+      h = +h;
+      m = +m;
+      return d + '日' + (h ? ' ' + h + '時間' : '') + (m ? (h ? '' : ' ') + m + '分' : '');
+    });
+  }
+  function dayTimes() {
+    var targets = [
+      ['.tcc-component.lbl .tcc-label-text', true],
+      ['#frmApply_grdLeave .TccGridBodyScroll td', false],
+    ];
+    targets.forEach(function (t) {
+      document.querySelectorAll(t[0]).forEach(function (el) {
+        var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        var node;
+        while ((node = w.nextNode())) {
+          if (!/\\d日/.test(node.nodeValue)) continue;
+          var v = dayTime(node.nodeValue, t[1]);
+          if (v !== node.nodeValue) node.nodeValue = v;
+        }
+      });
+    });
+  }
+
   window.__myappAppUpdate = function () {
     topAnnouncement();
+    dayTimes();
     // 勤務表: 「勤務表」のタブを開いているときだけ、スマホ向けの一覧にする
     var list = !!document.querySelector('#frmAttendance_tabAttd_tabs_0.active');
     document.documentElement.classList.toggle('myapp-att-list', list);

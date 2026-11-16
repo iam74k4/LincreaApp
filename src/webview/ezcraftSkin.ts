@@ -467,8 +467,83 @@ const GENERIC_JS = `
     opening = null;
   }
 
+  // 年月・日付を選ぶ部品（EZCraft の #TccYmPicker・.tcc-component.datepicker）は、画面の下から出るシートにする（形は CSS）。
+  // 開いているあいだは後ろを暗くする（.myapp-cal-back）。暗い所を押したら閉じて、後ろの行やボタンを押したことにしない。
+  // EZCraft は部品を一度作ったら、style の display で出し入れするので、それを見張る
+  var CAL_SEL = '#TccYmPicker, .tcc-component.datepicker';
+  function openCalendars() {
+    return Array.prototype.filter.call(document.querySelectorAll(CAL_SEL), function (p) {
+      return p.style.display !== 'none' && getComputedStyle(p).display !== 'none';
+    });
+  }
+  function calendarSheets() {
+    document.querySelectorAll(CAL_SEL).forEach(function (p) {
+      if (p.__myappCal) return;
+      p.__myappCal = true;
+      p.setAttribute('data-myapp-nodark', '');
+      new MutationObserver(calendarSheets).observe(p, { attributes: true, attributeFilter: ['style'] });
+    });
+    var open = openCalendars().length > 0;
+    // 選んで閉じたら、EZCraft は入力欄にフォーカスを戻して文字を選ぶ（スマホでは選択の印やキーボードが出る）。
+    // シートが入力欄を覆っていたので、このフォーカスは人が押したものではない。外す
+    if (calendarSheets.open && !open) {
+      [60, 250].forEach(function (ms) {
+        setTimeout(function () {
+          var a = document.activeElement;
+          if (a && a.tagName === 'INPUT' && !openCalendars().length) a.blur();
+          try { window.getSelection().removeAllRanges(); } catch (e) {}
+        }, ms);
+      });
+    }
+    calendarSheets.open = open;
+    var back = document.querySelector('body > .myapp-cal-back');
+    if (open && !back) {
+      back = document.createElement('div');
+      back.className = 'myapp-cal-back';
+      back.setAttribute('data-myapp-nodark', '');
+      back.addEventListener('click', function (e) {
+        e.preventDefault();
+        openCalendars().forEach(function (p) { p.style.display = 'none'; });
+        calendarSheets();
+      });
+      document.body.appendChild(back);
+    } else if (!open && back) {
+      back.remove();
+    }
+  }
+
+  // 必須の印（＊）を、欄の右の外から、その欄の見出し（同じ高さの左、またはすぐ上）の後ろに移す。
+  // EZCraft は場面によって必須を変える（「その他健診機関」を選ぶと健診機関名が必須に）ので、毎回見直す
+  function requiredMarks() {
+    document.querySelectorAll('div.tcc-component.text').forEach(function (field) {
+      var required = field.offsetParent !== null && /[＊*]/.test(getComputedStyle(field, '::after').content || '');
+      var label = field.__myappReqLabel;
+      if (required && !label) {
+        var fr = field.getBoundingClientRect();
+        var best = null;
+        var bestScore = Infinity;
+        Array.prototype.forEach.call(field.parentElement.children, function (el) {
+          if (!el.classList.contains('lbl') || el.offsetParent === null) return;
+          var r = el.getBoundingClientRect();
+          var sameRow = Math.abs(r.top - fr.top) < 8 && r.right <= fr.left + 4;
+          var above = r.bottom <= fr.top + 2 && fr.top - r.bottom < 16 && Math.abs(r.left - fr.left) < 8;
+          if (!sameRow && !above) return;
+          var score = sameRow ? fr.left - r.right : fr.top - r.bottom;
+          if (score < bestScore) { bestScore = score; best = el; }
+        });
+        label = best;
+        field.__myappReqLabel = label;
+      }
+      var moved = !!(required && label);
+      if (field.classList.contains('myapp-req-moved') !== moved) field.classList.toggle('myapp-req-moved', moved);
+      if (label && label.classList.contains('myapp-required') !== moved) label.classList.toggle('myapp-required', moved);
+    });
+  }
+
   function applyConfig() {
     notices();
+    requiredMarks();
+    calendarSheets();
     openingDone();
     tidyLabels();
     tidyGrids();
@@ -931,6 +1006,26 @@ div.tcc-component.chkbox input[type="checkbox"]:checked + label::before {
   border-color: var(--myapp-accent) !important;
 }
 div.tcc-component.chkbox input[type="checkbox"]:checked + label::after { border-color: #FFFFFF !important; }
+/* ラジオボタンの組（.tcc-component.radio）: パソコン向けの細い四角い枠をやめて、入力欄と同じ角の丸い面にする（どの画面でも同じ見た目に） */
+div.tcc-component.radio {
+  border: none !important;
+  border-radius: 16px !important;
+  background-color: var(--myapp-field) !important;
+  box-sizing: border-box !important;
+}
+/* 必須の印（EZCraft が欄の右の外に ::after で付ける「＊」）: 画面の端にはみ出し、欄の印とも重なるので、欄の見出しの後ろに移す
+   （JS の requiredMarks が見出しに .myapp-required を付ける。見出しが見つからない欄は、そのまま） */
+div.tcc-component.text.myapp-req-moved::after { display: none !important; }
+.tcc-component.lbl.myapp-required .tcc-label-text::after {
+  content: '＊';
+  margin-left: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--myapp-danger);
+}
+/* ダイアログの中の日付の欄（右にカレンダーの印）は、ほかの欄と同じく文字を左に寄せる（EZCraft の .center）。
+   勤務表の「‹ 2026/11 ›」や時刻の小さな欄は、真ん中のまま */
+.tcc-modal div.tcc-component.text input.text-box.icon-rt.center { text-align: left !important; }
 div.tcc-component.radioBtn input[type="radio"]:checked + label::before { border: 2px solid var(--myapp-accent) !important; }
 div.tcc-component.radioBtn input[type="radio"]:checked + label::after { background: var(--myapp-accent) !important; }
 div.tcc-component.radioBtn input[disabled]:checked + label::after { background: var(--myapp-text2) !important; }
@@ -981,6 +1076,118 @@ body > .myapp-bottom-bar {
 }
 .myapp-bottom-bar .myapp-bar-primary .tcc-btn,
 .myapp-bottom-bar .myapp-bar-primary .tcc-btn i { background-color: var(--myapp-accent) !important; color: #FFFFFF !important; }
+
+/* EZCraft の年月・日付を選ぶ部品（#TccYmPicker・.tcc-component.datepicker）: パソコン向けの、入力欄の下に出る小さな四角い
+   ポップアップをやめて、画面の下から出るシートにする（今月のプロジェクトのシートと同じ形）。
+   後ろは暗くし（JS の calendarSheets が .myapp-cal-back を置く）、暗い所を押すと閉じる。
+   今日（今月）は青い文字、選んでいる日（月）は青い丸。EZCraft の赤い四角・マウスを乗せたときの青は使わない */
+.myapp-cal-back {
+  position: fixed; inset: 0; z-index: 100000;
+  background: rgba(0, 0, 0, 0.28);
+  animation: myapp-cal-fade 0.18s ease-out;
+}
+#TccYmPicker,
+.tcc-component.datepicker {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: auto !important;
+  bottom: 0 !important;
+  width: auto !important;
+  z-index: 100001 !important;
+  box-sizing: border-box !important;
+  padding: 8px 16px calc(16px + var(--myapp-safe-bottom, 0px)) !important;
+  background: var(--myapp-surface) !important;
+  color: var(--myapp-text) !important;
+  border: none !important;
+  border-radius: 30px 30px 0 0 !important;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18) !important;
+  font-size: 17px !important;
+  outline: none !important;
+  animation: myapp-cal-up 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes myapp-cal-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes myapp-cal-fade { from { opacity: 0; } to { opacity: 1; } }
+/* 上の段: ‹ 年月 › */
+#TccYmPicker .tcc-ympkr-hdr,
+.tcc-component.datepicker .tcc-dtpkr-hdr {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  height: 56px !important;
+  background: transparent !important;
+  color: var(--myapp-text) !important;
+}
+#TccYmPicker .tcc-ympkr-btn,
+.tcc-component.datepicker .tcc-dtpkr-btn {
+  position: static !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: none !important;
+  width: 44px !important;
+  height: 44px !important;
+  line-height: 1 !important;
+  border-radius: 50% !important;
+  background: var(--myapp-inset) !important;
+  color: var(--myapp-accent-text) !important;
+  font-size: 16px !important;
+}
+#TccYmPicker .tcc-ympkr-btn i,
+.tcc-component.datepicker .tcc-dtpkr-btn i { color: inherit !important; }
+#TccYmPicker .tcc-ympkr-btn:active,
+.tcc-component.datepicker .tcc-dtpkr-btn:active { background: var(--myapp-pressed-bg) !important; }
+#TccYmPicker .tcc-prev-year,
+.tcc-component.datepicker .tcc-prev-mon { order: 0; }
+#TccYmPicker .tcc-ympkr-title,
+.tcc-component.datepicker .tcc-dtpkr-title { order: 1; flex: 1 1 auto; text-align: center !important; font-size: 17px !important; font-weight: 700 !important; line-height: 44px !important; }
+#TccYmPicker .tcc-next-year,
+.tcc-component.datepicker .tcc-next-mon { order: 2; }
+/* 表: 指で押しやすい大きさに。セルの間をあけて、角を丸める */
+.tcc-component.datepicker .tcc-dtpkr-tbl { float: none !important; width: 100% !important; }
+.tcc-component.datepicker .table-border-box { display: none !important; }
+#TccYmPicker table,
+.tcc-component.datepicker table {
+  width: 100% !important;
+  margin: 0 !important;
+  table-layout: fixed;
+  border-collapse: separate !important;
+  border-spacing: 6px 4px !important;
+}
+.tcc-component.datepicker th { padding: 2px 0 6px !important; font-size: 13px !important; font-weight: 600 !important; color: var(--myapp-text2) !important; }
+#TccYmPicker td,
+#TccYmPicker td:hover,
+.tcc-component.datepicker td,
+.tcc-component.datepicker td:hover {
+  width: auto !important;
+  height: 44px !important;
+  padding: 0 !important;
+  border-radius: 22px !important;
+  background: transparent !important;
+  color: var(--myapp-text) !important;
+  font-size: 17px !important;
+  font-weight: 400 !important;
+  text-align: center !important;
+}
+#TccYmPicker td,
+#TccYmPicker td:hover { height: 52px !important; border-radius: 16px !important; }
+#TccYmPicker td.notThisMon,
+#TccYmPicker td.notThisMon:hover,
+.tcc-component.datepicker td.notThisMon,
+.tcc-component.datepicker td.notThisMon:hover { color: var(--myapp-text2) !important; opacity: 0.45; }
+#TccYmPicker td.tomonth,
+#TccYmPicker td.tomonth:hover,
+.tcc-component.datepicker td.today,
+.tcc-component.datepicker td.today:hover { color: var(--myapp-accent-text) !important; font-weight: 700 !important; }
+/* 年月: 選んでいる月が今月のときは、EZCraft は「選んでいる」の印を付けないので、今月を青い面にする */
+#TccYmPicker table:not(:has(td.selected)) td.tomonth,
+#TccYmPicker td.selected,
+#TccYmPicker td.selected:hover,
+.tcc-component.datepicker td.selected,
+.tcc-component.datepicker td.selected:hover { background: var(--myapp-accent) !important; color: #FFFFFF !important; font-weight: 700 !important; opacity: 1; }
+#TccYmPicker td:active,
+.tcc-component.datepicker td:active { background: var(--myapp-pressed-bg) !important; }
 
 /* EZCraft のお知らせの帯（右上の、パソコン向けの幅 420px の色の帯）: 画面の下のほうに、画面の幅に収まる小さな知らせとして出す。
    上に出すと、ダイアログの題名や × を隠してしまうため。JS（notices）が、見出しの要らないもの・エラー・消す時刻にしるしを付ける */

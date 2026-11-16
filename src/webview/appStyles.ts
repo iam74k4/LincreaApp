@@ -96,7 +96,17 @@ export function roleCss(skin: AppSkin): string {
   background-color: var(--myapp-fill) !important;
   border-radius: 22px !important;
 }
-#${button} .tcc-btn i { color: var(--myapp-accent) !important; margin-right: 8px; font-size: 17px !important; }
+/* 印と見出しの行の高さをそろえる（印だけ低い行の高さだと、見出しより上にずれる）。印の幅もそろえて、見出しの始まりを同じ位置に */
+#${button} .tcc-btn { line-height: 24px !important; }
+#${button} .tcc-btn i {
+  color: var(--myapp-accent) !important;
+  flex: none;
+  width: 20px;
+  margin-right: 8px;
+  font-size: 17px !important;
+  line-height: 24px !important;
+  text-align: center;
+}
 #${button} .tcc-btn::after {
   content: '›';
   position: absolute;
@@ -451,8 +461,9 @@ ${fillInput('LP_password_txt_password')}
 ${fullWidth('LIT_main')}
 #LIT_main { height: 720px !important; }
 ${place('LIT_main_lbl_year', '16px', 16, '80px', 40)}
-${place('LIT_main_cmb_year', '104px', 16, '108px', 40)}
-${place('LIT_main_cmb_season', '220px', 16, '90px', 40)}
+/* 取得年度（年・時期）: 2つを同じ幅で、下の欄と同じ右の端まで */
+${place('LIT_main_cmb_year', '104px', 16, 'calc((100% - 128px) / 2)', 40)}
+${place('LIT_main_cmb_season', 'calc(112px + (100% - 128px) / 2)', 16, 'calc((100% - 128px) / 2)', 40)}
 ${place('LIT_main_lbl_exa_name', '16px', 68, '80px', 40)}
 ${place('LIT_main_cmb_exa_name', '104px', 68, 'calc(100% - 120px)', 40)}
 ${place('LIT_main_lbl_last_name', '16px', 120, '80px', 40)}
@@ -515,8 +526,8 @@ ${fillButton('LIT_main_btn_Execel')}
 ${fullWidth('LPJZ_Main')}
 #LPJZ_Main { height: 220px !important; overflow: visible !important; }
 #LPJZ_Main > * { overflow: visible !important; }
-#LPJZ_Main_R1, #LPJZ_Main_R1_C1, #LPJZ_Main_blank1 { height: 156px !important; }
-#LPJZ_Main_tab_LPJZ { top: 0 !important; height: 156px !important; }
+#LPJZ_Main_R1, #LPJZ_Main_R1_C1, #LPJZ_Main_blank1 { height: 140px !important; }
+#LPJZ_Main_tab_LPJZ { top: 0 !important; height: 140px !important; }
 /* 名前・年度・注意書きを、1枚の白いカードに（画面の端から 16px あける） */
 #LPJZ_Main > #LPJZ_Main_R1 {
   width: calc(100% - 32px) !important;
@@ -527,14 +538,21 @@ ${fullWidth('LPJZ_Main')}
   overflow: hidden !important;
 }
 ${row('LPJZ_Main_lbl_name', 16, 24)}
-${place('LPJZ_Main_lbl_main_year', '16px', 52, '48px', 36)}
-${place('LPJZ_Main_lbl_nend_main', '64px', 52, '72px', 36)}
+/* 「2026年度分」: 年と「年度分」は別の部品。すきまをあけずに続けて、太字の1つの見出しに見せる */
+${place('LPJZ_Main_lbl_main_year', '16px', 52, '42px', 36)}
+${place('LPJZ_Main_lbl_nend_main', '58px', 52, '80px', 36)}
 ${fillLabel('LPJZ_Main_lbl_main_year')}
 ${fillLabel('LPJZ_Main_lbl_nend_main')}
+#LPJZ_Main_lbl_main_year .tcc-label,
+#LPJZ_Main_lbl_nend_main .tcc-label,
 #LPJZ_Main_lbl_main_year .tcc-label-text,
-#LPJZ_Main_lbl_nend_main .tcc-label-text { text-align: left !important; font-size: 17px !important; }
+#LPJZ_Main_lbl_nend_main .tcc-label-text { padding: 0 !important; }
+#LPJZ_Main_lbl_main_year .tcc-label-text,
+#LPJZ_Main_lbl_nend_main .tcc-label-text { text-align: left !important; font-size: 17px !important; font-weight: 700 !important; }
+#LPJZ_Main_lbl_main_year .tcc-label-text { text-align: right !important; }
 ${fillButton('LPJZ_Main_btnDownLoad')}
-${row('LPJZ_Main_lbl_kome', 100, 40)}
+${row('LPJZ_Main_lbl_kome', 90, 32)}
+#LPJZ_Main_lbl_kome .tcc-label, #LPJZ_Main_lbl_kome .tcc-label-text, #LPJZ_Main_lbl_name .tcc-label, #LPJZ_Main_lbl_name .tcc-label-text { padding-left: 0 !important; }
 /* 添付ファイルの欄（上の枠のすぐ下に置かれる） */
 #LPJZ_Main_att_file { left: 16px !important; top: 8px !important; width: calc(100% - 32px) !important; }
 #LPJZ_Main_att_file,
@@ -638,8 +656,9 @@ ${fillButton('L_HealthCare_Main_btnResult_spouse')}
 
 /* 注意書き */
 ${row('L_HealthCare_Main_lbl6', 332, 40)}
-${row('L_HealthCare_Main_lbl8', 374, 40)}
-${row('L_HealthCare_Main_lbl16', 416, 40)}
+${row('L_HealthCare_Main_lbl8', 380, 40)}
+/* lbl16 は lbl8 の続き（1つの文を2つの部品に分けてある）。あいだをあけずに続ける */
+${row('L_HealthCare_Main_lbl16', 418, 40)}
 
 /* お知らせ（1件を2行に: 区分と日付 / 本文） */
 ${row('L_HealthCare_Main_rpt_notice', 472, 176)}
@@ -700,6 +719,19 @@ ${HEALTH_RESULT_CSS}
     // ランキング: 更新日の曜日が合っていないことがある（2026/11/13(日) など）。日付から曜日を出し直し、「時点分」は「時点」に
     script: `
       window.__myappAppUpdate = function () {
+        // 歩数のカード: 単位の「歩」を、カードの右の端ではなく、数字のすぐ後ろに置く（数字の長さは毎日変わるので、測って置く）
+        [['lbl_varia_day_step_goal_number', 'lbl_word_walk_big_1'], ['lbl_variable_sum_step_number', 'lbl_word_walk_big_2']].forEach(function (pair) {
+          var num = document.getElementById('mainMenu_id_2026Walk_' + pair[0]);
+          var unit = document.getElementById('mainMenu_id_2026Walk_' + pair[1]);
+          var text = num && num.querySelector('.tcc-label-text');
+          if (!text || !unit) return;
+          var range = document.createRange();
+          range.selectNodeContents(text);
+          var w = range.getBoundingClientRect().width;
+          if (!w) return;
+          var left = Math.round(num.offsetLeft + w + 6) + 'px';
+          if (unit.style.getPropertyValue('left') !== left) unit.style.setProperty('left', left, 'important');
+        });
         var el = document.querySelector('#ranking_id_2026Walk_lbl_upDate .tcc-label-text');
         if (!el) return;
         var m = /(\\d{4})\\/(\\d{1,2})\\/(\\d{1,2})/.exec(el.textContent || '');

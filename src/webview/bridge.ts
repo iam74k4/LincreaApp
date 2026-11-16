@@ -334,9 +334,9 @@ export const BRIDGE_JS = `
 
   // 8. ダイアログが開いているかを知らせる。閉じるボタン（×）のあるものだけ（ない「お知らせ」は、OK で閉じる）
   function topModalQuit() {
-    // アプリがページの上に出すシート（今月のプロジェクト・残業をまとめて申請。timsSkin.ts）がいちばん上。
+    // アプリがページの上に出すシート（今月のプロジェクト・残業をまとめて申請。timsSkin.ts。年月・日付を選ぶシート。ezcraftSkin.ts）がいちばん上。
     // 後ろの暗い面を押すと閉じる。開いているあいだは、横にずらしても画面ごと戻らないようにする
-    var sheet = document.querySelector('.myapp-pick-back');
+    var sheet = document.querySelector('.myapp-pick-back, .myapp-cal-back');
     if (sheet) return sheet;
     var best = null;
     var bestZ = -Infinity;
