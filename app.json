@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "login-demo",
+    "name": "MyApp",
     "slug": "login-demo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
@@ -20,6 +20,22 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sharing"
+    ],
+    "scheme": "logindemo",
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "e12d22b0-a737-471c-bd39-fbc16f03f1eb"
+      }
+    },
+    "owner": "iam74k4"
   }
 }
