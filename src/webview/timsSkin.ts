@@ -34,20 +34,25 @@ ${place('frmLTiMSTop_lbl5', '32px', 178, 'calc(100% - 88px)', 22)}
 ${fillButton('frmLTiMSTop_btnAttendance')}
 ${fillButton('frmLTiMSTop_btnApply')}
 
-/* お知らせと各種申請 */
-#frmLTiMSTop_R2_C1, #frmLTiMSTop_blank2 { height: 440px !important; }
+/* お知らせと各種申請。お知らせのカードは、お知らせの行の高さに合わせる（JS の topAnnouncement が --myapp-ann に入れる。
+   1件だけのときに、下に空の白い面が残らないように）。その下の「各種申請」も、それに合わせて上下する */
+#frmLTiMSTop_R2_C1, #frmLTiMSTop_blank2 { height: calc(290px + var(--myapp-ann, 150px)) !important; }
 ${place('frmLTiMSTop_lbl_announcement_title', '16px', 8, '160px', 24)}
 ${row('frmLTiMSTop_grdAnnouncement', 36, 150)}
+#frmLTiMSTop #frmLTiMSTop_grdAnnouncement { height: var(--myapp-ann, 150px) !important; }
 ${cardGrid('frmLTiMSTop_grdAnnouncement', [[3], [1, 2]])}
-/* お知らせの、中身のない行（区切りの線だけが出る）は出さない */
+/* お知らせの、中身のない行（区切りの線だけが出る）は出さない。最後の行の下には線を引かない */
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr:not(:has(> td.frmLTiMSTop_grdAnnouncement_tdCol3:not([data-myapp-blank]))) { display: none !important; }
+#frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr[data-myapp-last] { border-bottom: none !important; }
 ${place('frmLTiMSTop_lbl12', '16px', 204, '160px', 24)}
+#frmLTiMSTop #frmLTiMSTop_lbl12 { top: calc(54px + var(--myapp-ann, 150px)) !important; }
 ${row('frmLTiMSTop_grdApply', 232, 196)}
+#frmLTiMSTop #frmLTiMSTop_grdApply { top: calc(82px + var(--myapp-ann, 150px)) !important; }
 ${cardGrid('frmLTiMSTop_grdApply', [[3], [2, 1], [5, 6]])}
 /* 申請中のものがないときは、「ありません」の一行ぶんの高さに */
 #frmLTiMSTop_grdApply.myapp-empty { height: 72px !important; }
 #frmLTiMSTop_R2:has(#frmLTiMSTop_grdApply.myapp-empty) #frmLTiMSTop_R2_C1,
-#frmLTiMSTop_R2:has(#frmLTiMSTop_grdApply.myapp-empty) #frmLTiMSTop_blank2 { height: 320px !important; }
+#frmLTiMSTop_R2:has(#frmLTiMSTop_grdApply.myapp-empty) #frmLTiMSTop_blank2 { height: calc(170px + var(--myapp-ann, 150px)) !important; }
 `;
 
 // ---------------------------------------------------------------------------
@@ -446,6 +451,10 @@ const SEARCH_CSS = `
 .myapp-search .myapp-row > .myapp-choice { min-height: 40px; }
 .myapp-search .myapp-row > .myapp-choice.chkbox,
 .myapp-search .myapp-row > .myapp-choice .chkbox { position: relative !important; top: 0 !important; height: 40px !important; padding-top: 10px !important; box-sizing: border-box !important; }
+/* 1つだけのチェックボックス（工数のテレワーク など）: 四角は label の ::before に描いてある。見えない入力欄が上にあると、
+   label がその下に押し下げられて、四角が見出しより 20px ほど下に出る。入力欄を重ねて置き、label を行の真ん中に */
+.myapp-search .myapp-row > .myapp-choice.chkbox { padding-top: 0 !important; align-items: center !important; }
+.myapp-search .myapp-row > .myapp-choice.chkbox > input { position: absolute !important; left: 0 !important; top: 12px !important; margin: 0 !important; }
 /* 検索の条件が多い画面（申請検索など）は、ふだんは閉じておき、結果を先に見せる（JS が .myapp-collapsible とボタンを付ける） */
 .myapp-search-toggle {
   -webkit-appearance: none;
@@ -466,6 +475,20 @@ const SEARCH_CSS = `
 .myapp-search.myapp-open .myapp-search-toggle::after { transform: rotate(-90deg); }
 .myapp-search.myapp-collapsible:not(.myapp-open) > .myapp-row,
 .myapp-search.myapp-collapsible:not(.myapp-open) > .myapp-search-actions { display: none !important; }
+/* CSV出力など（JS が .myapp-export に移す）: 条件を閉じていても見える、幅いっぱいのボタン。左に「書き出す」の印 */
+.myapp-search > .myapp-export { display: flex; gap: 10px; }
+.myapp-search > .myapp-export > .tcc-component {
+  position: relative !important; left: auto !important; top: auto !important;
+  flex: 1 1 0 !important; width: auto !important; height: 44px !important;
+}
+.myapp-search > .myapp-export .tcc-btn { color: var(--myapp-accent-text) !important; font-weight: 600 !important; }
+.myapp-search > .myapp-export .tcc-btn i { display: none !important; }
+.myapp-search > .myapp-export .tcc-btn::before {
+  content: ''; display: inline-block; width: 18px; height: 18px; margin-right: 6px; vertical-align: -3px;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11 M7.5 10.5 12 15l4.5-4.5 M5 19h14'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11 M7.5 10.5 12 15l4.5-4.5 M5 19h14'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 /* チェックボックスの組（表示対象・申請状況 など。JS が .myapp-choice-wrap にまとめる）: それぞれの幅のまま、横に並べて折り返す */
 .myapp-search .myapp-choice-wrap { flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 18px; row-gap: 0; }
 .myapp-search .myapp-row:has(> .myapp-choice-wrap) { align-items: flex-start !important; }
@@ -632,6 +655,13 @@ const ATT_TABS_CSS = `
   box-sizing: border-box !important;
 }
 #${A('tabAttd')} .tcc-tab-pane > .tcc-component.hline { display: none !important; }
+/* 健康管理時間の帯は、「勤務表」のタブだけに出す（ほかのタブに同じものが出ても場所を取るだけ）。
+   組織の欄（管理する人だけ）が出ているときは、その欄のために上の段を残す。
+   （この CSS は :root.myapp-att-tab を頭に付けて入れるので、セレクターの ( ) の中に , は書かない） */
+.myapp-kenko { display: none !important; }
+${['R2', 'R2_C1', 'blank3', 'blank3_body']
+  .map((id) => `#frmAttendance:not(:has(#${A('qbxDept1')}:not([style*="visibility: hidden"]))) #${A(id)}`)
+  .join(',\n')} { height: 0 !important; min-height: 0 !important; overflow: hidden !important; }
 ${SEARCH_CSS}
 ${ATT_TAB_BUTTONS.map((id) => fillButton(A(id))).join('')}
 
@@ -640,6 +670,14 @@ ${ATT_TAB_BUTTONS.map((id) => fillButton(A(id))).join('')}
   content: 'まだ申請していません';
   display: block;
   margin-top: 4px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--myapp-text2);
+}
+/* 勤務表出力: 出勤の記録がない日（休日など）は、日付だけの空のカードにならないよう、そう書く */
+#${A('grdAttd')} .TccGridBodyScroll tr:has(> td.${A('grdAttd')}_tdCol10[data-myapp-blank]):has(> td.${A('grdAttd')}_tdCol21[data-myapp-blank]) > td.${A('grdAttd')}_tdCol1::after {
+  content: '勤務の記録なし';
+  margin-left: 10px;
   font-size: 13px;
   font-weight: 400;
   color: var(--myapp-text2);
@@ -751,6 +789,29 @@ ${hidden.length ? `${hidden.join(',\n')} { display: none !important; }` : ''}
 
 const DTL_CSS = `
 ${fullWidth('frmAttendanceDtl')}
+/* 長いプロジェクト名・作業内訳（JS の longNames）: 欄の中に2行で全部見せる。欄の文字は透明にして、上に重ねた札を見せる */
+#frmAttendanceDtl [data-myapp-long] > .myapp-name-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 28px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 4px 0 7px;
+  box-sizing: border-box;
+  pointer-events: none;
+  font-size: 13px;
+  line-height: 16px;
+  color: var(--myapp-text);
+  overflow: hidden;
+}
+#frmAttendanceDtl [data-myapp-long] > .myapp-name-wrap { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; padding-top: 4px; }
+#frmAttendanceDtl [data-myapp-long]:not(:focus-within) input { color: transparent !important; -webkit-text-fill-color: transparent !important; }
+#frmAttendanceDtl [data-myapp-long]:focus-within > .myapp-name-wrap { display: none !important; }
+/* テレワークの四角（label の ::before に描いてある）は、上に寄っている。右の「テレワーク」の文字と同じ高さに下げる */
+[id^="frmAttendanceDtl_chkTW"] label { transform: translateY(8px); }
+[id^="frmAttendanceDtl_chkTW"] input { margin-top: 12px !important; }
 #frmAttendanceDtl { height: auto !important; }
 #frmAttendanceDtl .tcc-tile.col { float: none !important; }
 
@@ -1854,8 +1915,9 @@ const SCRIPT = `
       boxes.forEach(function (c) { group.appendChild(c); });
       if (!row.children.length) row.remove();
     });
+    var actions = null;
     if (buttons.length) {
-      var actions = document.createElement('div');
+      actions = document.createElement('div');
       actions.className = 'myapp-search-actions';
       // 「検索」（「表示」）を右に大きく。CSV出力・クリアなどはその左に
       var GO = /検索|表示/;
@@ -1886,6 +1948,16 @@ const SCRIPT = `
         toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
       box.insertBefore(toggle, box.firstChild);
+      // CSV出力などの「検索」以外のボタンは、閉じた条件の中に隠さず、条件の下にいつも出す（今の条件のまま出力する）
+      var outs = actions ? Array.prototype.filter.call(actions.children, function (el) {
+        return !el.classList.contains('myapp-search-go') && /出力|ダウンロード|CSV|Excel/i.test(el.textContent || '');
+      }) : [];
+      if (outs.length) {
+        var exportRow = document.createElement('div');
+        exportRow.className = 'myapp-export';
+        outs.forEach(function (el) { exportRow.appendChild(el); });
+        box.insertBefore(exportRow, toggle.nextSibling);
+      }
     }
     if (bulk.length) {
       var bulkRow = document.createElement('div');
@@ -2396,7 +2468,28 @@ const SCRIPT = `
   }
 
   // 勤怠実績登録: 「ほかの日をコピー」を時刻の欄の下の別のカードへ、「削除」をいちばん下へ移す（部品は動かすだけ。押したときの動きは EZCraft のまま）
+  // プロジェクト・作業内訳の名前が欄に入りきらないとき（「取引規制システム一新_…」など）は、欄の中で2行に折り返して全部見せる。
+  // 入力欄そのものは1行なので、上に同じ文字の札（.myapp-name-wrap）を重ね、欄の文字は透明にする。打っているあいだは札を出さない
+  function longNames(form) {
+    form.querySelectorAll('[id^="frmAttendanceDtl_qbxProj"], [id^="frmAttendanceDtl_qbxContent"]').forEach(function (comp) {
+      var input = comp.querySelector('input');
+      if (!input) return;
+      var value = input.value || '';
+      var long = !!value && input.scrollWidth > input.clientWidth + 2;
+      if (long !== comp.hasAttribute('data-myapp-long')) comp.toggleAttribute('data-myapp-long', long);
+      var wrap = comp.querySelector(':scope > .myapp-name-wrap');
+      if (!long) { if (wrap) wrap.remove(); return; }
+      if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.className = 'myapp-name-wrap';
+        wrap.setAttribute('aria-hidden', 'true');
+        comp.appendChild(wrap);
+      }
+      if (wrap.textContent !== value) wrap.textContent = value;
+    });
+  }
   function dtlLayout(form) {
+    longNames(form);
     var r2 = document.getElementById('frmAttendanceDtl_R2');
     if (!r2 || !r2.parentElement) return;
     var host = r2.parentElement;
@@ -2797,6 +2890,31 @@ const SCRIPT = `
     document.body.appendChild(back);
     document.body.appendChild(sheet);
   }
+  // シートの行を押しているあいだだけ色を付ける。指が動いたら（スクロール・横にずらした）色を消す
+  var press = null;
+  document.addEventListener('touchstart', function (e) {
+    var b = e.target && e.target.closest && e.target.closest('.myapp-pick button');
+    var t = e.touches && e.touches[0];
+    if (!b || !t) return;
+    press = { el: b, x: t.clientX, y: t.clientY };
+    b.classList.add('myapp-press');
+  }, { capture: true, passive: true });
+  document.addEventListener('touchmove', function (e) {
+    var t = e.touches && e.touches[0];
+    if (!press || !t) return;
+    if (Math.abs(t.clientX - press.x) + Math.abs(t.clientY - press.y) > 8) {
+      press.el.classList.remove('myapp-press');
+      press = null;
+    }
+  }, { capture: true, passive: true });
+  ['touchend', 'touchcancel'].forEach(function (type) {
+    document.addEventListener(type, function () {
+      if (!press) return;
+      var el = press.el;
+      press = null;
+      setTimeout(function () { el.classList.remove('myapp-press'); }, 120);
+    }, { capture: true, passive: true });
+  });
   var pickStart = null;
   document.addEventListener('touchstart', function (e) {
     var t = e.touches && e.touches[0];
@@ -2813,7 +2931,26 @@ const SCRIPT = `
     openPicker(input, list);
   }, true);
 
+  // メニュー: お知らせのカードの高さを、見えている行の高さの合計にする（多いときは 3 行ぶんまでにして、カードの中でスクロール）
+  function topAnnouncement() {
+    var form = document.getElementById('frmLTiMSTop');
+    var grid = document.getElementById('frmLTiMSTop_grdAnnouncement');
+    if (!form || !grid) return;
+    var rows = Array.prototype.filter.call(grid.querySelectorAll('.TccGridBodyScroll tbody tr'), function (tr) {
+      return !tr.querySelector('th') && getComputedStyle(tr).display !== 'none';
+    });
+    var h = 0;
+    rows.forEach(function (tr, i) {
+      if (i < 3) h += tr.offsetHeight;
+      var last = i === rows.length - 1;
+      if (last !== tr.hasAttribute('data-myapp-last')) tr.toggleAttribute('data-myapp-last', last);
+    });
+    var px = (rows.length ? Math.max(h + 2, 72) : 72) + 'px';
+    if (form.style.getPropertyValue('--myapp-ann') !== px) form.style.setProperty('--myapp-ann', px);
+  }
+
   window.__myappAppUpdate = function () {
+    topAnnouncement();
     // 勤務表: 「勤務表」のタブを開いているときだけ、スマホ向けの一覧にする
     var list = !!document.querySelector('#frmAttendance_tabAttd_tabs_0.active');
     document.documentElement.classList.toggle('myapp-att-list', list);
@@ -2850,26 +2987,30 @@ const PICK_CSS = `
   animation: myapp-pick-fade 0.18s ease-out;
 }
 .myapp-pick {
-  position: fixed; left: 8px; right: 8px; z-index: 100001;
-  bottom: calc(8px + var(--myapp-safe-bottom, 0px));
-  max-height: 70vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  /* 画面の下の端までつけて出す（下にすきまを空けると、後ろの一覧がのぞいて、作りかけに見える）。下はホームに戻るバーのぶん空ける */
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 100001;
+  max-height: 80vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   box-sizing: border-box; padding: 6px 8px 8px;
   background: var(--myapp-sheet);
   background: color-mix(in srgb, var(--myapp-fill) 94%, transparent);
-  -webkit-backdrop-filter: blur(var(--myapp-glass-blur)) saturate(180%);
-  backdrop-filter: blur(var(--myapp-glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: var(--myapp-glass-blur);
+  backdrop-filter: var(--myapp-glass-blur);
   border: 1px solid var(--myapp-glass-border);
-  border-radius: 30px;
+  border-bottom: none;
+  border-radius: 30px 30px 0 0;
   box-shadow: var(--myapp-glass-shadow);
   animation: myapp-pick-up 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
+/* 下に固定した帯（.myapp-pick-foot）のないシートは、いちばん下にホームに戻るバーのぶんのすきまを空ける */
+.myapp-pick:not(:has(> .myapp-pick-foot))::after { content: ''; display: block; height: var(--myapp-safe-bottom, 0px); }
 .myapp-pick-title { padding: 12px 14px 6px; font-size: 13px; font-weight: 600; color: var(--myapp-text2); }
 .myapp-pick button {
   display: block; width: 100%; box-sizing: border-box;
   margin: 0; padding: 11px 14px; border: 0; border-radius: 18px;
   background: transparent; color: var(--myapp-text); text-align: left; font: inherit;
 }
-.myapp-pick button:active { background: var(--myapp-pressed-bg); }
+/* 押しているあいだの色は、JS が .myapp-press で付ける（:active だと、横に指をずらしただけでも押したように見えるため） */
+.myapp-pick button.myapp-press { background: var(--myapp-pressed-bg); }
 .myapp-pick-name { display: block; font-size: 16px; font-weight: 600; line-height: 1.3; }
 .myapp-pick-meta { display: block; margin-top: 2px; font-size: 13px; color: var(--myapp-text2); }
 .myapp-pick button.myapp-pick-manual {
@@ -2898,8 +3039,8 @@ const PICK_CSS = `
   background: var(--myapp-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4L18 8' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 16px no-repeat;
 }
 .myapp-pick-foot {
-  position: sticky; bottom: -8px; margin: 4px -8px -8px; padding: 6px 8px 8px;
-  background: color-mix(in srgb, var(--myapp-fill) 96%, transparent);
+  position: sticky; bottom: -8px; margin: 4px -8px -8px; padding: 6px 8px calc(8px + var(--myapp-safe-bottom, 0px));
+  background: var(--myapp-surface); /* 透けると、後ろにスクロールした行がのぞく */
   border-top: 1px solid var(--myapp-border);
 }
 .myapp-pick button.myapp-pick-go {
@@ -2972,6 +3113,7 @@ export const TIMS_SKIN: AppSkin = {
     frmApply_grdSearch: '申請は見つかりませんでした',
     frmApply_grdLeave: 'データはありません',
     frmLTiMSTop_grdApply: '申請中のものはありません',
+    frmLTiMSTop_grdAnnouncement: 'お知らせはありません',
     frmSelProj_grdPrj1: '見つかりませんでした',
     frmSelProj_grdPrj2: '見つかりませんでした',
     frmSelEmp_grdEmp: '見つかりませんでした',

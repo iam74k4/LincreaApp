@@ -107,6 +107,20 @@ export function roleCss(skin: AppSkin): string {
   font-weight: 400;
   color: var(--myapp-text2);
 }
+/* 押したら、次の画面（ダイアログ）が出るまで、カードを沈め、右の › を読み込み中の印にする（JS が myapp-opening を付ける） */
+#${button}.myapp-opening .tcc-btn { background-color: var(--myapp-pressed-bg) !important; }
+#${button}.myapp-opening .tcc-btn::after {
+  content: '';
+  right: 18px;
+  width: 16px;
+  height: 16px;
+  margin-top: -10px;
+  transform: none;
+  border-radius: 50%;
+  border: 2px solid var(--myapp-border);
+  border-top-color: var(--myapp-text2);
+  animation: myapp-spin 0.8s linear infinite;
+}
 ${
   subtitle
     ? `#${subtitle} { pointer-events: none; }
@@ -146,7 +160,9 @@ ${
   text-align: left !important;
   font-size: 13px !important;
   color: var(--myapp-text2) !important;
-}`,
+}
+/* 文の箱は、EZCraft が1行ぶんの高さに決めている。2行目が切れないように、文の長さに合わせる */
+#${id} .tcc-label-text { height: auto !important; max-height: none !important; overflow: visible !important; text-overflow: clip !important; }`,
     )
     .join('');
 
@@ -284,7 +300,7 @@ ${place(H(field), '16px', top + 24, 'calc(100% - 32px)', height)}
 ${fillInput(H(field))}`;
 }
 const HEALTH_RESULT_CSS = `
-${sheetDialog('MC_result_Input_1', [{ id: 'R1', height: 960 }], { scroll: true })}
+${sheetDialog('MC_result_Input_1', [{ id: 'R1', height: 976 }], { scroll: true })}
 ${place(H('lbltytle1'), '16px', 12, 'calc(100% - 32px)', 28)}
 ${text(H('lbltytle1'), 17, { bold: true })}
 /* 閉じるは上の × と同じ。後ろの飾りの枠と、2回目の同じ注意書き（lbl22）は出さない */
@@ -313,11 +329,11 @@ ${place(H('rdo11'), '16px', 664, 'calc(100% - 32px)', 108)}
 ${[1, 2, 3].map((n) => `#${H(`rdo11_${n}`)} { left: 8px !important; top: ${4 + (n - 1) * 34}px !important; width: calc(100% - 16px) !important; }`).join('\n')}
 ${resultBelow('agency_name_reserv_label', 'agency_name', 780)}
 /* ふだんは出ない部品（場面によって EZCraft が出す）。出たときに重ならないよう、いちばん下に並べる */
-${row(H('lbl24'), 852, 24)}
-${place(H('lbl14'), '16px', 880, '88px', 36)}
-${place(H('rdo13'), '104px', 880, 'calc(100% - 120px)', 36)}
-${place(H('lbl13'), '16px', 920, '88px', 36)}
-${place(H('rdo12'), '104px', 920, 'calc(100% - 120px)', 36)}
+${row(H('lbl24'), 852, 40)}
+${place(H('lbl14'), '16px', 896, '88px', 36)}
+${place(H('rdo13'), '104px', 896, 'calc(100% - 120px)', 36)}
+${place(H('lbl13'), '16px', 936, '88px', 36)}
+${place(H('rdo12'), '104px', 936, 'calc(100% - 120px)', 36)}
 `;
 
 // ---------------------------------------------------------------------------
@@ -348,9 +364,13 @@ ${fullWidth('LP_main')}
 /* 明細の一覧が画面の下まで届くように、画面の高さに合わせる（一覧の中でスクロール） */
 #LP_main { height: calc(100vh - 8px) !important; min-height: 520px; }
 ${place('LP_main_cmb_year', '16px', 16, '112px', 40)}
-${place('LP_main_lbl18', '134px', 16, '28px', 40)}
 ${fillInput('LP_main_cmb_year')}
 ${fillLabel('LP_main_lbl18')}
+/* 「年」は欄の外に離して置かず、欄の中の数字のすぐ右に（「2026年 ▾」と1つの選ぶ欄に見えるように）。押すのは下の欄 */
+${place('LP_main_lbl18', '61px', 16, '20px', 40)}
+#LP_main_lbl18 { z-index: 5 !important; pointer-events: none !important; }
+#LP_main_lbl18 .tcc-label { padding: 0 !important; justify-content: flex-start !important; }
+#LP_main_lbl18 .tcc-label-text { padding: 0 !important; font-size: 16px !important; color: var(--myapp-text) !important; text-align: left !important; }
 ${place('LP_main_lbl_name', '16px', 72, 'calc(100% - 32px)', 24)}
 ${place('LP_main_lbl_yaku', '16px', 98, 'calc(100% - 32px)', 18)}
 /* 等級の記号（AW3 など）は、見ても意味が分からないので出さない */
@@ -541,6 +561,27 @@ ${row('LPJZ_Main_lbl_kome', 100, 40)}
   // 健診管理システム: 受診年度 → メニューのカード3つ → 注意書き → お知らせ。ロゴは出さない
   L_HealthCare: {
     mobileForms: ['L_HealthCare_Main', 'MC_reserv_Input', 'MC_result_Input_1'],
+    // お知らせ: 1年より前のもの（「健診予約登録ができるようになりました。」2022 年など）は出さない。
+    // 残った数を data-myapp-notices に書き、カードの高さをそれに合わせる（下の layout。空の白い面を残さない）
+    script: `
+      window.__myappAppUpdate = function () {
+        var form = document.getElementById('L_HealthCare_Main');
+        var rpt = document.getElementById('L_HealthCare_Main_rpt_notice');
+        if (!form || !rpt) return;
+        var limit = Date.now() - 365 * 864e5;
+        var shown = 0;
+        rpt.querySelectorAll('.tcc-rpt-row').forEach(function (r) {
+          var date = r.querySelector('[id^="L_HealthCare_Main_notice_date-"]');
+          if (!date) return;
+          var m = /(\\d{4})\\/(\\d{1,2})\\/(\\d{1,2})/.exec(date.textContent || '');
+          var old = !!m && new Date(+m[1], +m[2] - 1, +m[3]).getTime() < limit;
+          if (old !== r.hasAttribute('data-myapp-old')) r.toggleAttribute('data-myapp-old', old);
+          if (!old && getComputedStyle(r).display !== 'none') shown++;
+        });
+        var n = String(Math.min(shown, 3));
+        if (form.getAttribute('data-myapp-notices') !== n) form.setAttribute('data-myapp-notices', n);
+      };
+    `,
     cards: [
       { button: 'L_HealthCare_Main_btnReserv', subtitle: 'L_HealthCare_Main_lbl13' },
       { button: 'L_HealthCare_Main_btnResult', subtitle: 'L_HealthCare_Main_lbl15' },
@@ -552,6 +593,7 @@ ${row('LPJZ_Main_lbl_kome', 100, 40)}
       'L_HealthCare_Main_lbl16',
       'MC_result_Input_1_lbl25',
       'MC_result_Input_1_lbl28',
+      'MC_result_Input_1_lbl24',
     ],
     sections: ['MC_result_Input_1_lbl27', 'MC_result_Input_1_lbl36'],
     bottomBars: {
@@ -626,6 +668,23 @@ ${row('L_HealthCare_Main_rpt_notice', 472, 176)}
 #L_HealthCare_Main_rpt_notice .tcc-rpt-row { width: 100% !important; min-width: 0 !important; }
 #L_HealthCare_Main_rpt_notice .tcc-rpt-row .tcc-label { width: 100% !important; }
 #L_HealthCare_Main_rpt_notice [id^="L_HealthCare_Main_notice_date-"] .tcc-label-text { color: var(--myapp-text2) !important; font-size: 13px !important; }
+/* 古いお知らせは出さない。カードは、残ったお知らせの数の高さに（1件 58px）。なければカードごと出さない */
+#L_HealthCare_Main_rpt_notice .tcc-rpt-row[data-myapp-old] { display: none !important; }
+#L_HealthCare_Main[data-myapp-notices="0"] #L_HealthCare_Main_rpt_notice { display: none !important; }
+#L_HealthCare_Main[data-myapp-notices="1"] #L_HealthCare_Main_rpt_notice { height: 62px !important; }
+#L_HealthCare_Main[data-myapp-notices="2"] #L_HealthCare_Main_rpt_notice { height: 120px !important; }
+${[
+  ['0', 460],
+  ['1', 546],
+  ['2', 604],
+]
+  .map(
+    ([n, h]) => `#L_HealthCare_Main[data-myapp-notices="${n}"],
+#L_HealthCare_Main[data-myapp-notices="${n}"] #L_HealthCare_Main_R1,
+#L_HealthCare_Main[data-myapp-notices="${n}"] #L_HealthCare_Main_R1_C1,
+#L_HealthCare_Main[data-myapp-notices="${n}"] #L_HealthCare_Main_blank1 { height: ${h}px !important; }`,
+  )
+  .join('\n')}
 ${HEALTH_RESERVE_CSS}
 ${HEALTH_RESULT_CSS}
 `,

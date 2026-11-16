@@ -26,6 +26,7 @@ export function buildSkinScript(appId: string): string {
     relabel: skin?.relabel ?? {},
     placeholders: skin?.placeholders ?? {},
     tabBars: skin?.tabBars ?? {},
+    cards: (skin?.cards ?? []).map((card) => card.button),
   };
   return `
 (function () {
@@ -423,7 +424,52 @@ const GENERIC_JS = `
     });
   }
 
+  // EZCraft のお知らせの帯（#TccNotifyBoxes の .TccNotify。「健診予約が登録されていません。」「権限がありません」など）:
+  // 色は CSS で、アプリの小さな知らせにそろえる。ここでは、
+  //   - 見出しが「Information」だけのときは出さない（中身の文だけで分かる）
+  //   - 赤い帯（エラー）には、しるしを付けて赤い印にする
+  //   - 25 秒出たままなので、8 秒（エラーは 12 秒）で消す。押しても消える（EZCraft の動き）
+  function notices() {
+    document.querySelectorAll('#TccNotifyBoxes .TccNotify:not([data-myapp-notice])').forEach(function (box) {
+      box.setAttribute('data-myapp-notice', '');
+      box.setAttribute('data-myapp-nodark', '');
+      var title = box.querySelector('span');
+      if (title && /^\\s*information\\s*$/i.test(title.textContent || '')) box.setAttribute('data-myapp-plain', '');
+      var m = /rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/.exec(box.style.backgroundColor || getComputedStyle(box).backgroundColor);
+      var error = m && +m[1] > 150 && +m[2] < 110 && +m[3] < 110;
+      if (error) box.setAttribute('data-myapp-error', '');
+      setTimeout(function () { box.setAttribute('data-myapp-gone', ''); }, error ? 12000 : 8000);
+    });
+  }
+
+  // メニューのカード（skin の cards）: 押したら、次の画面が出るまでのあいだ、カードに読み込み中の印を出す。
+  // EZCraft はダイアログを読み込んでから出すので、1〜2 秒なにも起きないように見えるため。
+  // ダイアログが出たら（または 5 秒たったら）消す
+  // （ボタンは、アプリの「1回のタップで押す」（bridge.ts）が click だけを送るので、click で見る）
+  var opening = null;
+  document.addEventListener('click', function (e) {
+    var card = e.target && e.target.closest && e.target.closest('.tcc-component');
+    if (!card || CONFIG.cards.indexOf(card.id) < 0) return;
+    if (opening) opening.el.classList.remove('myapp-opening');
+    card.classList.add('myapp-opening');
+    opening = { el: card, modals: openModals(), at: Date.now() };
+  }, true);
+  function openModals() {
+    return Array.prototype.filter.call(document.querySelectorAll('.tcc-modal'), function (m) { return m.offsetParent !== null; }).length;
+  }
+  function openingDone() {
+    if (!opening) return;
+    if (opening.el.isConnected && openModals() <= opening.modals && Date.now() - opening.at < 5000) {
+      setTimeout(update, 300);
+      return;
+    }
+    opening.el.classList.remove('myapp-opening');
+    opening = null;
+  }
+
   function applyConfig() {
+    notices();
+    openingDone();
     tidyLabels();
     tidyGrids();
     tallButtons();
@@ -936,6 +982,66 @@ body > .myapp-bottom-bar {
 .myapp-bottom-bar .myapp-bar-primary .tcc-btn,
 .myapp-bottom-bar .myapp-bar-primary .tcc-btn i { background-color: var(--myapp-accent) !important; color: #FFFFFF !important; }
 
+/* EZCraft のお知らせの帯（右上の、パソコン向けの幅 420px の色の帯）: 画面の下のほうに、画面の幅に収まる小さな知らせとして出す。
+   上に出すと、ダイアログの題名や × を隠してしまうため。JS（notices）が、見出しの要らないもの・エラー・消す時刻にしるしを付ける */
+#TccNotifyBoxes {
+  left: 0 !important;
+  right: 0 !important;
+  top: auto !important;
+  bottom: calc(96px + var(--myapp-safe-bottom, 0px)) !important;
+  height: 0 !important;
+  z-index: 200000 !important;
+}
+#TccNotifyBoxes .TccNotify {
+  left: 12px !important;
+  right: 12px !important;
+  top: auto !important;
+  bottom: 0 !important;
+  width: auto !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  padding: 12px 16px 12px 48px !important;
+  border: 1px solid var(--myapp-glass-border) !important;
+  border-radius: 20px !important;
+  background: var(--myapp-sheet) !important;
+  background: color-mix(in srgb, var(--myapp-fill) 94%, transparent) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: var(--myapp-glass-shadow) !important;
+  color: var(--myapp-text) !important;
+  transition: opacity 0.25s ease-out;
+}
+#TccNotifyBoxes .TccNotify:not(:has(.notifyIcon i[class*="fa-"])) { padding-left: 16px !important; }
+#TccNotifyBoxes .TccNotify[data-myapp-gone] { opacity: 0 !important; pointer-events: none !important; }
+#TccNotifyBoxes .TccNotify .notifyIcon {
+  left: 16px !important;
+  top: 50% !important;
+  transform: translateY(-50%);
+  font-size: 20px !important;
+  color: var(--myapp-accent) !important;
+}
+#TccNotifyBoxes .TccNotify[data-myapp-error] .notifyIcon { color: var(--myapp-danger) !important; }
+#TccNotifyBoxes .TccNotify .msgAreaSm,
+#TccNotifyBoxes .TccNotify .msgAreaLg { float: none !important; margin: 0 !important; }
+#TccNotifyBoxes .TccNotify span {
+  display: block !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  margin: 0 0 2px !important;
+  color: var(--myapp-text2) !important;
+}
+#TccNotifyBoxes .TccNotify[data-myapp-plain] span { display: none !important; }
+#TccNotifyBoxes .TccNotify p {
+  margin: 0 !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+  overflow: visible !important;
+  word-break: normal !important;
+  color: var(--myapp-text) !important;
+}
+#TccNotifyBoxes .TccNotify .miniIcon { display: none !important; }
+
 /* 読み込み中の表示: EZCraft の大きなアイコンと「Loading...」の代わりに、アプリと同じ小さなくるくるを真ん中に */
 #loadingIcon.loading-bg { background: transparent !important; }
 #loadingIcon .loading-icon {
@@ -972,14 +1078,41 @@ body > .myapp-bottom-bar {
 [data-myapp-empty-msg].myapp-empty .TccGridHeadScroll,
 [data-myapp-empty-msg].myapp-empty .TccGridHeadFixed { visibility: hidden !important; }
 
-/* 一覧のページ送り（« < > »）は、指で押しやすい大きさに */
-.tcc-pager-navi .pager-navi-btn {
-  min-width: 40px !important;
-  height: 40px !important;
-  line-height: 40px !important;
-  text-align: center;
-  font-size: 18px !important;
+/* 一覧のページ送り（« < 1 / 15p > »）: 真ん中にそろえ、« < > » は指で押しやすい丸いボタン（44pt）に。ページの欄は小さな札に */
+.tcc-pager-navi .pager-navi-main {
+  position: static !important; /* EZCraft は left を数字で決めて、右に寄せている */
+  left: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px;
+  float: none !important;
+  width: auto !important;
+  margin: 0 auto !important;
 }
+.tcc-pager-navi .pager-navi-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: none !important;
+  width: 44px !important;
+  min-width: 44px !important;
+  height: 44px !important;
+  line-height: 1 !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background-color: var(--myapp-fill) !important;
+  color: var(--myapp-accent-text) !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+.tcc-pager-navi .pager-navi-btn:active { background-color: var(--myapp-pressed-bg) !important; }
+.tcc-pager-navi .pager-navi-page { margin: 0 2px 0 6px !important; }
+.tcc-pager-navi .pager-navi-page .tcc-component.number { width: 44px !important; height: 36px !important; }
+.tcc-pager-navi .pager-navi-page input { width: 44px !important; height: 36px !important; text-align: center !important; border-radius: 10px !important; padding: 0 !important; }
+.tcc-pager-navi .pager-navi-slash,
+.tcc-pager-navi .pager-navi-total { color: var(--myapp-text2) !important; font-size: 15px !important; }
+.tcc-pager-navi .pager-navi-total { margin-right: 6px !important; }
 :root {
   /* 灰色の地に、白いカード（iOS 26 の設定アプリと同じ）。アプリの側（src/theme.ts）と同じ色 */
   --myapp-bg: #F2F2F7;

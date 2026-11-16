@@ -32,8 +32,9 @@
 //    アプリは、重ねて開いた画面から戻ったとき、その間に書き込みがあったときだけ元の画面を読み直す。
 //    書き込みの通信がうまく終わったら、ページの中にも myapp-saved を出す（勤怠実績登録が、登録のあと残業申請を開くため）
 //
-// 8. ダイアログ（EZCraft の .tcc-modal）が開いているかを知らせる（modal）。開いているあいだは、ヘッダーの ‹ や
-//    左端からのスワイプで画面ごと戻らず、まずダイアログを閉じる（window.__myappCloseModal。src/components/EzcraftWebView.tsx）
+// 8. ダイアログ（EZCraft の .tcc-modal と、アプリが出すシート .myapp-pick）が開いているかを知らせる（modal）。
+//    開いているあいだは、ヘッダーの ‹ や横へのスワイプで画面ごと戻らず、まずダイアログを閉じる
+//    （window.__myappCloseModal。src/components/EzcraftWebView.tsx）
 // 7. 別の申請をその場で作る（apply）
 //    ページ（勤怠実績登録の残業など）が、申請の画面と、そこに入れておく値を知らせる。アプリは申請の画面をシートで重ねる。
 import type { Handoff } from './handoff';
@@ -333,6 +334,10 @@ export const BRIDGE_JS = `
 
   // 8. ダイアログが開いているかを知らせる。閉じるボタン（×）のあるものだけ（ない「お知らせ」は、OK で閉じる）
   function topModalQuit() {
+    // アプリがページの上に出すシート（今月のプロジェクト・残業をまとめて申請。timsSkin.ts）がいちばん上。
+    // 後ろの暗い面を押すと閉じる。開いているあいだは、横にずらしても画面ごと戻らないようにする
+    var sheet = document.querySelector('.myapp-pick-back');
+    if (sheet) return sheet;
     var best = null;
     var bestZ = -Infinity;
     document.querySelectorAll('.tcc-modal').forEach(function (m) {
