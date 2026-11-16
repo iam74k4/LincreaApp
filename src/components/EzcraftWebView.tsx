@@ -9,7 +9,7 @@
 //   - その場で申請: ページが知らせた申請の画面を、シートで重ねる（src/webview/bridge.ts の 7・src/openShortcut.ts）
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { ActivityIndicator, Alert, Linking, StyleSheet, Text, View } from 'react-native';
-import { router, Stack, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect, usePreventRemove } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
@@ -62,6 +62,11 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const othersWritesAtOpen = useRef(0);
   const [pageTitle, setPageTitle] = useState('');
   const [reloadKey, setReloadKey] = useState(0); // 変えると WebView を作り直す（= 読み直す）
+  // ページの中でダイアログが開いているか（bridge の 8）。開いているあいだは、‹ やスワイプで戻らず、まずダイアログを閉じる
+  const [modalOpen, setModalOpen] = useState(false);
+  usePreventRemove(modalOpen, () => {
+    webRef.current?.injectJavaScript('window.__myappCloseModal && window.__myappCloseModal(); true;');
+  });
   // この画面の定義（initApp）の控え。あれば、ページは読まずにこれを使う（src/webview/initAppCache.ts）。
   // 開いたとき（と読み直すとき）に決めて、そのあいだは変えない（変えると、ページに入れるスクリプトが入れ替わる）
   const [initApp, setInitApp] = useState(() => cachedInitApp(uri));
@@ -96,7 +101,11 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       pendingApply.current = null;
     }
     const nextInQueue = !waiting && sheet && ownWrites.current > 0 && applyQueueActive();
-    if (router.canGoBack()) router.back();
+    // ページが自分で閉じるときは、ダイアログが開いていても止めない（止める設定を外してから戻る）
+    setModalOpen(false);
+    setTimeout(() => {
+      if (router.canGoBack()) router.back();
+    }, 0);
     if (waiting) setTimeout(() => openApplication(waiting.form, waiting.prefill), 450);
     else if (nextInQueue) setTimeout(() => advanceApplyQueue(), 450);
   };
@@ -217,6 +226,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           const message = parseBridgeMessage(e.nativeEvent.data);
           if (message?.type === 'scroll') scroll.current = { y: message.y, target: message.target };
           if (message?.type === 'ready') setShown(true);
+          if (message?.type === 'modal') setModalOpen(message.open);
           if (message?.type === 'file') receiveFile(message.base64, message.name, message.mime);
           if (message?.type === 'write') {
             noteWrite();
@@ -232,6 +242,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             othersWritesAtOpen.current = writeCount() - ownWrites.current;
           }
         }}
+        onLoadStart={() => setModalOpen(false)} // 読み直したら、ダイアログは閉じている
         onOpenWindow={(e) => openWindow(e.nativeEvent.targetUrl)} // target="_blank" のリンクなど
         onNavigationStateChange={(nav) => {
           // ログイン画面に飛ばされた = ログインが切れた。アプリ側もログアウトして、ログイン画面に戻す

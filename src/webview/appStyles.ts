@@ -351,10 +351,10 @@ ${place('LP_main_cmb_year', '16px', 16, '112px', 40)}
 ${place('LP_main_lbl18', '134px', 16, '28px', 40)}
 ${fillInput('LP_main_cmb_year')}
 ${fillLabel('LP_main_lbl18')}
-${place('LP_main_lbl_name', '16px', 72, 'calc(100% - 120px)', 24)}
-${place('LP_main_lbl_yaku', '16px', 98, 'calc(100% - 120px)', 18)}
-#LP_main_lbl_rank { left: auto !important; right: 16px !important; top: 72px !important; width: 88px !important; height: 24px !important; }
-#LP_main_lbl_rank .tcc-label-text { text-align: right !important; }
+${place('LP_main_lbl_name', '16px', 72, 'calc(100% - 32px)', 24)}
+${place('LP_main_lbl_yaku', '16px', 98, 'calc(100% - 32px)', 18)}
+/* 等級の記号（AW3 など）は、見ても意味が分からないので出さない */
+#LP_main_lbl_rank { display: none !important; }
 /* 明細の一覧: 1件1枚のカード（明細の名前が上、支給日と種別が下）。押すと明細が開く（「明細を見る」のボタンはなくした） */
 ${place('LP_main_grd_details', '16px', 124, 'calc(100% - 32px)', 0)}
 #LP_main_grd_details { height: calc(100vh - 140px) !important; min-height: 380px; }
@@ -621,6 +621,9 @@ ${row('L_HealthCare_Main_rpt_notice', 472, 176)}
 #L_HealthCare_Main_rpt_notice [id^="L_HealthCare_Main_notice_class-"] .tcc-label { height: 20px !important; }
 #L_HealthCare_Main_rpt_notice [id^="L_HealthCare_Main_notice_date-"] { left: 76px !important; top: 6px !important; width: 120px !important; }
 #L_HealthCare_Main_rpt_notice [id^="L_HealthCare_Main_noticedtl-"] { left: 0 !important; top: 32px !important; width: 100% !important; }
+/* お知らせの行の入れ物は、パソコン向けの幅のまま広い。カードの幅に合わせる（長い文も、カードの中で「…」で終わる） */
+#L_HealthCare_Main_rpt_notice .tcc-rpt-body,
+#L_HealthCare_Main_rpt_notice .tcc-rpt-row { width: 100% !important; min-width: 0 !important; }
 #L_HealthCare_Main_rpt_notice .tcc-rpt-row .tcc-label { width: 100% !important; }
 #L_HealthCare_Main_rpt_notice [id^="L_HealthCare_Main_notice_date-"] .tcc-label-text { color: var(--myapp-text2) !important; font-size: 13px !important; }
 ${HEALTH_RESERVE_CSS}
@@ -630,7 +633,23 @@ ${HEALTH_RESULT_CSS}
 
   // Walk the Talk: ポイント → 次の目的地の写真 → 歩数の数字（灰色の面）→ 登録ボタン
   YIF_walk_the_talk: {
-    mobileForms: ['mainMenu_id_2026Walk'],
+    mobileForms: ['mainMenu_id_2026Walk', 'ranking_id_2026Walk'],
+    emptyGrids: {
+      ranking_id_2026Walk_ranking_grd_kojin: 'まだランキングはありません',
+      ranking_id_2026Walk_ranking_grd_dantai: 'まだランキングはありません',
+    },
+    // ランキング: 更新日の曜日が合っていないことがある（2026/11/13(日) など）。日付から曜日を出し直し、「時点分」は「時点」に
+    script: `
+      window.__myappAppUpdate = function () {
+        var el = document.querySelector('#ranking_id_2026Walk_lbl_upDate .tcc-label-text');
+        if (!el) return;
+        var m = /(\\d{4})\\/(\\d{1,2})\\/(\\d{1,2})/.exec(el.textContent || '');
+        if (!m) return;
+        var d = new Date(+m[1], +m[2] - 1, +m[3]);
+        var text = m[1] + '/' + m[2] + '/' + m[3] + '（' + '日月火水木金土'.charAt(d.getDay()) + '）時点';
+        if (el.textContent !== text) el.textContent = text;
+      };
+    `,
     // 主な操作（歩数の登録など）は、画面の下に浮かせたガラスのボタンに
     bottomBars: { mainMenu_id_2026Walk: ['mainMenu_id_2026Walk_btn_walk'] },
     panels: [
@@ -643,6 +662,11 @@ ${HEALTH_RESULT_CSS}
       'mainMenu_id_2026Walk_lin1',
       'mainMenu_id_2026Walk_lin2',
       'mainMenu_id_2026Walk_img_LINCREA',
+      // ランキング: 大きな題名・「閉じる」（左上の ‹ で戻る）・飾りの線・ロゴは出さない
+      'ranking_id_2026Walk_R1',
+      'ranking_id_2026Walk_btnClose',
+      'ranking_id_2026Walk_lin1',
+      'ranking_id_2026Walk_img1',
     ],
     layout: `
 ${fullWidth('mainMenu_id_2026Walk')}
@@ -703,6 +727,38 @@ ${place('mainMenu_id_2026Walk_button_button_ranking_menu', '16px', 8, 'calc(50% 
 ${place('mainMenu_id_2026Walk_button_set_step_goal', 'calc(50% + 6px)', 8, 'calc(50% - 22px)', 48)}
 ${row('mainMenu_id_2026Walk_btn_admin', 68, 44)}
 ${['mainMenu_id_2026Walk_btn_walk', 'mainMenu_id_2026Walk_button_button_ranking_menu', 'mainMenu_id_2026Walk_button_set_step_goal', 'mainMenu_id_2026Walk_btn_admin'].map(fillButton).join('')}
+
+/* ---- ランキング: 題名・探す欄 / 個人・団体の切り替え / 1人（1チーム）1枚のカード / 更新日 ---- */
+${fullWidth('ranking_id_2026Walk')}
+#ranking_id_2026Walk,
+#ranking_id_2026Walk_R2, #ranking_id_2026Walk_R3, #ranking_id_2026Walk_R4, #ranking_id_2026Walk_R5 { height: auto !important; }
+#ranking_id_2026Walk .tcc-panel { border: none !important; background: transparent !important; box-shadow: none !important; }
+#ranking_id_2026Walk_R2_C1, #ranking_id_2026Walk_blank4 { height: 28px !important; }
+${place('ranking_id_2026Walk_lbl4', '16px', 4, 'calc(100% - 32px)', 22)}
+${text('ranking_id_2026Walk_lbl4', 13, { muted: true })}
+#ranking_id_2026Walk_R3_C1, #ranking_id_2026Walk_blank3 { height: 96px !important; }
+${place('ranking_id_2026Walk_lbl1', '16px', 4, 'calc(100% - 32px)', 32)}
+${text('ranking_id_2026Walk_lbl1', 22, { bold: true })}
+${place('ranking_id_2026Walk_search_box_kojin', '16px', 46, 'calc(50% - 22px)', 40)}
+${place('ranking_id_2026Walk_search_box_dantai', 'calc(50% + 6px)', 46, 'calc(50% - 22px)', 40)}
+${fillInput('ranking_id_2026Walk_search_box_kojin')}
+${fillInput('ranking_id_2026Walk_search_box_dantai')}
+#ranking_id_2026Walk_R4_C1, #ranking_id_2026Walk_blank5 { height: calc(100vh - 230px) !important; min-height: 420px; }
+#ranking_id_2026Walk_tab1 { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; }
+/* 個人・団体: 画面の幅に収まる切り替えスイッチ（2つを同じ幅で） */
+#ranking_id_2026Walk_tab1 > ul.tcc-tab-head {
+  display: flex !important; flex-wrap: nowrap !important; width: auto !important;
+  margin: 0 16px !important; padding: 3px !important; box-sizing: border-box;
+}
+#ranking_id_2026Walk_tab1 > ul.tcc-tab-head > li { flex: 1 1 0 !important; min-width: 0 !important; }
+#ranking_id_2026Walk_tab1 > ul.tcc-tab-head a { display: block !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; text-align: center; padding-left: 0 !important; padding-right: 0 !important; }
+#ranking_id_2026Walk_ranking_grd_kojin,
+#ranking_id_2026Walk_ranking_grd_dantai { left: 16px !important; top: 8px !important; width: calc(100% - 32px) !important; height: calc(100% - 64px) !important; }
+${cardGrid('ranking_id_2026Walk_ranking_grd_kojin', [[2], [1, 3, 8], [9, 10]], { 1: '順位', 3: 'ポイント', 8: '合計歩数', 9: '拠点', 10: 'チーム' }, { pager: true })}
+${cardGrid('ranking_id_2026Walk_ranking_grd_dantai', [[2], [1, 3, 5]], { 1: '順位', 3: '平均ポイント', 5: '合計歩数' }, { pager: true })}
+#ranking_id_2026Walk_R5_C1, #ranking_id_2026Walk_blank2 { height: 36px !important; }
+${place('ranking_id_2026Walk_lbl_upDate', '16px', 4, 'calc(100% - 32px)', 24)}
+${text('ranking_id_2026Walk_lbl_upDate', 13, { muted: true, align: 'right' })}
 `,
   },
 };

@@ -10,10 +10,10 @@
 // 切り替えは Stack.Protected（守り役）がやる。ログインできて session が入った瞬間に
 // login は見られなくなり、自動で (app) の最初の画面（マイアプリ）へ移る。ログアウトはその逆。
 // 各画面は「次にどこへ行くか」を自分で決めなくてよい。
-import { useMemo } from 'react';
-import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-native';
+import { useEffect, useMemo } from 'react';
+import { ActivityIndicator, AppState, StyleSheet, useColorScheme, View } from 'react-native';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
+import { setStatusBarStyle, StatusBar } from 'expo-status-bar';
 
 import { SessionProvider, useSession } from '../session/SessionContext';
 import { useColors } from '../theme';
@@ -21,6 +21,20 @@ import { useColors } from '../theme';
 export default function RootLayout() {
   const scheme = useColorScheme();
   const c = useColors();
+  // ライト / ダークを、アプリを開いたまま切り替えたとき（コントロールセンターや、夜になって自動で）、
+  // iOS が時刻などの文字の色を元に戻してしまうことがある（黒い地に黒い文字になって見えない）。
+  // 切り替わったあとと、アプリに戻ってきたときに、もう一度その色にする
+  useEffect(() => {
+    const apply = () => setStatusBarStyle(c.statusBar, false);
+    const timers = [150, 600, 1500].map((ms) => setTimeout(apply, ms));
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') timers.push(setTimeout(apply, 150));
+    });
+    return () => {
+      timers.forEach(clearTimeout);
+      sub.remove();
+    };
+  }, [c.statusBar]);
   const navigationTheme = useMemo(() => {
     const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
     return {

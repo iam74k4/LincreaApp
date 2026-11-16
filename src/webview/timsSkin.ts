@@ -21,7 +21,7 @@ ${fullWidth('frmLTiMSTop')}
 #frmLTiMSTop .tcc-tile.col { float: none !important; }
 
 /* メニュー */
-#frmLTiMSTop_R1_C2, #frmLTiMSTop_blank3 { height: 296px !important; }
+#frmLTiMSTop_R1_C2, #frmLTiMSTop_blank3 { height: 228px !important; }
 ${place('frmLTiMSTop_lblUser', '16px', 12, 'calc(100% - 32px)', 24)}
 #frmLTiMSTop_lblUser .tcc-label-text { text-align: left !important; }
 #frmLTiMSTop_lblUser * { font-size: 15px !important; font-weight: 400 !important; color: var(--myapp-text2) !important; }
@@ -29,10 +29,10 @@ ${row('frmLTiMSTop_btnAttendance', 48, 76)}
 ${place('frmLTiMSTop_lbl1', '32px', 90, 'calc(100% - 88px)', 22)}
 ${row('frmLTiMSTop_btnApply', 136, 76)}
 ${place('frmLTiMSTop_lbl5', '32px', 178, 'calc(100% - 88px)', 22)}
-${row('frmLTiMSTop_btnSettings', 224, 56)}
+/* システム設定は、管理する人の仕事（パソコンで使う）。ふつうの人が押すと「権限がありません」になるので、スマホでは出さない */
+#frmLTiMSTop_btnSettings { display: none !important; }
 ${fillButton('frmLTiMSTop_btnAttendance')}
 ${fillButton('frmLTiMSTop_btnApply')}
-${fillButton('frmLTiMSTop_btnSettings')}
 
 /* お知らせと各種申請 */
 #frmLTiMSTop_R2_C1, #frmLTiMSTop_blank2 { height: 440px !important; }
@@ -217,6 +217,7 @@ ${fillButton(A('btnCalendarSearch'))}
 #${A('grdWorkTotal')} {
   position: absolute !important;
   top: 0 !important;
+  width: 0 !important;
   height: 0 !important;
   overflow: hidden !important;
   visibility: hidden !important;
@@ -407,6 +408,10 @@ ${DAY.status} .tcc-label-text { width: auto !important; font-size: 15px !importa
   height: 44px !important;
   margin: 0 0 12px !important;
 }
+/* 日の一覧が出るまでは出さない（読み込みの途中に、同じ場所に別のボタンが出て押し間違えないように。JS が data-myapp-days を付ける） */
+#frmAttendance:not([data-myapp-days]) #${A('btnApply')},
+#frmAttendance:not([data-myapp-days]) #${A('btnApprove')},
+#frmAttendance:not([data-myapp-days]) #${A('btnCancel')} { visibility: hidden !important; }
 #${A('btnApply')}[style*="visibility: hidden"],
 #${A('btnApprove')}[style*="visibility: hidden"],
 #${A('btnCancel')}[style*="visibility: hidden"] { display: none !important; }
@@ -461,6 +466,20 @@ const SEARCH_CSS = `
 .myapp-search.myapp-open .myapp-search-toggle::after { transform: rotate(-90deg); }
 .myapp-search.myapp-collapsible:not(.myapp-open) > .myapp-row,
 .myapp-search.myapp-collapsible:not(.myapp-open) > .myapp-search-actions { display: none !important; }
+/* チェックボックスの組（表示対象・申請状況 など。JS が .myapp-choice-wrap にまとめる）: それぞれの幅のまま、横に並べて折り返す */
+.myapp-search .myapp-choice-wrap { flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 18px; row-gap: 0; }
+.myapp-search .myapp-row:has(> .myapp-choice-wrap) { align-items: flex-start !important; }
+.myapp-search .myapp-choice-wrap > .myapp-choice {
+  position: relative !important; left: auto !important; top: auto !important;
+  flex: 0 0 auto !important; width: auto !important; height: 40px !important; min-height: 0;
+  padding: 10px 0 0 !important; box-sizing: border-box !important;
+}
+.myapp-search .myapp-choice-wrap > .myapp-choice > *,
+.myapp-search .myapp-choice-wrap > .myapp-choice label,
+.myapp-search .myapp-choice-wrap > .myapp-choice .tcc-label-text {
+  position: relative !important; left: auto !important; top: auto !important;
+  width: auto !important; white-space: nowrap !important; display: inline-flex !important; flex-direction: row !important;
+}
 /* 選択肢（申請ステータス など）は、短いので横に並べて折り返す */
 .myapp-search .myapp-row > .myapp-choice,
 .myapp-search .myapp-row > .myapp-choice .tcc-radio-group { display: flex !important; flex-direction: row !important; flex-wrap: wrap !important; align-items: center; column-gap: 14px; }
@@ -1554,6 +1573,8 @@ const SCRIPT = `
     }
     var attForm = document.getElementById('frmAttendance');
     if (attForm && attForm.hasAttribute('data-myapp-monthend') !== monthEnd) attForm.toggleAttribute('data-myapp-monthend', monthEnd);
+    var hasDays = !!body.querySelector(':scope > .tcc-rpt-row');
+    if (attForm && attForm.hasAttribute('data-myapp-days') !== hasDays) attForm.toggleAttribute('data-myapp-days', hasDays);
     head(body, 'top', hasTop ? '今日と未登録の日' : '', 0);
     head(body, 'rest', hasTop ? 'ほかの日' : '', 3);
   }
@@ -1812,6 +1833,26 @@ const SCRIPT = `
           pill.appendChild(nav.children[0]);
         }
       });
+    });
+    // チェックボックスが2つ以上並ぶ行（表示対象・申請状況 など）は、1つの「折り返す選択肢の組」にまとめる。
+    // 次の行が見出しのないチェックボックスだけの行（選択肢の2行目）なら、それも同じ組に入れる（文字が重ならず、全部読める）
+    Array.prototype.slice.call(box.querySelectorAll(':scope > .myapp-row')).forEach(function (row) {
+      var boxes = Array.prototype.filter.call(row.children, function (c) {
+        return c.classList.contains('myapp-choice') && c.classList.contains('chkbox');
+      });
+      if (!boxes.length) return;
+      var prev = row.previousElementSibling;
+      var group = null;
+      if (boxes.length === row.children.length && prev && prev.__myappChoices) group = prev.__myappChoices;
+      if (!group) {
+        if (boxes.length < 2) return;
+        group = document.createElement('div');
+        group.className = 'myapp-choice-wrap';
+        row.insertBefore(group, boxes[0]);
+        row.__myappChoices = group;
+      }
+      boxes.forEach(function (c) { group.appendChild(c); });
+      if (!row.children.length) row.remove();
     });
     if (buttons.length) {
       var actions = document.createElement('div');
@@ -2942,10 +2983,9 @@ export const TIMS_SKIN: AppSkin = {
   cards: [
     { button: 'frmLTiMSTop_btnAttendance', subtitle: 'frmLTiMSTop_lbl1' },
     { button: 'frmLTiMSTop_btnApply', subtitle: 'frmLTiMSTop_lbl5' },
-    { button: 'frmLTiMSTop_btnSettings' },
   ],
   sections: ['frmLTiMSTop_lbl_announcement_title', 'frmLTiMSTop_lbl12'],
-  hidden: ['frmLTiMSTop_R1_C1', 'frmLTiMSTop_lblQuit', 'frmLTiMSTop_lblYser'],
+  hidden: ['frmLTiMSTop_R1_C1', 'frmLTiMSTop_lblQuit', 'frmLTiMSTop_lblYser', 'frmLTiMSTop_btnSettings'],
   script: SCRIPT,
   layout: [TOP_CSS, scoped(':root.myapp-att-list', ATT_FRAME_CSS + LIST_CSS), scoped(':root.myapp-att-tab', ATT_FRAME_CSS + ATT_TABS_CSS), DTL_CSS, scoped(':root.myapp-apply-new', APPLY_FRAME_CSS + APPLY_CSS), scoped(':root.myapp-apply-tab', APPLY_FRAME_CSS + APPLY_TABS_CSS), YUKYU_CSS, ...APPLY_FORMS.map(applyFormCss), DAIKYU_CSS, REFLOW_CSS, PROJECT_SELECT_CSS, EMPLOYEE_SELECT_CSS, PICK_CSS].join('\n'),
 };

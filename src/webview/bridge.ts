@@ -32,6 +32,8 @@
 //    アプリは、重ねて開いた画面から戻ったとき、その間に書き込みがあったときだけ元の画面を読み直す。
 //    書き込みの通信がうまく終わったら、ページの中にも myapp-saved を出す（勤怠実績登録が、登録のあと残業申請を開くため）
 //
+// 8. ダイアログ（EZCraft の .tcc-modal）が開いているかを知らせる（modal）。開いているあいだは、ヘッダーの ‹ や
+//    左端からのスワイプで画面ごと戻らず、まずダイアログを閉じる（window.__myappCloseModal。src/components/EzcraftWebView.tsx）
 // 7. 別の申請をその場で作る（apply）
 //    ページ（勤怠実績登録の残業など）が、申請の画面と、そこに入れておく値を知らせる。アプリは申請の画面をシートで重ねる。
 import type { Handoff } from './handoff';
@@ -46,6 +48,7 @@ export type BridgeMessage =
   | { type: 'apply'; form: string; prefill: Record<string, string>; auto: boolean }
   | { type: 'initApp'; app: string; form: string; id: string; text: string }
   | { type: 'applyQueue'; form: string; items: Record<string, string>[] }
+  | { type: 'modal'; open: boolean }
   | { type: 'ready' };
 
 /** 入れておく値: 短い文字だけ（ページから来たものなので、長いものや文字でないものは捨てる） */
@@ -69,6 +72,7 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
       return { type: 'file', base64: message.base64, name: text(message.name, ''), mime: text(message.mime, 'application/octet-stream') };
     }
     if (message.type === 'ready') return { type: 'ready' };
+    if (message.type === 'modal') return { type: 'modal', open: message.open === true };
     // 画面の定義（src/webview/initApp.ts）。名前と ID の形を確かめる（中身は initAppCache が確かめる）
     if (
       message.type === 'initApp' &&
@@ -326,6 +330,34 @@ export const BRIDGE_JS = `
     var label = (button.textContent || '').replace(/\\s+/g, '');
     if (label && WRITE_LABEL.test(label) && !NOT_WRITE_LABEL.test(label)) wrote();
   }, true);
+
+  // 8. ダイアログが開いているかを知らせる。閉じるボタン（×）のあるものだけ（ない「お知らせ」は、OK で閉じる）
+  function topModalQuit() {
+    var best = null;
+    var bestZ = -Infinity;
+    document.querySelectorAll('.tcc-modal').forEach(function (m) {
+      var r = m.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      var cs = getComputedStyle(m);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return;
+      var quit = m.querySelector('.tcc-modal-quit');
+      if (!quit) return;
+      var z = parseInt(cs.zIndex, 10) || 0;
+      if (z >= bestZ) { bestZ = z; best = quit; }
+    });
+    return best;
+  }
+  window.__myappCloseModal = function () {
+    var quit = topModalQuit();
+    if (quit) quit.click();
+  };
+  var modalOpen = false;
+  setInterval(function () {
+    var open = topModalQuit() !== null;
+    if (open === modalOpen) return;
+    modalOpen = open;
+    post({ type: 'modal', open: open });
+  }, 300);
 })();
 true;
 `;

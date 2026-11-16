@@ -69,6 +69,17 @@ export function bootJs(background: string): string {
   style.id = 'myapp-boot';
   style.textContent = ${JSON.stringify(css)};
   root.appendChild(style);
+  // 読み込み中の通信の数（REVEAL_JS が見る。データを読み終わってから見せ、あとから並びが動かないように）
+  var pending = 0;
+  window.__myappXhr = function () { return pending; };
+  var send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function () {
+    var done = false;
+    var end = function () { if (done) return; done = true; pending--; window.__myappXhrAt = Date.now(); };
+    pending++;
+    this.addEventListener('loadend', end);
+    try { return send.apply(this, arguments); } catch (e) { end(); throw e; }
+  };
 })();
 true;
 `;
@@ -87,6 +98,7 @@ const REVEAL_JS = `
     var start = Date.now();
     var formSeenAt = -1;
     var waited = 0;
+    var readyAt = 0;
     var timer = null;
     function reveal() {
       if (timer) clearInterval(timer);
@@ -102,6 +114,12 @@ const REVEAL_JS = `
       var count = window.__myappUpdates || 0;
       if (formSeenAt < 0) { formSeenAt = count; return; }
       if (count <= formSeenAt) return; // 画面ができてから、まだ整え直していない
+      // 続けてデータを読んでいるあいだは待つ（読み終わってから見せる。あとから中身が増えて並びが下にずれないように）。
+      // 待つのは長くても 0.8 秒（それ以上かかるときは、先に見せる）
+      if (!readyAt) readyAt = Date.now();
+      var busy = window.__myappXhr ? window.__myappXhr() : 0;
+      var quiet = Date.now() - (window.__myappXhrAt || 0);
+      if ((busy > 0 || quiet < 120) && Date.now() - readyAt < 800) return;
       if (waited++ < 1) return; // 整え直したあと、もう 0.05 秒だけ待つ（色や並びが行き渡るまで）
       reveal();
     }, 50);
@@ -578,6 +596,47 @@ const DARK_JS = `
     });
   }
 
+  // ---- 画面の中の箱が、横にスクロールできてしまうのを止める ----
+  // EZCraft の画面には、パソコン向けの位置（右のほう）に置かれたまま見えなくしてある部品や、
+  // 「左に 16px ずらして幅 100%」のように置かれた部品があり、入れ物（タブの中身・枠の中・ダイアログの中）が
+  // そのぶん横に動いてしまう。見えている中身が入れ物に収まっている（か、少しだけはみ出している）なら、横には動かないようにする。
+  // 見えている中身が大きくはみ出しているもの（本当に横に長い中身）と、わざと横に流すもの（最近使ったプロジェクトの札・
+  // 横に並べたタブの見出し・data-myapp-hscroll の付いたもの）はそのまま
+  var SIDE_MAX = 64;
+  var sideAt = 0;
+  function shown(el) {
+    if (el.checkVisibility) return el.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+    var cs = getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+  }
+  function noSideScroll() {
+    var now = Date.now();
+    if (now - sideAt < 400) return;
+    sideAt = now;
+    var all = document.body ? document.body.getElementsByTagName('*') : [];
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (el.scrollWidth - el.clientWidth <= 1 || el.__myappNoSide) continue;
+      var ox = getComputedStyle(el).overflowX;
+      if (ox !== 'auto' && ox !== 'scroll') continue;
+      if (el.closest('[data-myapp-hscroll]') || el.matches('.myapp-recent, ul.tcc-tab-head')) continue;
+      // 見えている中身の右端が、入れ物の右端をどれだけ越えているか
+      var box = el.getBoundingClientRect();
+      var right = box.left + el.clientWidth;
+      var over = 0;
+      var kids = el.getElementsByTagName('*');
+      for (var k = 0; k < kids.length; k++) {
+        var r = kids[k].getBoundingClientRect();
+        if (!r.width || !r.height || r.right - right <= over) continue;
+        if (shown(kids[k])) over = r.right - right;
+      }
+      if (over > SIDE_MAX) continue;
+      el.__myappNoSide = true;
+      el.style.setProperty('overflow-x', 'hidden', 'important');
+      el.scrollLeft = 0;
+    }
+  }
+
   var timer = null;
   function update() {
     clearTimeout(timer);
@@ -587,6 +646,7 @@ const DARK_JS = `
       markSingleTabs();
       markWideModals();
       fit();
+      noSideScroll();
       if (media.matches) darken();
       window.__myappUpdates = (window.__myappUpdates || 0) + 1; // 整え直した回数（REVEAL_JS が見る）
     }, 60);
@@ -1193,6 +1253,8 @@ body > .tcc-component.cmblist > .cmblist-item:hover {
 //   本物の Liquid Glass（ゆがみ・揺れ）は Web では作れないので、これは「風」。アプリ側の部品は本物（GlassButton）
 // ---------------------------------------------------------------------------
 const GLASS_CSS = `
+/* 一覧のカードの中のリンク（申請 No. など）: 下線は出さない（行を押せば開くので、文字は地の色のまま） */
+.TccGridBodyScroll td a { text-decoration: none !important; color: inherit !important; }
 /* ---- 文字: アプリ（ネイティブ）の画面と同じ端末の文字にそろえる。アイコンの文字（Font Awesome）は変えない ---- */
 html, body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif !important; }
 body *:not(i):not(.fa):not(.fas):not(.far):not(.fab):not([class*="fa-"]):not([class*="glyphicon"]) { font-family: inherit !important; }
