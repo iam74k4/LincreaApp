@@ -2141,6 +2141,13 @@ const SCRIPT = `
     };
     setTimeout(times, 400);
     setTimeout(times, 1500);
+    // まとめて申請のときは、理由に前回の理由を入れておく（空のときだけ）
+    if (pf.reason === 'last') setTimeout(function () {
+      var reason = document.querySelector('#frmApply_zangyo_reason textarea');
+      var last = '';
+      try { last = localStorage.getItem(LAST_REASON) || ''; } catch (e) {}
+      if (reason && last && !reason.value.trim()) typeInto(reason, last);
+    }, 600);
     return true;
   }
   // 部品の中の文字を置き換える（アイコンは残す。同じなら何もしない）
@@ -2436,11 +2443,341 @@ const SCRIPT = `
     });
   }
 
+  // ---- 勤怠実績登録: 番号の欄を押したら、今月使ったプロジェクトから選べるようにする（下から出るシート） ----
+  // 今月の工数は、勤務表の「工数」タブの一覧から取る。勤務表を開いたときに裏で一度読み（preloadKosu）、
+  // この端末に控える（番号・プロジェクト名・作業内訳・日付だけ。新しい2か月分）。勤怠実績登録を開いたときに
+  // 入っていたプロジェクトも足す。シートの「番号を入力する」を選べば、今までどおりキーボードで打てる。
+  var MONTH_PRJ = 'myapp.monthProjects';
+  var loadedAt = Date.now();
+  function monthOf(text) {
+    var m = /(\\d{4})\\D(\\d{1,2})/.exec(text || '');
+    return m ? m[1] + '/' + (m[2].length < 2 ? '0' : '') + m[2] : '';
+  }
+  function readMonthPrj() {
+    try {
+      var v = JSON.parse(localStorage.getItem(MONTH_PRJ) || '{}');
+      return v && typeof v === 'object' ? v : {};
+    } catch (e) { return {}; }
+  }
+  function addMonthPrj(month, items) {
+    if (!month || !items.length) return;
+    var all = readMonthPrj();
+    var list = (all[month] && all[month].list) || [];
+    items.forEach(function (it) {
+      if (!it.no) return;
+      var old = list.filter(function (p) { return p.no === it.no; })[0];
+      if (!old) { list.push({ no: it.no, name: it.name || '', content: it.content || '', date: it.date || '' }); return; }
+      if (it.name) old.name = it.name;
+      if (it.content) old.content = it.content;
+      if (it.date && (!old.date || it.date > old.date)) old.date = it.date;
+    });
+    all[month] = { list: list, at: Date.now() };
+    Object.keys(all).sort().reverse().slice(2).forEach(function (k) { delete all[k]; });
+    try { localStorage.setItem(MONTH_PRJ, JSON.stringify(all)); } catch (e) {}
+  }
+  // 勤務表の「工数」タブの一覧（日付・No.・プロジェクト・作業内訳）を控える
+  function harvestKosu() {
+    var grid = document.getElementById('frmAttendance_grdPrj');
+    if (!grid) return;
+    var rows = grid.querySelectorAll('.TccGridBodyScroll tbody tr');
+    if (!rows.length) return;
+    var key = rows.length + ':' + (grid.querySelector('.TccGridBodyScroll tbody').textContent || '').length;
+    if (grid.__myappHarvested === key) return;
+    grid.__myappHarvested = key;
+    var byMonth = {};
+    Array.prototype.forEach.call(rows, function (tr) {
+      var date = cellText(tr, 3);
+      var no = cellText(tr, 4);
+      var month = monthOf(date);
+      if (!month || !no) return;
+      (byMonth[month] = byMonth[month] || []).push({ no: no, name: cellText(tr, 5), content: cellText(tr, 8), date: date });
+    });
+    Object.keys(byMonth).forEach(function (m) { addMonthPrj(m, byMonth[m]); });
+  }
+  // 勤務表のほかのタブ（工数・出力）の一覧を、タブを開かずに裏で読む（読み込み中の印は出さない。見ている勤務表の邪魔をしない）。
+  // 読めたら done(true)。そのタブを開いたときに、もう一度は検索しない
+  function quietSearch(gridId, done) {
+    var grid = document.getElementById(gridId);
+    var pane = grid && grid.closest('.tcc-tab-pane');
+    var rows = function () { return grid.querySelectorAll('.TccGridBodyScroll tbody tr').length; };
+    if (!pane) { done(false); return; }
+    if (rows() > 0) { done(true); return; }
+    if (!pane.__myappSearched) {
+      if (pane.classList.contains('active')) { done(false); return; }
+      var go = Array.prototype.filter.call(pane.querySelectorAll('a.tcc-btn'), function (a) {
+        return /^(検索|表示)$/.test((a.textContent || '').trim());
+      })[0];
+      var ymSet = Array.prototype.some.call(pane.querySelectorAll('input'), function (i) { return /\\d{4}\\D?\\d{1,2}/.test(i.value || ''); });
+      if (!go || !ymSet) { done(false); return; }
+      pane.__myappSearched = true;
+      var root = document.documentElement;
+      root.classList.add('myapp-quiet');
+      go.click();
+      setTimeout(function () { root.classList.remove('myapp-quiet'); }, 4000);
+    }
+    var start = Date.now();
+    var timer = setInterval(function () {
+      if (rows() > 0) { clearInterval(timer); done(true); }
+      else if (Date.now() - start > 8000) { clearInterval(timer); done(false); }
+    }, 200);
+  }
+  // 勤務表を開いたら、裏で一度「工数」タブを読んで、今月の工数を控える（30 分以内に読んだものがあれば読まない）
+  var kosuQueued = false;
+  function preloadKosu() {
+    if (kosuQueued || isManager()) return;
+    var cur = readMonthPrj()[monthOf(ymd(0))];
+    kosuQueued = true;
+    if (cur && Date.now() - cur.at < 30 * 60 * 1000) return;
+    setTimeout(function () { quietSearch('frmAttendance_grdPrj', function () {}); }, 1500);
+  }
+
+  // ---- 勤務表: 残業をまとめて申請 ----
+  // 残業のある日を選ぶと、残業申請を1日ずつ続けて開く（日付・開始・終了・前回の理由を入れておく。「申請」は自分で押す）。
+  // 開始・終了は、「出力」タブの一覧（日ごとの退勤・残業）から求める（退勤 − 残業 〜 退勤）。一覧は、押したときに裏で読む
+  function otDays() {
+    var rpt = document.getElementById('frmAttendance_rptWork');
+    var body = rpt && rpt.querySelector('.tcc-rpt-body');
+    if (!body) return [];
+    var ym = ((rpt.querySelector('.tcc-rpt-title') || {}).textContent || '').match(/(\\d{4})年/);
+    if (!ym) return [];
+    var applied = appliedDates();
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    var out = [];
+    Array.prototype.forEach.call(body.children, function (row) {
+      if (!row.classList.contains('tcc-rpt-row')) return;
+      var dateEl = row.querySelector('[id^="frmAttendance_dispDt"] .tcc-label-text');
+      var label = ((dateEl && dateEl.textContent) || '').trim();
+      var m = label.match(/^(\\d{1,2})\\/(\\d{1,2})/);
+      var o = ((row.querySelector('[id^="frmAttendance_biko"]') || {}).textContent || '').match(/残業\\s*(\\d{1,2}):(\\d{2})/);
+      if (!m || !o || +o[1] * 60 + +o[2] <= 0) return;
+      var date = ym[1] + '/' + p(+m[1]) + '/' + p(+m[2]);
+      out.push({ date: date, label: label, applied: applied.indexOf(date) >= 0 });
+    });
+    return out.sort(function (a, b) { return a.date.localeCompare(b.date); });
+  }
+  // 「出力」タブの一覧から、日ごとの退勤と残業（日付 → { end: 分, ot: 分 }）
+  function attdTimes() {
+    var map = {};
+    var grid = document.getElementById('frmAttendance_grdAttd');
+    if (!grid) return map;
+    grid.querySelectorAll('.TccGridBodyScroll tbody tr').forEach(function (tr) {
+      var date = (cellText(tr, 1).match(/\\d{4}\\/\\d{2}\\/\\d{2}/) || [])[0];
+      var end = minutesOf(cellText(tr, 11));
+      var ot = minutesOf(cellText(tr, 29));
+      if (date && end !== null && ot) map[date] = { end: end, ot: ot };
+    });
+    return map;
+  }
+  function otBulkButton() {
+    var pane = document.getElementById('frmAttendance_tabAttd_tabs_0');
+    var rpt = document.getElementById('frmAttendance_rptWork');
+    var body = rpt && rpt.querySelector('.tcc-rpt-body');
+    if (!pane || !body) return;
+    var open = otDays().filter(function (d) { return !d.applied; }).length;
+    var btn = body.querySelector(':scope > .myapp-ot-bulk');
+    if (!open || isManager()) { if (btn) btn.remove(); return; }
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'myapp-ot-bulk';
+      btn.setAttribute('data-myapp-nodark', '');
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.setAttribute('data-loading', '');
+        quietSearch('frmAttendance_grdAttd', function (ok) {
+          btn.disabled = false;
+          btn.removeAttribute('data-loading');
+          openOtBulk(ok ? attdTimes() : {});
+        });
+      });
+      body.appendChild(btn);
+    }
+    var text = '残業をまとめて申請（' + open + '日）';
+    if (btn.textContent !== text) btn.textContent = text;
+  }
+  function openOtBulk(times) {
+    closePicker();
+    var days = otDays().map(function (d) {
+      var t = times[d.date];
+      return { date: d.date, label: d.label, applied: d.applied, from: t ? hhmm(t.end - t.ot) : '', to: t ? hhmm(t.end) : '', ot: t ? t.ot : 0 };
+    }).filter(function (d) { return d.to; });
+    var back = document.createElement('div');
+    back.className = 'myapp-pick-back';
+    back.setAttribute('data-myapp-nodark', '');
+    back.addEventListener('click', closePicker);
+    var sheet = document.createElement('div');
+    sheet.className = 'myapp-pick myapp-ot-pick';
+    sheet.setAttribute('data-myapp-nodark', '');
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('aria-label', '残業をまとめて申請');
+    var title = document.createElement('div');
+    title.className = 'myapp-pick-title';
+    title.textContent = '残業をまとめて申請';
+    sheet.appendChild(title);
+    var note = document.createElement('div');
+    note.className = 'myapp-pick-note';
+    note.textContent = days.length
+      ? '選んだ日の残業申請を、1日ずつ続けて開きます。開始・終了は退勤の時刻から入れます。ほかで申請済みの日は外してください。'
+      : '残業の時刻を読めませんでした。勤怠実績登録から1日ずつ申請してください。';
+    sheet.appendChild(note);
+    var go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'myapp-pick-go';
+    var count = function () {
+      var n = sheet.querySelectorAll('.myapp-ot-day[aria-pressed="true"]').length;
+      go.textContent = n ? n + '日分を申請する' : '日を選んでください';
+      go.disabled = !n;
+    };
+    days.forEach(function (d) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'myapp-ot-day';
+      b.setAttribute('aria-pressed', d.applied ? 'false' : 'true');
+      b.__day = d;
+      var name = document.createElement('span');
+      name.className = 'myapp-pick-name';
+      name.textContent = d.label + '　' + d.from + '〜' + d.to;
+      var meta = document.createElement('span');
+      meta.className = 'myapp-pick-meta';
+      meta.textContent = '残業 ' + hhmm(d.ot) + (d.applied ? '　この端末から申請済み' : '');
+      b.appendChild(name);
+      b.appendChild(meta);
+      b.addEventListener('click', function (e) {
+        e.preventDefault();
+        // 1回のタップで2回 click が届くことがある（アプリの「1回のタップで押す」と iOS の両方）。すぐの2回目は数えない
+        if (Date.now() - (b.__myappAt || 0) < 400) return;
+        b.__myappAt = Date.now();
+        b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+        count();
+      });
+      sheet.appendChild(b);
+    });
+    go.addEventListener('click', function (e) {
+      e.preventDefault();
+      var items = Array.prototype.filter.call(sheet.querySelectorAll('.myapp-ot-day'), function (b) {
+        return b.getAttribute('aria-pressed') === 'true';
+      }).map(function (b) { return { date: b.__day.date, from: b.__day.from, to: b.__day.to, reason: 'last' }; });
+      if (!items.length) return;
+      closePicker();
+      try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'applyQueue', form: 'frmApply_zangyo', items: items })); } catch (err) {}
+    });
+    // 申請する・やめる は、シートの下に固定する（日が多くても、スクロールせずに押せる）
+    var foot = document.createElement('div');
+    foot.className = 'myapp-pick-foot';
+    if (days.length) { count(); foot.appendChild(go); }
+    var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'myapp-pick-manual';
+    cancel.textContent = days.length ? 'やめる' : '閉じる';
+    cancel.addEventListener('click', function (e) { e.preventDefault(); closePicker(); });
+    foot.appendChild(cancel);
+    sheet.appendChild(foot);
+    document.body.appendChild(back);
+    document.body.appendChild(sheet);
+  }
+
+  // 勤怠実績登録を開いたときに入っていたプロジェクトも控える（開いてすぐのものだけ。書きかけは控えない）
+  function harvestDtl() {
+    if (Date.now() - loadedAt > 8000) return;
+    var date = textOf('frmAttendanceDtl_lblDt');
+    var month = monthOf(date);
+    if (!month) return;
+    var items = [];
+    for (var n = 1; n <= 6; n++) {
+      var no = ((document.querySelector('#frmAttendanceDtl_txtPrj' + n + ' input') || {}).value || '').trim();
+      if (!no) continue;
+      var name = ((document.querySelector('#frmAttendanceDtl_qbxProj' + n + ' input') || {}).value || '').trim();
+      var content = ((document.querySelector('#frmAttendanceDtl_qbxContent' + n + ' input') || {}).value || '').trim();
+      items.push({ no: no, name: name, content: content, date: date });
+    }
+    var key = month + JSON.stringify(items);
+    if (harvestDtl.key === key) return;
+    harvestDtl.key = key;
+    addMonthPrj(month, items);
+  }
+  // 選べるプロジェクト（勤怠日の月のもの。最近使った順）
+  function monthChoices() {
+    var month = monthOf(textOf('frmAttendanceDtl_lblDt')) || monthOf(ymd(0));
+    var entry = readMonthPrj()[month];
+    var list = (entry && entry.list) || [];
+    return list.slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (a.name || '').localeCompare(b.name || ''); });
+  }
+  function closePicker() {
+    document.querySelectorAll('.myapp-pick, .myapp-pick-back').forEach(function (el) { el.remove(); });
+  }
+  function openPicker(input, list) {
+    closePicker();
+    var back = document.createElement('div');
+    back.className = 'myapp-pick-back';
+    back.setAttribute('data-myapp-nodark', '');
+    back.addEventListener('click', closePicker);
+    var sheet = document.createElement('div');
+    sheet.className = 'myapp-pick';
+    sheet.setAttribute('data-myapp-nodark', '');
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('aria-label', '今月のプロジェクト');
+    var title = document.createElement('div');
+    title.className = 'myapp-pick-title';
+    title.textContent = '今月のプロジェクト';
+    sheet.appendChild(title);
+    list.forEach(function (p) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      var name = document.createElement('span');
+      name.className = 'myapp-pick-name';
+      name.textContent = p.name || ('No. ' + p.no);
+      var meta = document.createElement('span');
+      meta.className = 'myapp-pick-meta';
+      meta.textContent = 'No. ' + p.no + (p.content ? '　' + p.content : '');
+      b.appendChild(name);
+      b.appendChild(meta);
+      b.addEventListener('click', function (e) {
+        e.preventDefault();
+        closePicker();
+        typeInto(input, p.no);
+      });
+      sheet.appendChild(b);
+    });
+    var manual = document.createElement('button');
+    manual.type = 'button';
+    manual.className = 'myapp-pick-manual';
+    manual.textContent = '番号を入力する';
+    manual.addEventListener('click', function (e) {
+      e.preventDefault();
+      closePicker();
+      input.__myappManual = true;
+      input.addEventListener('blur', function off() { input.__myappManual = false; input.removeEventListener('blur', off); });
+      input.focus();
+    });
+    sheet.appendChild(manual);
+    document.body.appendChild(back);
+    document.body.appendChild(sheet);
+  }
+  var pickStart = null;
+  document.addEventListener('touchstart', function (e) {
+    var t = e.touches && e.touches[0];
+    pickStart = t ? { x: t.clientX, y: t.clientY } : null;
+  }, true);
+  document.addEventListener('touchend', function (e) {
+    var input = e.target && e.target.closest && e.target.closest('[id^="frmAttendanceDtl_txtPrj"] input');
+    if (!input || input.__myappManual || input.disabled || input.readOnly || document.activeElement === input) return;
+    var t = e.changedTouches && e.changedTouches[0];
+    if (pickStart && t && Math.abs(t.clientX - pickStart.x) + Math.abs(t.clientY - pickStart.y) > 10) return; // スクロールだった
+    var list = monthChoices();
+    if (!list.length) return;
+    e.preventDefault(); // キーボードを出さずに、シートを出す
+    openPicker(input, list);
+  }, true);
+
   window.__myappAppUpdate = function () {
     // 勤務表: 「勤務表」のタブを開いているときだけ、スマホ向けの一覧にする
     var list = !!document.querySelector('#frmAttendance_tabAttd_tabs_0.active');
     document.documentElement.classList.toggle('myapp-att-list', list);
-    if (list) { markDays(); kenkoCard(); summary(); autoMonth(); monthNav(); }
+    if (list) { markDays(); kenkoCard(); summary(); autoMonth(); monthNav(); preloadKosu(); otBulkButton(); }
+    harvestKosu();
     // ほかのタブ: 検索の条件を並べ直し、自分の分を出す
     var otherTab = list ? null : document.querySelector('#frmAttendance_tabAttd > .tcc-tab-content > .tcc-tab-pane.active');
     document.documentElement.classList.toggle('myapp-att-tab', !!otherTab);
@@ -2452,7 +2789,7 @@ const SCRIPT = `
     document.documentElement.classList.toggle('myapp-apply-tab', !!applyTab);
     if (applyTab) { reflowSearch(applyTab); showTab(applyTab); autoSearch(applyTab, false); }
     var dtl = document.getElementById('frmAttendanceDtl');
-    if (dtl) { markProjects(dtl); markBreaks(dtl); dtlCards(); overtimeCard(dtl); dtlLayout(dtl); }
+    if (dtl) { markProjects(dtl); markBreaks(dtl); dtlCards(); overtimeCard(dtl); dtlLayout(dtl); harvestDtl(); }
     recentChips();
     var yk = document.getElementById('frmApply_yukyu');
     if (yk) yukyu(yk);
@@ -2462,6 +2799,75 @@ const SCRIPT = `
     });
   };
 })();
+`;
+
+/* 勤怠実績登録: 番号の欄を押すと出る「今月のプロジェクト」のシート（JS の openPicker）。下から出るガラスのシート */
+const PICK_CSS = `
+.myapp-pick-back {
+  position: fixed; inset: 0; z-index: 100000;
+  background: rgba(0, 0, 0, 0.28);
+  animation: myapp-pick-fade 0.18s ease-out;
+}
+.myapp-pick {
+  position: fixed; left: 8px; right: 8px; z-index: 100001;
+  bottom: calc(8px + var(--myapp-safe-bottom, 0px));
+  max-height: 70vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  box-sizing: border-box; padding: 6px 8px 8px;
+  background: var(--myapp-sheet);
+  background: color-mix(in srgb, var(--myapp-fill) 94%, transparent);
+  -webkit-backdrop-filter: blur(var(--myapp-glass-blur)) saturate(180%);
+  backdrop-filter: blur(var(--myapp-glass-blur)) saturate(180%);
+  border: 1px solid var(--myapp-glass-border);
+  border-radius: 30px;
+  box-shadow: var(--myapp-glass-shadow);
+  animation: myapp-pick-up 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.myapp-pick-title { padding: 12px 14px 6px; font-size: 13px; font-weight: 600; color: var(--myapp-text2); }
+.myapp-pick button {
+  display: block; width: 100%; box-sizing: border-box;
+  margin: 0; padding: 11px 14px; border: 0; border-radius: 18px;
+  background: transparent; color: var(--myapp-text); text-align: left; font: inherit;
+}
+.myapp-pick button:active { background: var(--myapp-pressed-bg); }
+.myapp-pick-name { display: block; font-size: 16px; font-weight: 600; line-height: 1.3; }
+.myapp-pick-meta { display: block; margin-top: 2px; font-size: 13px; color: var(--myapp-text2); }
+.myapp-pick button.myapp-pick-manual {
+  margin-top: 6px; text-align: center; font-size: 16px; font-weight: 600; color: var(--myapp-accent-text);
+  background: var(--myapp-fill);
+}
+@keyframes myapp-pick-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes myapp-pick-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* 勤務表: 「残業をまとめて申請」のボタン（一覧のいちばん上。JS の otBulkButton）と、日を選ぶシート（openOtBulk） */
+.myapp-ot-bulk {
+  order: -1; display: block; width: 100%; box-sizing: border-box; height: 48px; margin: 0 0 14px;
+  border: 0; border-radius: 24px; background: var(--myapp-fill); color: var(--myapp-accent-text);
+  font: inherit; font-size: 16px; font-weight: 600;
+}
+.myapp-ot-bulk:active { background: var(--myapp-pressed-bg); }
+.myapp-ot-bulk[data-loading] { opacity: 0.55; }
+.myapp-pick-note { padding: 0 14px 10px; font-size: 13px; line-height: 1.5; color: var(--myapp-text2); }
+.myapp-pick button.myapp-ot-day { position: relative; padding-left: 50px; }
+.myapp-ot-day::before {
+  content: ''; position: absolute; left: 14px; top: 50%; width: 24px; height: 24px; margin-top: -12px;
+  box-sizing: border-box; border-radius: 50%; border: 2px solid var(--myapp-field-border);
+}
+.myapp-ot-day[aria-pressed="true"]::before {
+  border-color: var(--myapp-accent);
+  background: var(--myapp-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4L18 8' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 16px no-repeat;
+}
+.myapp-pick-foot {
+  position: sticky; bottom: -8px; margin: 4px -8px -8px; padding: 6px 8px 8px;
+  background: color-mix(in srgb, var(--myapp-fill) 96%, transparent);
+  border-top: 1px solid var(--myapp-border);
+}
+.myapp-pick button.myapp-pick-go {
+  margin-top: 8px; text-align: center; font-size: 17px; font-weight: 700; color: #fff; background: var(--myapp-accent);
+}
+.myapp-pick button.myapp-pick-go:disabled { opacity: 0.4; }
+
+/* 勤務表を開いたときに、裏で「工数」を読むあいだは、読み込み中の印を出さない（preloadKosu） */
+html.myapp-quiet #loadingIcon { display: none !important; }
 `;
 
 /* 代休申請の注意書き（給与控除が発生します）は、申請者の下に1行で */
@@ -2541,5 +2947,5 @@ export const TIMS_SKIN: AppSkin = {
   sections: ['frmLTiMSTop_lbl_announcement_title', 'frmLTiMSTop_lbl12'],
   hidden: ['frmLTiMSTop_R1_C1', 'frmLTiMSTop_lblQuit', 'frmLTiMSTop_lblYser'],
   script: SCRIPT,
-  layout: [TOP_CSS, scoped(':root.myapp-att-list', ATT_FRAME_CSS + LIST_CSS), scoped(':root.myapp-att-tab', ATT_FRAME_CSS + ATT_TABS_CSS), DTL_CSS, scoped(':root.myapp-apply-new', APPLY_FRAME_CSS + APPLY_CSS), scoped(':root.myapp-apply-tab', APPLY_FRAME_CSS + APPLY_TABS_CSS), YUKYU_CSS, ...APPLY_FORMS.map(applyFormCss), DAIKYU_CSS, REFLOW_CSS, PROJECT_SELECT_CSS, EMPLOYEE_SELECT_CSS].join('\n'),
+  layout: [TOP_CSS, scoped(':root.myapp-att-list', ATT_FRAME_CSS + LIST_CSS), scoped(':root.myapp-att-tab', ATT_FRAME_CSS + ATT_TABS_CSS), DTL_CSS, scoped(':root.myapp-apply-new', APPLY_FRAME_CSS + APPLY_CSS), scoped(':root.myapp-apply-tab', APPLY_FRAME_CSS + APPLY_TABS_CSS), YUKYU_CSS, ...APPLY_FORMS.map(applyFormCss), DAIKYU_CSS, REFLOW_CSS, PROJECT_SELECT_CSS, EMPLOYEE_SELECT_CSS, PICK_CSS].join('\n'),
 };

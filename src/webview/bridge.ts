@@ -44,7 +44,20 @@ export type BridgeMessage =
   | { type: 'write' }
   | { type: 'file'; base64: string; name: string; mime: string }
   | { type: 'apply'; form: string; prefill: Record<string, string>; auto: boolean }
+  | { type: 'initApp'; app: string; form: string; id: string; text: string }
+  | { type: 'applyQueue'; form: string; items: Record<string, string>[] }
   | { type: 'ready' };
+
+/** 入れておく値: 短い文字だけ（ページから来たものなので、長いものや文字でないものは捨てる） */
+function shortValues(value: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (value && typeof value === 'object') {
+    for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.length <= 40) out[key] = v;
+    }
+  }
+  return out;
+}
 
 export function parseBridgeMessage(data: string): BridgeMessage | null {
   try {
@@ -56,14 +69,27 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
       return { type: 'file', base64: message.base64, name: text(message.name, ''), mime: text(message.mime, 'application/octet-stream') };
     }
     if (message.type === 'ready') return { type: 'ready' };
+    // 画面の定義（src/webview/initApp.ts）。名前と ID の形を確かめる（中身は initAppCache が確かめる）
+    if (
+      message.type === 'initApp' &&
+      typeof message.app === 'string' &&
+      /^[A-Za-z0-9_]+$/.test(message.app) &&
+      typeof message.form === 'string' &&
+      /^[A-Za-z0-9_]+$/.test(message.form) &&
+      typeof message.id === 'string' &&
+      /^[A-Za-z0-9_\-+/=.]{1,80}$/.test(message.id) &&
+      typeof message.text === 'string' &&
+      message.text.length < 8_000_000
+    ) {
+      return { type: 'initApp', app: message.app, form: message.form, id: message.id, text: message.text };
+    }
     if (message.type === 'apply' && typeof message.form === 'string' && /^[A-Za-z0-9_]+$/.test(message.form)) {
-      const prefill: Record<string, string> = {};
-      if (message.prefill && typeof message.prefill === 'object') {
-        for (const [key, value] of Object.entries(message.prefill as Record<string, unknown>)) {
-          if (typeof value === 'string' && value.length <= 40) prefill[key] = value;
-        }
-      }
-      return { type: 'apply', form: message.form, prefill, auto: message.auto === true };
+      return { type: 'apply', form: message.form, prefill: shortValues(message.prefill), auto: message.auto === true };
+    }
+    // まとめて申請（勤務表の「残業をまとめて申請」）: 入れておく値の組を、1日ずつ（多くても1か月分）
+    if (message.type === 'applyQueue' && typeof message.form === 'string' && /^[A-Za-z0-9_]+$/.test(message.form) && Array.isArray(message.items)) {
+      const items = (message.items as unknown[]).slice(0, 31).map(shortValues).filter((v) => Object.keys(v).length > 0);
+      return items.length > 0 ? { type: 'applyQueue', form: message.form, items } : null;
     }
     if (message.type === 'scroll' && typeof message.y === 'number') {
       return { type: 'scroll', y: message.y, target: typeof message.target === 'string' ? message.target : '' };

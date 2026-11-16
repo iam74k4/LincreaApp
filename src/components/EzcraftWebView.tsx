@@ -16,13 +16,15 @@ import { WebView } from 'react-native-webview';
 import { pathOf } from '../api/http';
 import { SERVER_URL } from '../config';
 import { fileName, openFile, saveIncoming } from '../files';
-import { openApplication } from '../openShortcut';
+import { advanceApplyQueue, applyQueueActive, openApplication, startApplyQueue } from '../openShortcut';
 import { useSession } from '../session/SessionContext';
 import { useColors } from '../theme';
 import { autoClickJs, BRIDGE_JS, openerStubJs, parseBridgeMessage, restoreScrollJs } from '../webview/bridge';
 import { bootJs, buildSkinScript, SHOW_PAGE_JS } from '../webview/ezcraftSkin';
 import { appDataKeyOfUrl, rememberAppData } from '../webview/appDataCache';
 import { depositHandoff, type Handoff } from '../webview/handoff';
+import { initAppJs } from '../webview/initApp';
+import { initAppFormOfUrl, recallInitApp, rememberInitApp } from '../webview/initAppCache';
 import { noteWrite, writeCount } from '../webview/writes';
 
 type Props = {
@@ -60,6 +62,9 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const othersWritesAtOpen = useRef(0);
   const [pageTitle, setPageTitle] = useState('');
   const [reloadKey, setReloadKey] = useState(0); // 変えると WebView を作り直す（= 読み直す）
+  // この画面の定義（initApp）の控え。あれば、ページは読まずにこれを使う（src/webview/initAppCache.ts）。
+  // 開いたとき（と読み直すとき）に決めて、そのあいだは変えない（変えると、ページに入れるスクリプトが入れ替わる）
+  const [initApp, setInitApp] = useState(() => cachedInitApp(uri));
   // ページが整ったか。整うまでは中身を隠し（bootJs）、読み込み中の印を出しておく（整える前の見た目が一瞬見えないように）
   const [shown, setShown] = useState(false);
   const webRef = useRef<ComponentRef<typeof WebView>>(null);
@@ -82,15 +87,18 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     }, APPLY_DELAY_MS);
     pendingApply.current = { form, prefill: values, timer };
   };
-  // ページが閉じた（登録のあと EZCraft が画面を閉じた）。待っている申請があれば、戻ってから開く
+  // ページが閉じた（登録のあと EZCraft が画面を閉じた）。待っている申請があれば、戻ってから開く。
+  // まとめて申請の途中で、このシートで申請して閉じたのなら、次の1件を開く（src/openShortcut.ts）
   const close = () => {
     const waiting = pendingApply.current;
     if (waiting) {
       clearTimeout(waiting.timer);
       pendingApply.current = null;
     }
+    const nextInQueue = !waiting && sheet && ownWrites.current > 0 && applyQueueActive();
     if (router.canGoBack()) router.back();
     if (waiting) setTimeout(() => openApplication(waiting.form, waiting.prefill), 450);
+    else if (nextInQueue) setTimeout(() => advanceApplyQueue(), 450);
   };
 
   // 近道がうまく進まなかったら（ボタンが見つからないなど）、隠していたページをそのまま見せる
@@ -119,18 +127,22 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   useFocusEffect(
     useCallback(() => {
       if (openedChild.current) {
-        openedChild.current = false;
+        const wrote = writeCount() - ownWrites.current !== othersWritesAtOpen.current;
+        // まとめて申請の途中なら、次の1件から戻ってきたときも見る（src/openShortcut.ts）
+        openedChild.current = applyQueueActive();
+        othersWritesAtOpen.current = writeCount() - ownWrites.current;
         // 重ねて開いた画面（とその先）で書き込みがなければ、そのまま見せる（読み直すと数秒かかる）
-        if (writeCount() - ownWrites.current === othersWritesAtOpen.current) return;
+        if (!wrote) return;
         setRestoreTo(scroll.current); // 読み直しても、見ていた位置に戻す
         setShown(false);
+        setInitApp(cachedInitApp(uri));
         setReloadKey((k) => k + 1);
       }
-    }, []),
+    }, [uri]),
   );
 
-  // ページが作った PDF・CSV・Excel を受け取り、一時的な場所に置いて、iPhone の標準のプレビューで見せる
-  // （そこの共有のボタンから「ファイル」に保存・プリントなどができる。src/files.ts）
+  // ページが作った PDF・CSV・Excel を受け取り、一時的な場所に置いて見せる。PDF はアプリの画面、ほかは iPhone の標準のプレビュー
+  // （どちらも共有のボタンから「ファイル」に保存・プリントなどができる。src/files.ts）
   const receiveFile = async (base64: string, name: string, mime: string) => {
     const screenName = title || pageTitle || 'ファイル';
     const d = new Date();
@@ -139,6 +151,11 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     const saved = fileName(name, mime, `${screenName}_${stamp}`);
     try {
       const file = await saveIncoming(base64, saved);
+      // PDF は、アプリの画面で見せる（左上で戻れる。src/app/(app)/file.tsx）。ほかは iPhone の標準のプレビューで
+      if (mime === 'application/pdf' || /\.pdf$/i.test(saved)) {
+        router.push({ pathname: '/file', params: { uri: file.uri, title: saved.replace(/\.pdf$/i, ''), mime: 'application/pdf' } });
+        return;
+      }
       await openFile(file, saved.replace(/\.[a-z0-9]+$/i, ''), mime);
     } catch (e) {
       Alert.alert('ファイルを開けませんでした', e instanceof Error ? e.message : String(e));
@@ -190,7 +207,10 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         // 自動にすると、ページの長さによって画面の下（ホームに戻るバー）のぶんを引いたり引かなかったりして、
         // 下に固定したボタンの位置がずれる。下の余白は、ページの側で --myapp-safe-bottom を使って空ける
         contentInsetAdjustmentBehavior="never"
-        injectedJavaScriptBeforeContentLoaded={bootJs(c.background) + openerStubJs(handoff) + prefillJs(prefill)}
+        // 画面の端で引っぱっても、外（何もないところ）を出さない。横のスクロールは、ページの側で画面の幅に切る（ezcraftSkin の BASE_CSS）
+        bounces={false}
+        overScrollMode="never"
+        injectedJavaScriptBeforeContentLoaded={bootJs(c.background) + openerStubJs(handoff) + prefillJs(prefill) + initAppJs(initApp)}
         injectedJavaScript={safeAreaJs(insets.bottom) + BRIDGE_JS + buildSkinScript(appId) + (autoClick && autoClick.steps.length > 0 ? autoClickJs(autoClick.steps[0], autoClick.ready) : '') + restoreScrollJs(restoreTo)}
         // iOS では onMessage を渡さないと injectedJavaScript が実行されない（react-native-webview の既知の動き）
         onMessage={(e) => {
@@ -205,6 +225,12 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           if (message?.type === 'close') close();
           if (message?.type === 'open') openWindow(message.url, message.handoff);
           if (message?.type === 'apply') apply(message.form, message.prefill, message.auto);
+          if (message?.type === 'initApp') rememberInitApp({ app: message.app, form: message.form }, message.id, message.text);
+          if (message?.type === 'applyQueue' && startApplyQueue(message.form, message.items)) {
+            // 申請して戻ってきたら、この画面（勤務表）を読み直す
+            openedChild.current = true;
+            othersWritesAtOpen.current = writeCount() - ownWrites.current;
+          }
         }}
         onOpenWindow={(e) => openWindow(e.nativeEvent.targetUrl)} // target="_blank" のリンクなど
         onNavigationStateChange={(nav) => {
@@ -281,6 +307,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 });
+
+/** この URL の画面の定義の控え（なければ null） */
+function cachedInitApp(uri: string): { app: string; form: string; text: string } | null {
+  const form = initAppFormOfUrl(uri);
+  const text = form ? recallInitApp(form) : null;
+  return form && text ? { ...form, text } : null;
+}
 
 /** 入力欄に入れておく値を、ページに渡す（ページが動き出す前に。値は短い文字だけ: RunApp の parsePrefill） */
 function prefillJs(prefill: Record<string, string> | null): string {

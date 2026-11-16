@@ -86,7 +86,7 @@ const REVEAL_JS = `
   (function () {
     var start = Date.now();
     var formSeenAt = -1;
-    var stable = 0;
+    var waited = 0;
     var timer = null;
     function reveal() {
       if (timer) clearInterval(timer);
@@ -98,13 +98,13 @@ const REVEAL_JS = `
       if (Date.now() - start > 6000) { reveal(); return; }
       var form = document.querySelector('.form-content');
       var loading = document.getElementById('loadingIcon');
-      if (!form || (loading && loading.offsetParent !== null)) { stable = 0; return; }
+      if (!form || (loading && loading.offsetParent !== null)) return;
       var count = window.__myappUpdates || 0;
       if (formSeenAt < 0) { formSeenAt = count; return; }
       if (count <= formSeenAt) return; // 画面ができてから、まだ整え直していない
-      if (++stable < 2) return;
+      if (waited++ < 1) return; // 整え直したあと、もう 0.05 秒だけ待つ（色や並びが行き渡るまで）
       reveal();
-    }, 100);
+    }, 50);
   })();
 `;
 
@@ -987,6 +987,14 @@ body > .myapp-bottom-bar {
   --myapp-success: #7EE2A0;
   --myapp-success-bg: rgba(48, 209, 88, 0.18);
   color-scheme: dark;
+}
+
+/* ---- 画面の外へはスクロールしない ----
+   EZCraft は、隠している部品（パソコン向けの幅の表など）も、見えないまま場所を取っている。
+   そのぶん横にスクロールできて、何もないところが出ていた。画面の幅で切る（端で引っぱって戻る動きも止める） */
+html, body {
+  overflow-x: clip !important;
+  overscroll-behavior: none;
 }
 
 /* ---- 地: どのアプリも同じ色。フォームやパネルの白い地・枠はなくす ---- */

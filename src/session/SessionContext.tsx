@@ -9,6 +9,7 @@ import type { Session } from '../auth/api';
 import { clearSavedSession, restoreSession, saveSession } from '../auth/savedSession';
 import { discardOld } from '../files';
 import { forgetAllAppData } from '../webview/appDataCache';
+import { forgetAllInitApps, forgetInitAppTexts } from '../webview/initAppCache';
 
 type SessionContextValue = {
   session: Session | null;
@@ -37,12 +38,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback((next: Session) => {
     forgetAllAppData(); // 前にログインしていた人の控え（近道のため）は使わない
+    forgetInitAppTexts(); // 画面の定義の控えにも、前のログインの記録が入っている
     setSession(next);
     saveSession(next);
   }, []);
 
   const signOut = useCallback(() => {
     forgetAllAppData();
+    forgetAllInitApps(); // 画面の定義の控えと、裏で読む画面の覚え書き
     discardOld(true); // 受け取った明細などのファイルも残さない
     setSession(null);
     clearSavedSession();

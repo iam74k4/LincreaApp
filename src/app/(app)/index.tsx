@@ -23,6 +23,7 @@ import { appOrder, displayName } from '../../knownApps';
 import { useSession } from '../../session/SessionContext';
 import { SHORTCUTS, type Shortcut } from '../../shortcuts';
 import { appDataKey, recallAppData, useAppDataVersion } from '../../webview/appDataCache';
+import { prefetchInitApps } from '../../webview/initAppCache';
 import { openShortcutDirect, openShortcutThroughMenu } from '../../openShortcut';
 import { sizes, useColors, type Colors } from '../../theme';
 
@@ -80,6 +81,16 @@ export default function MyAppsScreen() {
   //   - アプリ（WebView）から戻ってきたとき
   //   - ホーム画面などから、このアプリに戻ってきたとき（この画面が出ている間だけ見張る）
   // Web で追加・変更されたアプリが、開き直さなくても反映される。
+  // よく使う画面の定義（initApp）を、マイアプリを見ているあいだに裏で読んでおく（src/webview/initAppCache.ts）。
+  // 一覧の読み込みと取り合わないよう、少し待ってから
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => {
+        prefetchInitApps();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }, []),
+  );
   const [focused, setFocused] = useState(true);
   const [prefetchFailed, setPrefetchFailed] = useState(false); // 近道の下準備がうまくいかなかった（下の ④）
   const [pending, setPending] = useState<Shortcut | null>(null); // 下準備を待っている近道

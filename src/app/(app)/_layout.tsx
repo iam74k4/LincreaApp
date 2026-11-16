@@ -4,6 +4,7 @@ import { Pressable } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
+import { stopApplyQueue } from '../../openShortcut';
 import { useColors } from '../../theme';
 
 export default function AppLayout() {
@@ -18,14 +19,25 @@ export default function AppLayout() {
       <Stack.Screen name="index" options={{ title: 'マイアプリ', headerLargeTitle: true }} />
       <Stack.Screen name="run/[app]/[form]" options={webScreen} />
       <Stack.Screen name="page" options={webScreen} />
-      {/* その場で開く申請などは、シートで重ねる（iOS 26 ではガラスの縁のシート）。左上の × で閉じる */}
+      {/* ページから受け取った PDF（左上で戻る・右上で保存・共有） */}
+      <Stack.Screen name="file" options={webScreen} />
+      {/* その場で開く申請などは、シートで重ねる（iOS 26 ではガラスの縁のシート）。左上の × で閉じる
+          （まとめて申請の途中なら、残りもやめる。src/openShortcut.ts） */}
       <Stack.Screen
         name="sheet/[app]/[form]"
         options={{
           ...webScreen,
           presentation: 'modal',
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="閉じる" hitSlop={8}>
+            <Pressable
+              onPress={() => {
+                stopApplyQueue();
+                router.back();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="閉じる"
+              hitSlop={8}
+            >
               <SymbolView name={{ ios: 'xmark', android: 'close', web: 'close' }} size={17} weight="semibold" tintColor={c.text} />
             </Pressable>
           ),

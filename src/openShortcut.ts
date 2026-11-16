@@ -3,6 +3,10 @@
 //   - メニューの App.data の控えがあれば（src/webview/appDataCache.ts）、行き先の画面を直接開く（速い）
 //   - なければ、メニューの画面を裏で開き、ボタンを順に押して行き先へ進む（src/components/EzcraftWebView.tsx）
 // sheet なら、いまの画面の上にシートで重ねる（閉じると元の画面に戻る）。prefill は、行き先の画面の入力欄に入れておく値。
+//
+// まとめて申請（勤務表の「残業をまとめて申請」）: 申請の画面を1件ずつ続けて開く。ページで「申請」して画面が閉じたら、
+// 次の1件を開く（src/components/EzcraftWebView.tsx の close）。申請は使う人が押す。途中で × で閉じたり、
+// ほかの申請や近道を開いたり、しばらく（10 分）置いたりしたら、残りはやめる。
 import { router } from 'expo-router';
 
 import { SHORTCUTS, type Shortcut } from './shortcuts';
@@ -14,7 +18,53 @@ export type OpenOptions = {
   sheet?: boolean;
   /** 行き先の画面の入力欄に入れておく値（ページの側で window.__myappPrefill として受け取る） */
   prefill?: Record<string, string>;
+  /** 上のヘッダーに出す名前（ふだんは近道の名前） */
+  title?: string;
+  /** まとめて申請の続きとして開く（そうでなければ、残っているまとめて申請はやめる） */
+  fromQueue?: boolean;
 };
+
+type ApplyQueue = { form: string; items: Record<string, string>[]; total: number; done: number; at: number };
+let queue: ApplyQueue | null = null;
+const QUEUE_IDLE_MS = 10 * 60 * 1000;
+
+/** まとめて申請を始める（1件目を開く）。開けなければ false */
+export function startApplyQueue(form: string, items: Record<string, string>[]): boolean {
+  if (items.length === 0) return false;
+  queue = { form, items: items.slice(1), total: items.length, done: 0, at: Date.now() };
+  return openQueued(items[0]);
+}
+
+/** まとめて申請の途中か（1件を申請して画面が閉じたときに、次を開くため） */
+export function applyQueueActive(): boolean {
+  if (queue && Date.now() - queue.at > QUEUE_IDLE_MS) queue = null;
+  return queue !== null;
+}
+
+/** 次の1件を開く。もうなければ終わりにして false */
+export function advanceApplyQueue(): boolean {
+  if (!applyQueueActive() || !queue) return false;
+  queue.done += 1;
+  queue.at = Date.now();
+  const next = queue.items.shift();
+  if (!next) {
+    queue = null;
+    return false;
+  }
+  return openQueued(next);
+}
+
+/** まとめて申請をやめる（× で閉じたときなど） */
+export function stopApplyQueue(): void {
+  queue = null;
+}
+
+function openQueued(prefill: Record<string, string>): boolean {
+  if (!queue) return false;
+  const shortcut = SHORTCUTS.find((s) => s.direct.form === queue?.form);
+  const title = shortcut ? `${shortcut.title}（${queue.done + 1}/${queue.total}）` : undefined;
+  return openApplication(queue.form, prefill, { title, fromQueue: true });
+}
 
 /** EZCraft が開いた画面に付けるのと同じような名前（開いた画面は、この名前で自分あての引数を探す） */
 function newWindowName(): string {
@@ -22,6 +72,7 @@ function newWindowName(): string {
 }
 
 function extra(opts: OpenOptions): { prefill?: string } {
+  if (!opts.fromQueue) stopApplyQueue(); // ほかの画面を開いたら、まとめて申請の残りはやめる
   return opts.prefill ? { prefill: JSON.stringify(opts.prefill) } : {};
 }
 
@@ -32,7 +83,7 @@ export function openShortcutDirect(shortcut: Shortcut, appData: string, opts: Op
     params: {
       app: shortcut.app,
       form: shortcut.direct.form,
-      title: shortcut.title,
+      title: opts.title ?? shortcut.title,
       data: depositHandoff({ appData, name: newWindowName(), params: JSON.stringify(shortcut.direct.params) }),
       ...extra(opts),
     },
@@ -46,7 +97,7 @@ export function openShortcutThroughMenu(shortcut: Shortcut, opts: OpenOptions = 
     params: {
       app: shortcut.app,
       form: shortcut.form,
-      title: shortcut.title,
+      title: opts.title ?? shortcut.title,
       auto: shortcut.steps.join(','),
       ready: shortcut.ready,
       label: shortcut.title,
@@ -59,11 +110,14 @@ export function openShortcutThroughMenu(shortcut: Shortcut, opts: OpenOptions = 
  * ページからの「その場で申請」: 申請の画面（近道にあるもの）を、いまの画面の上にシートで開く。
  * 近道にない画面なら false（何もしない）
  */
-export function openApplication(form: string, prefill: Record<string, string>): boolean {
+export function openApplication(form: string, prefill: Record<string, string>, opts: Omit<OpenOptions, 'sheet' | 'prefill'> = {}): boolean {
   const shortcut = SHORTCUTS.find((s) => s.direct.form === form);
-  if (!shortcut) return false;
+  if (!shortcut) {
+    if (!opts.fromQueue) stopApplyQueue();
+    return false;
+  }
   const appData = recallAppData(appDataKey(shortcut.app, shortcut.form));
-  if (appData) openShortcutDirect(shortcut, appData, { sheet: true, prefill });
-  else openShortcutThroughMenu(shortcut, { sheet: true, prefill });
+  if (appData) openShortcutDirect(shortcut, appData, { ...opts, sheet: true, prefill });
+  else openShortcutThroughMenu(shortcut, { ...opts, sheet: true, prefill });
   return true;
 }
