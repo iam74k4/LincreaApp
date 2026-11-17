@@ -18,7 +18,7 @@
 //
 // データの項目は消さない。
 
-import { cardGrid, fillButton, fillInput, fillLabel, fullWidth, mobileDialog, place, row, sheetDialog, text } from './layout';
+import { cardGrid, fillButton, fillInput, fillLabel, fullWidth, mobileDialog, place, row, searchField, sheetDialog, text } from './layout';
 import { TIMS_SKIN } from './timsSkin';
 
 export type AppSkin = {
@@ -357,6 +357,90 @@ ${place(H('rdo12'), '104px', 972, 'calc(100% - 120px)', HEALTH_FIELD)}
 // アプリごとの設定
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Walk the Talk の「目標歩数を設定」（stepGoalSet_id_2026Walk）。パソコン向けのページを、2枚のカードに並べ直す:
+//   1枚目 … 基準の目標歩数と、目標歩数ごとの係数（表の線はやめて、左に歩数・右に係数の行）
+//   2枚目 … 週ごとの「あなたの1日の目標歩数」（週・入力欄・歩、その下に変更の期限）
+// 大きな題名・閉じる・旗の絵・ロゴは出さない（hidden）。「保存」は画面の下の青いボタン（bottomBars）
+// ---------------------------------------------------------------------------
+const G = (id: string) => `stepGoalSet_id_2026Walk_${id}`;
+/** トロフィーの形（ランキングが空のときの印。CSS の mask に使う） */
+const TROPHY_ICON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 4h8v5a4 4 0 0 1-8 0z M8 6H5a2 2 0 0 0 2 4h1 M16 6h3a2 2 0 0 1-2 4h-1 M12 13v4 M8.5 20h7 M10 17h4v3h-4z'/%3E%3C/svg%3E")`;
+const GOAL_TABLE = [
+  ['lbl35', 'lbl36'],
+  ['lbl21', 'lbl22'],
+  ['lbl23', 'lbl24'],
+  ['lbl25', 'lbl26'],
+  ['lbl27', 'lbl28'],
+  ['lbl29', 'lbl30'],
+  ['lbl31', 'lbl32'],
+  ['lbl33', 'lbl34'],
+];
+// 週ごと: 週の日付・入力欄・「歩」・変更の期限
+const GOAL_WEEKS = [
+  ['lbl45', 'numTargetSteps1', 'lbl16', 'lbl49'],
+  ['lbl39', 'numTargetSteps2', 'lbl38', 'lbl50'],
+  ['lbl42', 'numTargetSteps3', 'lbl41', 'lbl51'],
+  ['lbl47', 'numTargetSteps4', 'lbl46', 'lbl52'],
+];
+const GOAL_ROW = 32; // 係数の表の1行
+const GOAL_WEEK = 72; // 週の1段（入力欄 40 + 期限 20 + すきま）
+function goalCard(row: string, height: number): string {
+  return `
+#stepGoalSet_id_2026Walk > #${G(row)} {
+  width: calc(100% - 32px) !important;
+  max-width: calc(100% - 32px) !important;
+  margin: 12px 16px 0 !important;
+  border-radius: 22px !important;
+  background-color: var(--myapp-fill) !important;
+  overflow: hidden !important;
+}
+#${G(row)}, #${G(row)} > *, #${G(row)} .tcc-panel, #${G(row)} .tcc-panel-body { height: ${height}px !important; }`;
+}
+const WTT_GOAL_CSS = `
+${fullWidth('stepGoalSet_id_2026Walk')}
+#stepGoalSet_id_2026Walk { height: auto !important; }
+#stepGoalSet_id_2026Walk .tcc-tile.col { float: none !important; }
+#${G('R2')} { display: none !important; }
+/* 1枚目: 基準の目標歩数と、係数の表 */
+${goalCard('R3', 112 + GOAL_TABLE.length * GOAL_ROW + 10)}
+${place(G('lbl1'), '16px', 14, 'calc(100% - 32px)', 24)}
+${text(G('lbl1'), 17, { bold: true })}
+${place(G('lbl4'), '16px', 48, 'calc(100% - 140px)', 24)}
+${text(G('lbl4'), 15, { muted: true })}
+#${G('lbl8')} { left: auto !important; right: 16px !important; top: 48px !important; width: 110px !important; height: 24px !important; }
+${text(G('lbl8'), 17, { bold: true, align: 'right' })}
+${place(G('lbl19'), '16px', 88, 'calc(100% - 140px)', 20)}
+${text(G('lbl19'), 13, { muted: true })}
+#${G('lbl20')} { left: auto !important; right: 16px !important; top: 88px !important; width: 110px !important; height: 20px !important; }
+${text(G('lbl20'), 13, { muted: true, align: 'right' })}
+${GOAL_TABLE.map(
+  ([steps, rate], i) => `${place(G(steps), '16px', 112 + i * GOAL_ROW, 'calc(100% - 140px)', GOAL_ROW)}
+${text(G(steps), 15)}
+#${G(rate)} { left: auto !important; right: 16px !important; top: ${112 + i * GOAL_ROW}px !important; width: 110px !important; height: ${GOAL_ROW}px !important; }
+${text(G(rate), 15, { align: 'right' })}
+#${G(steps)}, #${G(rate)} { border: none !important; background: transparent !important; }
+#${G(steps)} *, #${G(rate)} * { border: none !important; background: transparent !important; font-weight: 400 !important; }`,
+).join('\n')}
+/* 2枚目: 週ごとの目標歩数 */
+${goalCard('R4', 56 + GOAL_WEEKS.length * GOAL_WEEK)}
+${place(G('lbl18'), '16px', 14, 'calc(100% - 32px)', 24)}
+${text(G('lbl18'), 17, { bold: true })}
+${GOAL_WEEKS.map(
+  ([week, input, unit, until], i) => `${place(G(week), '16px', 52 + i * GOAL_WEEK, '130px', 40)}
+${text(G(week), 15)}
+#${G(week)}, #${G(week)} * { border: none !important; background: transparent !important; font-weight: 600 !important; }
+#${G(input)} { left: auto !important; right: 48px !important; top: ${52 + i * GOAL_WEEK}px !important; width: 120px !important; height: 40px !important; }
+${fillInput(G(input))}
+/* カードの中の入力欄は、カードと見分けがつく灰色の面（ほかの画面のカードと同じ） */
+#${G(input)} input { text-align: right !important; font-variant-numeric: tabular-nums; background-color: var(--myapp-inset) !important; border-color: transparent !important; }
+#${G(unit)} { left: auto !important; right: 16px !important; top: ${52 + i * GOAL_WEEK}px !important; width: 28px !important; height: 40px !important; }
+${text(G(unit), 15, { muted: true })}
+${place(G(until), '16px', 94 + i * GOAL_WEEK, 'calc(100% - 32px)', 20)}
+${text(G(until), 13, { muted: true, align: 'right' })}`,
+).join('\n')}
+`;
+
 export const APP_SKINS: Record<string, AppSkin> = {
   // ① 給与賞与明細: 年を選ぶ → 明細の一覧から選ぶ → 「明細を見る」
   L_Payslip: {
@@ -498,8 +582,8 @@ ${fillInput('LP_password_txt_password')}
   font-weight: 600;
 }
 .myapp-pw-go:active { transform: scale(0.97); }
-.myapp-pw-go:disabled { box-shadow: none; }
-.myapp-pw-go:disabled { opacity: 0.4; }
+/* 入れる前（押せないとき）: 青いカプセルを薄くするだけ（ダークで、灰色の面に暗い青の文字の、読みにくい見た目にしない） */
+.myapp-pw-go:disabled { box-shadow: none; opacity: 0.4; background: var(--myapp-tint) !important; color: #FFFFFF !important; }
 `,
   },
 
@@ -515,6 +599,12 @@ ${fillInput('LP_password_txt_password')}
     },
     placeholders: { LIT_main_cmb_year: 'すべて', LIT_main_cmb_season: 'すべて', LIT_main_cmb_exa_name: 'すべて' },
     script: `
+      // 「検索」を押したか（0 件のとき、EZCraft は件数を空にするので、検索の前と見分けがつかない）。「クリア」で戻す
+      var searched = false;
+      document.addEventListener('click', function (e) {
+        var b = e.target && e.target.closest && e.target.closest('#LIT_main_btn_search, #LIT_main_btn_clear_search');
+        if (b) searched = b.id === 'LIT_main_btn_search';
+      }, true);
       window.__myappAppUpdate = function () {
         // 検索の前は「件」だけが出るので隠す。一覧が空のときは、検索の前と、見つからなかったときで文を変える
         var count = document.querySelector('#LIT_main_lbl_cond_cnt .tcc-label-text');
@@ -529,7 +619,7 @@ ${fillInput('LP_password_txt_password')}
             return !/rowHead|_tdCol0(?!\\d)/.test(td.className) && (td.textContent || '').trim() !== '';
           });
         });
-        var msg = n === '' ? '条件を選んで「検索」を押してください' : '見つかりませんでした';
+        var msg = n === '' && !searched ? '条件を選んで「検索」を押してください' : '該当する人はいません。条件を変えて、もう一度検索してください';
         if (grid.getAttribute('data-myapp-empty-msg') !== msg) grid.setAttribute('data-myapp-empty-msg', msg);
         grid.classList.toggle('myapp-empty', empty);
       };
@@ -561,10 +651,11 @@ ${place('LIT_main_btn_search', 'calc(50% + 6px)', 176, 'calc(50% - 22px)', 48)}
 ${fillButton('LIT_main_btn_search')}
 ${fillButton('LIT_main_btn_clear_search')}
 /* 「656件」: 数と「件」のあいだをあけない */
-#LIT_main_lbl_cond_cnt { left: auto !important; right: 34px !important; top: 240px !important; width: 96px !important; height: 24px !important; }
-#LIT_main_lbl_cont_nin { left: auto !important; right: 16px !important; top: 240px !important; width: 18px !important; height: 24px !important; }
+/* 「件」の右の端を、カードの右の端（画面の端から 16px）にそろえる */
+#LIT_main_lbl_cond_cnt { left: auto !important; right: 30px !important; top: 240px !important; width: 96px !important; height: 24px !important; }
+#LIT_main_lbl_cont_nin { left: auto !important; right: 16px !important; top: 240px !important; width: 14px !important; height: 24px !important; }
 #LIT_main_lbl_cond_cnt .tcc-label-text { text-align: right !important; padding-right: 1px !important; }
-#LIT_main_lbl_cont_nin .tcc-label, #LIT_main_lbl_cont_nin .tcc-label-text { padding: 0 !important; text-align: left !important; }
+#LIT_main_lbl_cont_nin .tcc-label, #LIT_main_lbl_cont_nin .tcc-label-text { padding: 0 !important; text-align: right !important; }
 #LIT_main_lbl_cond_cnt .tcc-label, #LIT_main_lbl_cond_cnt .tcc-label-text,
 #LIT_main_lbl_cont_nin .tcc-label, #LIT_main_lbl_cont_nin .tcc-label-text { color: var(--myapp-text2) !important; font-size: 13px !important; }
 ${fillLabel('LIT_main_lbl_cond_cnt')}
@@ -586,9 +677,9 @@ ${fillButton('LIT_main_btn_Execel')}
 /* Excel 出力のボタンが出ていない（ふつうの人）ときは、一覧を画面の下の端まで伸ばす（下に空いた場所を残さない）。
    最後のカードは、ホームに戻るバーの上まで上がる */
 #LIT_main:not(:has(#LIT_main_btn_Execel:not([style*="visibility: hidden"]))) :is(#LIT_main_lit_tab, #LIT_main_lit_tab > .tcc-tab-content, #LIT_main_lit_tab_tabs_0) { overflow: visible !important; }
-/* 一覧の上の端は、画面の上から 287px（ヘッダーの下から）。そこから画面の下の端まで */
-#LIT_main:not(:has(#LIT_main_btn_Execel:not([style*="visibility: hidden"]))) #LIT_main_grd_exa_list { height: max(380px, calc(100vh - 290px)) !important; }
-#LIT_main_grd_exa_list .TccGridBodyScroll { padding-bottom: calc(12px + var(--myapp-safe-bottom, 0px)) !important; box-sizing: border-box !important; }
+/* 一覧は、画面の下の端まで（下に灰色の帯を残さない）。最後のカードの下は、ホームに戻るバーのぶん空ける */
+#LIT_main:not(:has(#LIT_main_btn_Execel:not([style*="visibility: hidden"]))) #LIT_main_grd_exa_list { height: max(380px, calc(100vh - 272px)) !important; }
+#LIT_main_grd_exa_list .TccGridBodyScroll { padding-bottom: calc(16px + var(--myapp-safe-bottom, 0px)) !important; box-sizing: border-box !important; }
 `,
   },
 
@@ -663,6 +754,17 @@ ${row('LPJZ_Main_lbl_kome', 90, 32)}
 #LPJZ_Main_att_file #att-clip { top: 6px !important; left: 8px !important; width: 28px !important; }
 #LPJZ_Main_att_file #att-info { top: 8px !important; left: 40px !important; width: calc(100% - 48px) !important; }
 #LPJZ_Main_att_file .tcc-label-text { font-size: 13px !important; }
+/* カードの下に、何ができる画面かの説明（年度は、会社のシステムがその年のものを出す。ほかの年度は選べない） */
+#LPJZ_Main::after {
+  content: '「通知書を取得する」を押すと、この年度の特別徴収税額の通知書（PDF）を開きます。保存や印刷は、開いた画面の共有ボタンから。';
+  display: block;
+  margin: 16px 20px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--myapp-text2);
+}
+/* 取得する前（添付ファイルの欄が空で隠れている）は、その欄のぶん上に詰めて、カードのすぐ下に */
+#LPJZ_Main:has(#LPJZ_Main_att_file[style*="visibility: hidden"])::after { margin-top: -10px; }
 `,
   },
 
@@ -818,8 +920,11 @@ ${HEALTH_RESULT_CSS}
 
   // Walk the Talk: ポイント → 次の目的地の写真 → 歩数の数字（灰色の面）→ 登録ボタン
   YIF_walk_the_talk: {
-    mobileForms: ['mainMenu_id_2026Walk', 'ranking_id_2026Walk'],
-    titles: { ranking_id_2026Walk: 'ランキング' },
+    mobileForms: ['mainMenu_id_2026Walk', 'ranking_id_2026Walk', 'stepGoalSet_id_2026Walk'],
+    titles: { ranking_id_2026Walk: 'ランキング', stepGoalSet_id_2026Walk: '目標歩数の設定' },
+    // 平均歩数の見出しの「１日」（全角の数字）を、ほかと同じ半角に
+    relabel: { mainMenu_id_2026Walk_lbl_word_average: 'リンクレア社員の1日の平均歩数' },
+    primary: ['stepGoalSet_id_2026Walk_btn2'],
     emptyGrids: {
       ranking_id_2026Walk_ranking_grd_kojin: 'まだランキングはありません',
       ranking_id_2026Walk_ranking_grd_dantai: 'まだランキングはありません',
@@ -854,7 +959,11 @@ ${HEALTH_RESULT_CSS}
       };
     `,
     // 主な操作（歩数の登録など）は、画面の下に浮かせたガラスのボタンに
-    bottomBars: { mainMenu_id_2026Walk: ['mainMenu_id_2026Walk_btn_walk'] },
+    bottomBars: {
+      mainMenu_id_2026Walk: ['mainMenu_id_2026Walk_btn_walk'],
+      // 目標歩数の設定: 「保存」は、画面の下に浮かせた青いボタンに（閉じるのは、左上の ‹）
+      stepGoalSet_id_2026Walk: ['stepGoalSet_id_2026Walk_btn2'],
+    },
     panels: [
       'mainMenu_id_2026Walk_lbl_background_1',
       'mainMenu_id_2026Walk_lbl_background_2',
@@ -871,8 +980,21 @@ ${HEALTH_RESULT_CSS}
       'ranking_id_2026Walk_btnClose',
       'ranking_id_2026Walk_lin1',
       'ranking_id_2026Walk_img1',
+      // 目標歩数の設定: 大きな題名（上のヘッダーと同じ）・閉じる・飾りの線・旗の絵・ロゴ・空の部品は出さない
+      'stepGoalSet_id_2026Walk_R1',
+      'stepGoalSet_id_2026Walk_btn_close',
+      'stepGoalSet_id_2026Walk_lin1',
+      'stepGoalSet_id_2026Walk_lin2',
+      'stepGoalSet_id_2026Walk_img1',
+      'stepGoalSet_id_2026Walk_img2',
+      'stepGoalSet_id_2026Walk_img3',
+      'stepGoalSet_id_2026Walk_img4',
+      'stepGoalSet_id_2026Walk_img5',
+      'stepGoalSet_id_2026Walk_lbl37',
+      'stepGoalSet_id_2026Walk_lbl44',
     ],
     layout: `
+${WTT_GOAL_CSS}
 ${fullWidth('mainMenu_id_2026Walk')}
 #mainMenu_id_2026Walk,
 #mainMenu_id_2026Walk_R2,
@@ -959,6 +1081,19 @@ ${fillInput('ranking_id_2026Walk_search_box_dantai')}
 #ranking_id_2026Walk_tab1 > ul.tcc-tab-head a { display: block !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; text-align: center; padding-left: 0 !important; padding-right: 0 !important; }
 #ranking_id_2026Walk_ranking_grd_kojin,
 #ranking_id_2026Walk_ranking_grd_dantai { left: 16px !important; top: 8px !important; width: calc(100% - 32px) !important; height: calc(100% - 16px) !important; }
+/* 氏名・団体名で探す欄も、ほかの検索欄と同じ形に */
+${searchField('#ranking_id_2026Walk_search_box_kojin')}
+${searchField('#ranking_id_2026Walk_search_box_dantai')}
+/* ランキングがまだないとき: 大きな白いカードはやめて、トロフィーの印と文だけを真ん中に */
+:is(#ranking_id_2026Walk_ranking_grd_kojin, #ranking_id_2026Walk_ranking_grd_dantai).myapp-empty,
+:is(#ranking_id_2026Walk_ranking_grd_kojin, #ranking_id_2026Walk_ranking_grd_dantai).myapp-empty * { background: transparent !important; border: none !important; box-shadow: none !important; }
+:is(#ranking_id_2026Walk_ranking_grd_kojin, #ranking_id_2026Walk_ranking_grd_dantai).myapp-empty::before {
+  content: ''; position: absolute; z-index: 20; left: 50%; top: 50%; width: 48px; height: 48px; margin: -64px 0 0 -24px; pointer-events: none;
+  background: var(--myapp-text2); opacity: 0.6;
+  -webkit-mask: ${TROPHY_ICON} center / contain no-repeat;
+  mask: ${TROPHY_ICON} center / contain no-repeat;
+}
+:is(#ranking_id_2026Walk_ranking_grd_kojin, #ranking_id_2026Walk_ranking_grd_dantai).myapp-empty::after { font-size: 15px !important; }
 ${cardGrid('ranking_id_2026Walk_ranking_grd_kojin', [[2], [1, 3, 8], [9, 10]], { 1: '順位', 3: 'ポイント', 8: '合計歩数', 9: '拠点', 10: 'チーム' }, { pager: true })}
 ${cardGrid('ranking_id_2026Walk_ranking_grd_dantai', [[2], [1, 3, 5]], { 1: '順位', 3: '平均ポイント', 5: '合計歩数' }, { pager: true })}
 #ranking_id_2026Walk_R5_C1, #ranking_id_2026Walk_blank2 { height: 36px !important; }

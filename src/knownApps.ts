@@ -22,7 +22,7 @@ export const KNOWN_APPS: Record<string, KnownApp> = {
   L_Tims: {
     name: '勤怠 TiMS',
     subtitle: '勤務表・各種申請',
-    symbol: { ios: 'clock.fill', android: 'schedule', web: 'schedule' },
+    symbol: { ios: 'person.badge.clock.fill', android: 'schedule', web: 'schedule' },
     background: '#FF9500',
     order: 1,
   },
@@ -36,7 +36,7 @@ export const KNOWN_APPS: Record<string, KnownApp> = {
   L_Payslip_Juminzei: {
     name: '住民税の通知書',
     subtitle: '特別徴収税額の通知書を取得',
-    symbol: { ios: 'doc.text.fill', android: 'description', web: 'description' },
+    symbol: { ios: 'building.columns.fill', android: 'description', web: 'description' },
     background: '#30B0C7',
     order: 4,
   },

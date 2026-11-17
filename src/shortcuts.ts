@@ -44,7 +44,8 @@ export const SHORTCUTS: Shortcut[] = [
     key: 'tims-overtime',
     title: '残業申請',
     subtitle: '今日の残業を申請',
-    symbol: { ios: 'clock.fill', android: 'more_time', web: 'more_time' },
+    // 勤怠 TiMS（時計と人）と見分けがつくよう、残業はタイマー
+    symbol: { ios: 'timer', android: 'more_time', web: 'more_time' },
     color: '#FF9500',
     ...TIMS,
     steps: ['frmLTiMSTop_btnApply', 'frmApply_zangyo'],
@@ -53,7 +54,7 @@ export const SHORTCUTS: Shortcut[] = [
   {
     key: 'tims-paid-leave',
     title: '有給休暇申請',
-    subtitle: '残りの日数も',
+    subtitle: '申請と残り日数',
     symbol: { ios: 'sun.max.fill', android: 'beach_access', web: 'beach_access' },
     color: '#34C759',
     ...TIMS,

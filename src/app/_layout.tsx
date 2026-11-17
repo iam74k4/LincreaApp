@@ -11,7 +11,7 @@
 // login は見られなくなり、自動で (app) の最初の画面（マイアプリ）へ移る。ログアウトはその逆。
 // 各画面は「次にどこへ行くか」を自分で決めなくてよい。
 import { useEffect, useMemo } from 'react';
-import { ActivityIndicator, AppState, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, AppState, Keyboard, StyleSheet, useColorScheme, View, type KeyboardEventName } from 'react-native';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { setStatusBarStyle, StatusBar } from 'expo-status-bar';
 
@@ -30,9 +30,18 @@ export default function RootLayout() {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') timers.push(setTimeout(apply, 150));
     });
+    // ページの入力欄でキーボードが出入りしたときも、iOS が文字の色を戻してしまう（ダークで時刻・電池が消える）
+    const later = () => {
+      apply();
+      timers.push(setTimeout(apply, 120), setTimeout(apply, 500));
+    };
+    const keyboard = ['keyboardWillShow', 'keyboardDidShow', 'keyboardWillHide', 'keyboardDidHide'].map((event) =>
+      Keyboard.addListener(event as KeyboardEventName, later),
+    );
     return () => {
       timers.forEach(clearTimeout);
       sub.remove();
+      keyboard.forEach((k) => k.remove());
     };
   }, [c.statusBar]);
   const navigationTheme = useMemo(() => {

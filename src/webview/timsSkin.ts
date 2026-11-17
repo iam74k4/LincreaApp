@@ -26,10 +26,35 @@ ${place('frmLTiMSTop_lblUser', '16px', 12, 'calc(100% - 32px)', 24)}
 #frmLTiMSTop_lblUser .tcc-label-text { text-align: left !important; }
 #frmLTiMSTop_lblUser * { font-size: 15px !important; font-weight: 400 !important; color: var(--myapp-text2) !important; }
 ${row('frmLTiMSTop_btnAttendance', 48, 76)}
-/* 説明は、見出しの文字（印の右）の下にそろえる */
-${place('frmLTiMSTop_lbl1', '56px', 90, 'calc(100% - 112px)', 22)}
+/* 説明は、見出しの文字（色の付いた印の右）の下にそろえる */
+${place('frmLTiMSTop_lbl1', '88px', 86, 'calc(100% - 136px)', 20)}
 ${row('frmLTiMSTop_btnApply', 136, 76)}
-${place('frmLTiMSTop_lbl5', '56px', 178, 'calc(100% - 112px)', 22)}
+${place('frmLTiMSTop_lbl5', '88px', 174, 'calc(100% - 136px)', 20)}
+${text('frmLTiMSTop_lbl1', 13, { muted: true })}
+${text('frmLTiMSTop_lbl5', 13, { muted: true })}
+#frmLTiMSTop_lbl1 .tcc-label, #frmLTiMSTop_lbl5 .tcc-label, #frmLTiMSTop_lbl1 .tcc-label-text, #frmLTiMSTop_lbl5 .tcc-label-text { padding: 0 !important; margin: 0 !important; text-indent: 0 !important; }
+#frmLTiMSTop #frmLTiMSTop_lbl1, #frmLTiMSTop #frmLTiMSTop_lbl5 { left: 72px !important; }
+/* メニューのカード: マイアプリ・勤怠申請の一覧と同じく、左に色の付いた四角の印（白い線の絵）。EZCraft の小さな印は出さない */
+#frmLTiMSTop_btnAttendance .tcc-btn > i, #frmLTiMSTop_btnApply .tcc-btn > i { display: none !important; }
+/* fillButton（余白 0）より強く書く */
+#frmLTiMSTop #frmLTiMSTop_btnAttendance .tcc-btn, #frmLTiMSTop #frmLTiMSTop_btnApply .tcc-btn {
+  position: relative !important;
+  justify-content: flex-start !important;
+  align-items: flex-start !important;
+  /* 題名は上から 14px、その下（説明のラベル）に1行ぶん空ける */
+  padding: 14px 16px 0 72px !important;
+  font-size: 17px !important;
+  line-height: 22px !important;
+  color: var(--myapp-text) !important;
+  text-align: left !important;
+}
+#frmLTiMSTop_btnAttendance .tcc-btn::before, #frmLTiMSTop_btnApply .tcc-btn::before {
+  content: ''; position: absolute; left: 16px; top: 50%; width: 40px; height: 40px; margin-top: -20px; border-radius: 10px;
+}
+#frmLTiMSTop_btnAttendance .tcc-btn::before { background: #007AFF ${iconImage('M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4')} center / 24px no-repeat; }
+#frmLTiMSTop_btnApply .tcc-btn::before { background: #5856D6 ${iconImage('M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M14 3v5h5 M9 13h6 M9 17h6')} center / 24px no-repeat; }
+/* お知らせの題名が2行になるときは、行の長さをそろえて折り返す（2行目が「す！」だけにならないように） */
+#frmLTiMSTop_grdAnnouncement .TccGridBodyScroll td { text-wrap: balance; }
 /* システム設定は、管理する人の仕事（パソコンで使う）。ふつうの人が押すと「権限がありません」になるので、スマホでは出さない */
 #frmLTiMSTop_btnSettings { display: none !important; }
 ${fillButton('frmLTiMSTop_btnAttendance')}
@@ -699,6 +724,29 @@ ${ATT_TAB_BUTTONS.map((id) => fillButton(A(id))).join('')}
 /* 結果: 1件1枚のカード。見出しの列は隠し、要る列だけを並べる */
 ${cardGrid(A('grdPrj'), [[3], [5], [9, 8, 4], [10]], { 9: '作業時間', 8: '作業内訳', 4: 'No.' }, { pager: true })}
 ${cardGrid(A('grdTotal'), [[2], [3, 4], [6, 12, 16, 17], [24, 23, 18]], { 4: '申請', 6: '出勤', 12: '有休', 16: '欠勤', 17: '代休', 24: '総労働', 23: '総残業', 18: '平日時間外' }, { pager: true })}
+/* 集計の数字は、勤務表のまとめと同じく、見出しの下に大きな数字を4列で並べる（1行の文の中に並べない） */
+#${A('grdTotal')} .TccGridBodyScroll td:is(${[6, 12, 16, 17, 24, 23, 18].map((n) => `.${A('grdTotal')}_tdCol${n}`).join(', ')}) {
+  flex: 0 0 25% !important;
+  max-width: 25% !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  margin-top: 10px !important;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  color: var(--myapp-text) !important;
+  font-variant-numeric: tabular-nums;
+}
+/* 値のない項目（欠勤・代休が 0 のときなど）は、見出しごと出さない（cardGrid の決まりより強く） */
+#${A('grdTotal')} .TccGridBodyScroll tr td[data-myapp-blank] { display: none !important; }
+#${A('grdTotal')} .TccGridBodyScroll td:is(${[6, 12, 16, 17, 24, 23, 18].map((n) => `.${A('grdTotal')}_tdCol${n}`).join(', ')})::before {
+  display: block;
+  margin: 0 0 2px !important;
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+}
 ${cardGrid(A('grdApplyStat'), [[2], [3, 9, 10], [4, 5], [6, 7, 8]], { 3: '申請', 9: '給与処理', 4: '承認', 6: '第二承認', 8: 'コメント' }, { pager: true })}
 ${cardGrid(A('grdAttd'), [[1], [10, 11, 28], [20, 29, 21], [7, 9]], { 10: '出勤', 11: '退勤', 28: '勤務', 20: '休憩', 29: '残業', 21: '休暇' }, { pager: true })}
 ${ATT_TAB_GRIDS.map((id) => flowGrid(A(id))).join('\n')}
@@ -748,9 +796,9 @@ function caption(id: string, label: string): string {
 #${id}::before {
   content: '${label}';
   position: absolute;
-  left: 2px;
-  top: -18px;
-  font-size: 11px;
+  left: 0;
+  top: -19px;
+  font-size: 13px;
   line-height: 16px;
   white-space: nowrap;
   color: var(--myapp-text2);
@@ -821,7 +869,8 @@ ${fullWidth('frmAttendanceDtl')}
   color: var(--myapp-text);
   overflow: hidden;
 }
-#frmAttendanceDtl [data-myapp-long] > .myapp-name-wrap { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; padding-top: 4px; }
+/* 2行で切る。WebKit は「…」を付けても3行目を描いてしまうので、札の高さを2行ぶん（16px × 2）にして隠す */
+#frmAttendanceDtl [data-myapp-long] > .myapp-name-wrap { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; top: 4px; bottom: auto; height: 32px; padding-top: 0; }
 #frmAttendanceDtl [data-myapp-long]:not(:focus-within) input { color: transparent !important; -webkit-text-fill-color: transparent !important; }
 #frmAttendanceDtl [data-myapp-long]:focus-within > .myapp-name-wrap { display: none !important; }
 /* テレワークの四角（label の ::before に描いてある）は、上に寄っている。右の「テレワーク」の文字と同じ高さに下げる */
@@ -854,12 +903,17 @@ ${place(D('work_tp'), '88px', 44, 'calc(100% - 104px)', 28)}
 ${text(D('work_tp'), 15)}
 #${D('lblDt')} .tcc-label, #${D('lblDt')} .tcc-label-text, #${D('work_tp')} .tcc-label, #${D('work_tp')} .tcc-label-text { padding-left: 0 !important; margin-left: 0 !important; }
 
+/* カードの中の文字の左端は、どれもカードの左から 16px（ラベルの中の、EZCraft の余白はなくす）。
+   見出し（実績・休憩・休暇・プロジェクト・備考）と、残業・コピーのカードの文字がそろう */
+#frmAttendanceDtl .tcc-component.lbl .tcc-label { padding-left: 0 !important; padding-right: 0 !important; border-left-width: 0 !important; }
+#frmAttendanceDtl .tcc-component.lbl .tcc-label-text { padding-left: 0 !important; }
+
 /* ほかの日の内容をコピー: 時刻の欄より下の、別のカードに（JS が .myapp-copy に移す。いちばん使う時刻の欄を上に） */
 #${D('lbl1')} { display: none !important; }
 .myapp-copy {
   box-sizing: border-box;
-  width: calc(100% - 24px);
-  margin: 0 12px 12px;
+  width: calc(100% - 32px);
+  margin: 0 16px 12px;
   padding: 12px 16px 14px;
   border-radius: 22px;
   background-color: var(--myapp-surface);
@@ -868,7 +922,7 @@ ${text(D('work_tp'), 15)}
   align-items: center;
   gap: 8px 10px;
 }
-#frmAttendanceDtl > .myapp-copy { width: calc(100% - 24px) !important; }
+#frmAttendanceDtl > .myapp-copy { width: calc(100% - 32px) !important; }
 .myapp-copy-title { grid-column: 1 / -1; font-size: 13px; color: var(--myapp-text2); }
 .myapp-copy > .tcc-component { position: relative !important; left: auto !important; top: auto !important; width: auto !important; min-width: 0 !important; height: 44px !important; }
 .myapp-copy div.icon-rt, .myapp-copy div.icon-rt * { border: none !important; }
@@ -966,8 +1020,8 @@ ${place(D('remarks'), '16px', 36, 'calc(100% - 32px)', 88)}
 #frmAttendanceDtl #${D('R2')},
 #frmAttendanceDtl #${D('R3')},
 #frmAttendanceDtl #${D('R4')} {
-  width: calc(100% - 24px) !important;
-  margin: 0 12px 12px !important;
+  width: calc(100% - 32px) !important;
+  margin: 0 16px 12px !important;
   border-radius: 22px !important;
   background-color: var(--myapp-surface) !important;
 }
@@ -975,8 +1029,8 @@ ${place(D('remarks'), '16px', 36, 'calc(100% - 32px)', 88)}
 /* 残業（JS が .myapp-ot を作る）: 所定の時間を超えたら、何分の残業かと、その場で残業申請を作るボタンを出す */
 .myapp-ot {
   box-sizing: border-box;
-  width: calc(100% - 24px);
-  margin: 0 12px 12px;
+  width: calc(100% - 32px);
+  margin: 0 16px 12px;
   padding: 14px 16px;
   border-radius: 22px;
   background-color: var(--myapp-surface);
@@ -985,8 +1039,8 @@ ${place(D('remarks'), '16px', 36, 'calc(100% - 32px)', 88)}
   gap: 10px;
 }
 .myapp-ot[hidden] { display: none; }
-/* フォームの直下の部品は、fullWidth で幅いっぱいにされる。カードの幅（左右 12px あける）に戻す */
-#frmAttendanceDtl > .myapp-ot { width: calc(100% - 24px) !important; }
+/* フォームの直下の部品は、fullWidth で幅いっぱいにされる。カードの幅（左右 16px あける）に戻す */
+#frmAttendanceDtl > .myapp-ot { width: calc(100% - 32px) !important; }
 .myapp-ot-head { display: flex; align-items: baseline; gap: 10px; }
 .myapp-ot-title { font-size: 15px; font-weight: 600; color: var(--myapp-text); }
 .myapp-ot-title b { margin-left: 6px; font-size: 22px; font-weight: 700; color: var(--myapp-warn); font-variant-numeric: tabular-nums; }
@@ -998,7 +1052,8 @@ ${place(D('remarks'), '16px', 36, 'calc(100% - 32px)', 88)}
   border: none;
   height: 44px;
   border-radius: 22px;
-  background-color: var(--myapp-tab-on);
+  /* 2つ目の操作は、どの画面でも同じ灰色のカプセル */
+  background-color: var(--myapp-segment);
   color: var(--myapp-accent-text);
   font-size: 16px;
   font-weight: 600;
@@ -1169,6 +1224,8 @@ ${['grdApprove', 'grdSearch', 'grdLeave'].map((id) => flowGrid(AP(id))).join('\n
 :is(#${AP('grdSearch')}, #${AP('grdApprove')}) .TccGridBodyScroll td[data-myapp-state="ng"] { background-color: rgba(255, 59, 48, 0.14) !important; color: var(--myapp-danger) !important; }
 /* 一覧の注意書き（「赤字は申請ベースの取得予定数です」など）は、小さな灰色の文字で折り返す */
 #${AP('lbl44')} *, #${AP('lblMsg')} * { white-space: normal !important; font-size: 13px !important; color: var(--myapp-text2) !important; }
+/* 文の頭の EZCraft の「❗」の印は出さない（Web 風に見える。注意書きは灰色の文字だけで分かる） */
+#${AP('lbl44')} i.fa, #${AP('lblMsg')} i.fa { display: none !important; }
 `;
 
 // ---------------------------------------------------------------------------
@@ -1182,14 +1239,14 @@ ${text(Y(label), 15, { muted: true })}
 ${place(Y(value), '104px', top, 'calc(100% - 120px)', height)}
 ${text(Y(value), 15)}`;
 }
-/** 見出しを上に、その下に「開始 ～ 終了」の2つの入力欄 */
-function rangeBelow(label: string, from: string, tilde: string, to: string, top: number): string {
-  return `${place(Y(label), '16px', top, 'calc(100% - 32px)', 22)}
+/** 見出しを左に（ほかの申請と同じ）、右の列に「開始」の欄、その下に「～ 終了」の欄（2段で 88px） */
+function rangeLeft(label: string, from: string, tilde: string, to: string, top: number): string {
+  return `${place(Y(label), '16px', top, '84px', 40)}
 ${text(Y(label), 15, { muted: true })}
-${place(Y(from), '16px', top + 24, 'calc(50% - 30px)', 40)}
-${place(Y(tilde), 'calc(50% - 14px)', top + 24, '28px', 40)}
+${place(Y(from), '104px', top, 'calc(100% - 120px)', 40)}
+${place(Y(tilde), '78px', top + 48, '24px', 40)}
 ${text(Y(tilde), 15, { muted: true, align: 'center' })}
-${place(Y(to), 'calc(50% + 14px)', top + 24, 'calc(50% - 30px)', 40)}
+${place(Y(to), '104px', top + 48, 'calc(100% - 120px)', 40)}
 ${fillInput(Y(from))}
 ${fillInput(Y(to))}`;
 }
@@ -1234,28 +1291,30 @@ ${fillInput(Y('qbxEmp'))}
 #frmApply_yukyu[data-myapp-new] #${Y('lbl24')}, #frmApply_yukyu[data-myapp-new] #${Y('qbxEmp')} { top: 36px !important; }
 
 /* 入力欄。休暇時刻は「有休（時間単位）」のときだけ出す（JS が data-myapp-hourly を付ける） */
-#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')} { height: 448px !important; }
-#frmApply_yukyu[data-myapp-hourly] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 524px !important; }
+#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')} { height: 464px !important; }
+#frmApply_yukyu[data-myapp-hourly] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 564px !important; }
 #frmApply_yukyu:not([data-myapp-hourly]) :is(#${Y('lbl4')}, #${Y('tm_from')}, #${Y('lbl8')}, #${Y('tm_to')}) { display: none !important; }
 ${labeled('lbl1', 'apply_title', 8)}
 /* タイトルは、値があるときだけ出す（新しい申請では空。JS が data-myapp-notitle を付ける） */
 #frmApply_yukyu[data-myapp-notitle] :is(#${Y('lbl1')}, #${Y('apply_title')}) { display: none !important; }
 /* タイトルを出さないときは、その下を 36px 上に詰める */
 #frmApply_yukyu[data-myapp-notitle] #${Y('blank2_body')} > .tcc-component { transform: translateY(-36px); }
-#frmApply_yukyu[data-myapp-notitle] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 412px !important; }
-#frmApply_yukyu[data-myapp-notitle][data-myapp-hourly] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 488px !important; }
+#frmApply_yukyu[data-myapp-notitle] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 428px !important; }
+#frmApply_yukyu[data-myapp-notitle][data-myapp-hourly] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 528px !important; }
 ${place(Y('lbl33'), '16px', 44, '72px', 26)}
 ${text(Y('lbl33'), 15, { muted: true })}
-${place(Y('apply_tp'), '104px', 40, 'calc(100% - 152px)', 65)}
-${place(Y('lbl35'), 'calc(100% - 52px)', 36, '40px', 40)}
-${rangeBelow('lbl3', 'dt_from', 'lbl34', 'dt_to', 116)}
-${rangeBelow('lbl4', 'tm_from', 'lbl8', 'tm_to', 192)}
-${areaBelow('lbl9', 'reason', 192)}
-${areaBelow('lbl10', 'remarks', 316)}
-${scoped('#frmApply_yukyu[data-myapp-hourly]', areaBelow('lbl9', 'reason', 268))}
-${scoped('#frmApply_yukyu[data-myapp-hourly]', areaBelow('lbl10', 'remarks', 392))}
-/* 「?」（説明）は指で押しやすい大きさに。黒く目立たせず、灰色に */
-#${Y('lbl35')} .tcc-label, #${Y('lbl35')} .tcc-label-text { width: 100% !important; height: 100% !important; font-size: 20px !important; }
+/* 休暇種別の選択肢は、ほかの欄と同じく右の余白 16px まで */
+${place(Y('apply_tp'), '104px', 40, 'calc(100% - 120px)', 65)}
+/* 「?」（説明）は、見出し「休暇種別」のすぐ下に。押せる広さは 44pt */
+${place(Y('lbl35'), '6px', 70, '44px', 44)}
+${rangeLeft('lbl3', 'dt_from', 'lbl34', 'dt_to', 116)}
+${rangeLeft('lbl4', 'tm_from', 'lbl8', 'tm_to', 216)}
+${areaBelow('lbl9', 'reason', 216)}
+${areaBelow('lbl10', 'remarks', 340)}
+${scoped('#frmApply_yukyu[data-myapp-hourly]', areaBelow('lbl9', 'reason', 316))}
+${scoped('#frmApply_yukyu[data-myapp-hourly]', areaBelow('lbl10', 'remarks', 440))}
+/* 「?」は黒く目立たせず、灰色に */
+#${Y('lbl35')} .tcc-label, #${Y('lbl35')} .tcc-label-text { width: 100% !important; height: 100% !important; font-size: 20px !important; justify-content: center !important; text-align: center !important; }
 #${Y('lbl35')} i { color: var(--myapp-text2) !important; }
 /* 休暇種別の選択肢: 枠の線をやめ、白いカードに */
 #${Y('apply_tp')}, #${Y('apply_tp')} > * {
@@ -1326,7 +1385,7 @@ const APPLY_FORMS = [
 function applyFormCss(f: string): string {
   const F = (id: string) => `${f}_${id}`;
   const info = (label: string, value: string, top: number) => `${place(F(label), '16px', top, '80px', 26)}
-${text(F(label), 13, { muted: true })}
+${text(F(label), 15, { muted: true })}
 ${place(F(value), '104px', top, 'calc(100% - 120px)', 26)}
 ${text(F(value), 15)}`;
   return `
@@ -1341,14 +1400,14 @@ ${info('lbl22', 'apply_no', 8)}
 #${F('apply_status')} { left: auto !important; right: 16px !important; top: 8px !important; width: 96px !important; height: 26px !important; }
 ${text(F('apply_status'), 13, { bold: true, align: 'right' })}
 ${place(F('lbl23'), '16px', 36, '80px', 26)}
-${text(F('lbl23'), 13, { muted: true })}
+${text(F('lbl23'), 15, { muted: true })}
 ${place(F('apply_dt'), '104px', 36, '120px', 26)}
 ${place(F('apply_tm'), '228px', 36, '80px', 26)}
 ${text(F('apply_dt'), 15)}
 ${text(F('apply_tm'), 15)}
 ${info('lbl25', 'dept_nm', 64)}
 ${place(F('lbl24'), '16px', 92, '80px', 40)}
-${text(F('lbl24'), 13, { muted: true })}
+${text(F('lbl24'), 15, { muted: true })}
 ${place(F('qbxEmp'), '104px', 92, 'calc(100% - 120px)', 40)}
 ${fillInput(F('qbxEmp'))}
 #${f}[data-myapp-new] :is(#${F('lbl22')}, #${F('apply_no')}, #${F('lbl23')}, #${F('apply_dt')}, #${F('apply_tm')}) { display: none !important; }
@@ -1446,6 +1505,8 @@ const REFLOW_CSS = `
 .myapp-row > .myapp-after { flex: 1 1 100% !important; width: auto !important; height: auto !important; padding-left: 88px; box-sizing: border-box !important; }
 /* 欄の下の小さな説明は、欄の中の文字と同じ位置から始める（欄の左 + 12px） */
 .myapp-row > .myapp-after .tcc-label { padding-left: 12px !important; }
+/* 遅刻早退: 欄の下に出る「出勤した時刻（遅刻のとき）」は、欄の左端にそろえる */
+#frmApply_chikokuSotai .myapp-row > .myapp-after .tcc-label { padding-left: 0 !important; }
 .myapp-row > .myapp-after.myapp-blank { display: none !important; }
 .myapp-row > .myapp-after .tcc-label,
 .myapp-row > .myapp-after .tcc-label-text { width: 100% !important; justify-content: flex-start !important; text-align: left !important; font-size: 13px !important; color: var(--myapp-text2) !important; }
@@ -1519,24 +1580,32 @@ const REFLOW_CSS = `
 .myapp-stat.myapp-stat-main .myapp-stat-label { display: none; }
 .myapp-stat.myapp-stat-main .myapp-stat-value { font-size: 20px; font-weight: 700; color: var(--myapp-text); }
 .myapp-stats-break { flex-basis: 100%; height: 0; }
+/* 「総〜」のないもの: 勤務表のまとめ（出勤・有休・…）と同じ、見出しの下に大きな数字の列 */
+.myapp-stats.myapp-stats-grid { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px 12px; padding: 14px 16px !important; }
+.myapp-stats-grid .myapp-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0; border-radius: 0; background: transparent; }
+.myapp-stats-grid .myapp-stat-label { font-size: 13px; }
+.myapp-stats-grid .myapp-stat-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .myapp-stats.myapp-stats-table { display: block !important; padding: 8px 12px !important; }
 .myapp-stats table { width: 100%; border-collapse: collapse; }
-.myapp-stats th, .myapp-stats td { padding: 6px 4px; font-size: 13px; text-align: right; white-space: nowrap; border: none !important; background: transparent !important; }
-.myapp-stats tr:first-child th { font-size: 11px; font-weight: 400; color: var(--myapp-text2); }
+.myapp-stats th, .myapp-stats td { padding: 6px 4px; font-size: 13px; text-align: right; white-space: nowrap; border: none !important; background: transparent !important; font-variant-numeric: tabular-nums; }
+.myapp-stats tr:first-child th { font-size: 13px; font-weight: 400; color: var(--myapp-text2); }
 .myapp-stats th.myapp-stats-rowname { text-align: left; font-weight: 400; color: var(--myapp-text); }
 .myapp-stats td { color: var(--myapp-text2); }
 .myapp-stats td.myapp-stats-last { font-weight: 700; color: var(--myapp-text); }
 
-.myapp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.myapp-chips { display: flex; flex-wrap: wrap; gap: 0 4px; margin-left: -4px; }
 .myapp-chips.myapp-indent { padding-left: 88px; }
 .myapp-chip {
   -webkit-appearance: none;
   appearance: none;
   border: none;
-  height: 34px;
-  padding: 0 14px;
-  border-radius: 17px;
-  background-color: var(--myapp-fill);
+  /* 押せる高さは 44pt（見た目の札は 36pt。上下 4pt は透明な縁で取る） */
+  height: 44px;
+  padding: 0 16px;
+  border: 4px solid transparent;
+  background-clip: padding-box;
+  border-radius: 22px;
+  background-color: var(--myapp-segment);
   color: var(--myapp-accent);
   font-size: 14px;
   font-weight: 600;
@@ -2382,6 +2451,8 @@ const SCRIPT = `
     }
     var list = model.list.filter(function (s) { return s.label; });
     var main = list.filter(function (s) { return /^総/.test(s.label); })[0];
+    // 「総〜」のないもの（代休の付与・使用・残りなど）は、勤務表のまとめと同じ、見出しと大きな数字の列にする
+    if (box.classList.contains('myapp-stats-grid') !== !main) box.classList.toggle('myapp-stats-grid', !main);
     if (main) {
       box.appendChild(el('div', 'myapp-stats-month', (month ? month + 'の' : '今月の') + main.label));
       var mv = el('div', 'myapp-stat myapp-stat-main');
@@ -2529,6 +2600,21 @@ const SCRIPT = `
     var body = document.getElementById(form.id + '_blank2_body');
     if (body) { reflow(body); tidyRows(body); }
     if (form.id === 'frmApply_zangyo') overtime(form, isNew);
+    if (form.id === 'frmApply_chikokuSotai') lateEarly(form);
+  }
+  // 遅刻早退: 見出しの「遅早時刻」は「時刻」に。欄の下の「出勤」「退勤」は、何の時刻かが分かる言い方に
+  // （ちょうどその語だけのときに置き換える。何度呼ばれても同じ）
+  function lateEarly(form) {
+    form.querySelectorAll('.myapp-row .tcc-label-text').forEach(function (el) {
+      var t = (el.textContent || '').trim();
+      var to = t === '遅早時刻' ? '時刻' : t === '出勤' ? '出勤した時刻（遅刻のとき）' : t === '退勤' ? '退勤した時刻（早退のとき）' : '';
+      if (!to) return;
+      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      var node;
+      while ((node = walker.nextNode())) {
+        if (node.nodeValue.trim() === t) { node.nodeValue = to; break; }
+      }
+    });
   }
 
   // 勤怠実績登録: プロジェクトは、中身のある行と次の空の行だけを出す（欄の名前は欄の上に出している。CSS の caption）
@@ -2994,7 +3080,7 @@ const SCRIPT = `
     var note = document.createElement('div');
     note.className = 'myapp-pick-note';
     note.textContent = days.length
-      ? '選んだ日の残業申請を、1日ずつ続けて開きます。開始・終了は退勤の時刻から入れます。ほかで申請済みの日は外してください。'
+      ? '選んだ日の残業申請を、1日ずつ開きます。申請済みの日は外してください。'
       : '残業の時刻を読めませんでした。勤怠実績登録から1日ずつ申請してください。';
     sheet.appendChild(note);
     var go = document.createElement('button');
@@ -3011,9 +3097,14 @@ const SCRIPT = `
       b.className = 'myapp-ot-day';
       b.setAttribute('aria-pressed', d.applied ? 'false' : 'true');
       b.__day = d;
+      // 日付と時刻は別の箱に（日付の幅をそろえて、時刻が縦にそろうように）
       var name = document.createElement('span');
-      name.className = 'myapp-pick-name';
-      name.textContent = d.label + '　' + d.from + '〜' + d.to;
+      name.className = 'myapp-pick-name myapp-ot-day-name';
+      var dayLabel = document.createElement('span');
+      dayLabel.className = 'myapp-ot-day-date';
+      dayLabel.textContent = d.label;
+      name.appendChild(dayLabel);
+      name.appendChild(document.createTextNode(d.from + '〜' + d.to));
       var meta = document.createElement('span');
       meta.className = 'myapp-pick-meta';
       meta.textContent = '残業 ' + hhmm(d.ot) + (d.applied ? '　この端末から申請済み' : '');
@@ -3219,7 +3310,22 @@ const SCRIPT = `
     var comp = input.closest('[id^="frmAttendanceDtl_txtPrj"]');
     var n = comp ? comp.id.replace('frmAttendanceDtl_txtPrj', '') : '';
     var icon = document.querySelector('#frmAttendanceDtl_qbxProj' + n + ' div.icon-rt');
-    if (icon) icon.click();
+    if (!icon) return;
+    icon.click();
+    // 前に探したままの言葉が残っていたら、消して全部を出す（開いたときに、関係のない1件だけが出ないように）
+    var tries = 0;
+    var clear = function () {
+      var dialog = document.getElementById('frmSelProj');
+      var box = document.querySelector('#frmSelProj_txtQuery input');
+      if (!(dialog && box && dialog.offsetWidth)) { if (++tries < 40) setTimeout(clear, 100); return; }
+      if (!box.value.trim()) return;
+      typeInto(box, '');
+      setTimeout(function () {
+        var go = document.querySelector('#frmSelProj_btnQuery .tcc-btn');
+        if (go) go.click();
+      }, 80);
+    };
+    setTimeout(clear, 150);
   }
   // 番号の欄を押したら出すシート: 上の欄に番号を打つと、その番号で始まるものにしぼる（98 → 98414・98427 …）。
   // 最近使ったものを先に、つづけて、すべてのプロジェクト（控えた一覧）から番号の順に。何も打っていないときは、今月使ったもの
@@ -3566,7 +3672,7 @@ const SCRIPT = `
       var clear = document.createElement('button');
       clear.type = 'button';
       clear.className = 'myapp-pick-manual';
-      clear.textContent = '消す';
+      clear.textContent = duration ? '時間を消す' : '時刻を消す';
       clear.addEventListener('click', function (e) {
         e.preventDefault();
         closePicker();
@@ -3639,6 +3745,22 @@ const SCRIPT = `
     });
   }
 
+  // 勤務表: 上のヘッダーの名前を、開いているタブの名前にする（アプリに知らせる。EzcraftWebView の title）
+  var lastHeading = null;
+  function tabHeading(list, pane) {
+    if (!document.getElementById('frmAttendance')) return;
+    var name = '勤務表';
+    if (!list && pane) {
+      var idx = Array.prototype.indexOf.call(pane.parentElement.children, pane);
+      var head = document.querySelectorAll('#frmAttendance_tabAttd > ul.tcc-tab-head > li')[idx];
+      var t = head ? (head.textContent || '').trim() : '';
+      name = /集計/.test(t) ? '集計' : /申請状況/.test(t) ? '申請状況' : /出力/.test(t) ? '日別の記録' : /工数/.test(t) ? '工数' : '勤務表';
+    }
+    if (name === lastHeading) return;
+    lastHeading = name;
+    try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'title', text: name === '勤務表' ? '' : name })); } catch (e) {}
+  }
+
   window.__myappAppUpdate = function () {
     topAnnouncement();
     dayTimes();
@@ -3657,6 +3779,7 @@ const SCRIPT = `
       outputDates();
     }
     else lastPane = null;
+    tabHeading(list, otherTab);
     // 勤怠申請: 「新規申請」のタブは申請の種類のカード、ほかのタブは検索の条件と結果のカード（開いたら一度だけ検索して、自分の分を出す）
     document.documentElement.classList.toggle('myapp-apply-new', !!document.querySelector('#frmApply_tabApply_tabs_0.active'));
     var applyTab = document.querySelector('#frmApply_tabApply > .tcc-tab-content > .tcc-tab-pane.active:not(#frmApply_tabApply_tabs_0)');
@@ -3728,13 +3851,16 @@ const PICK_CSS = `
 /* 勤務表: 「残業をまとめて申請」のボタン（一覧のいちばん上。JS の otBulkButton）と、日を選ぶシート（openOtBulk） */
 .myapp-ot-bulk {
   order: -1; display: block; width: 100%; box-sizing: border-box; height: 48px; margin: 0 0 14px;
-  border: 0; border-radius: 24px; background: var(--myapp-fill); color: var(--myapp-accent-text);
+  border: 0; border-radius: 24px; background: var(--myapp-segment); color: var(--myapp-accent-text);
   font: inherit; font-size: 16px; font-weight: 600;
 }
 .myapp-ot-bulk:active { background: var(--myapp-pressed-bg); }
 .myapp-ot-bulk[data-loading] { opacity: 0.55; }
-.myapp-pick-note { padding: 0 14px 10px; font-size: 13px; line-height: 1.5; color: var(--myapp-text2); }
+.myapp-pick-note { padding: 0 14px 10px; font-size: 13px; line-height: 1.5; color: var(--myapp-text2); text-wrap: balance; }
 .myapp-pick button.myapp-ot-day { position: relative; padding-left: 50px; }
+/* 日付の幅をそろえる（「11/10(火)」も「11/9(日)」も同じ幅）。数字は同じ幅の字に */
+.myapp-ot-day-name { font-variant-numeric: tabular-nums; }
+.myapp-ot-day-date { display: inline-block; min-width: 92px; }
 .myapp-ot-day::before {
   content: ''; position: absolute; left: 14px; top: 50%; width: 24px; height: 24px; margin-top: -12px;
   box-sizing: border-box; border-radius: 50%; border: 2px solid var(--myapp-field-border);
@@ -3825,7 +3951,8 @@ html.myapp-quiet #loadingIcon { display: none !important; }
 
 /* 代休申請の注意書き（給与控除が発生します）は、申請者の下に1行で */
 const DAIKYU_CSS = `
-#frmApply_daikyu_lbl30 { left: 16px !important; top: 140px !important; width: calc(100% - 32px) !important; height: 24px !important; }
+/* 注意書きは、ほかの値と同じ右の列（104px）から。文言はかっこを外して1文に（relabel） */
+#frmApply_daikyu_lbl30 { left: 104px !important; top: 140px !important; width: calc(100% - 120px) !important; height: 24px !important; }
 ${text('frmApply_daikyu_lbl30', 13, { muted: true })}
 :is(#frmApply_daikyu_R1, #frmApply_daikyu_R1 > *, #frmApply_daikyu_blank1) { height: 172px !important; }
 #frmApply_daikyu[data-myapp-new] #frmApply_daikyu_lbl30 { top: 84px !important; }
@@ -3851,7 +3978,8 @@ export const TIMS_SKIN: AppSkin = {
       // 「勤務表」は、ほかのタブの名前（勤務表出力）にも含まれるので最後に置く（下のタブに並ぶ順は、元のタブの順）
       { match: '集計', label: '集計', icon: 'M5 20v-8 M12 20V5 M19 20v-11 M3 20h18' },
       { match: '申請状況', label: '申請状況', icon: 'M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M9 12l2 2 4-4' },
-      { match: '出力', label: '出力', icon: 'M12 4v11 M7.5 10.5 12 15l4.5-4.5 M5 19h14' },
+      // 「出力」は、日ごとの出勤・退勤の一覧（CSV にも書き出せる）。どのタブにも CSV 出力があるので、中身で呼ぶ
+      { match: '出力', label: '日別', icon: 'M9 6h11 M9 12h11 M9 18h11 M4.5 6h.01 M4.5 12h.01 M4.5 18h.01' },
       { match: '工数', label: '工数', icon: 'M5 8h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 20H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 8z M9 8V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V8 M3.5 13h17' },
       { match: '勤務表', label: '勤務表', icon: 'M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4' },
     ],
@@ -3872,7 +4000,14 @@ export const TIMS_SKIN: AppSkin = {
     { input: 'frmSelProj_txtQuery', button: 'frmSelProj_btnQuery' },
     { input: 'frmSelEmp_txtEmp', button: 'frmSelEmp_btnQry' },
   ],
-  relabel: Object.fromEntries(APPLY_KINDS.map(({ note, text: label }) => [AP(note), label])),
+  relabel: {
+    ...Object.fromEntries(APPLY_KINDS.map(({ note, text: label }) => [AP(note), label])),
+    // メニューのカードの説明（「〜を行います」）を、短い言い方に
+    frmLTiMSTop_lbl1: '毎日の出退勤と作業の登録',
+    frmLTiMSTop_lbl5: '残業・休暇などの申請と状況',
+    // 代休の注意書き: 全角のかっこで囲んだ文を、ふつうの1文に
+    frmApply_daikyu_lbl30: '代休を取ると、給与から控除されます。',
+  },
   // 検索欄の、パソコン向けの並べただけの言葉（「タイトル名　申請書名」「Prj-No プロジェクト名 顧客名 チーム」）を、ふつうの文に
   placeholders: {
     frmApply_approve_search_text: '申請書名・タイトルで探す',

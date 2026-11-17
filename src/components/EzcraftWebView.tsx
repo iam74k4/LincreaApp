@@ -73,6 +73,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const ownWrites = useRef(0);
   const othersWritesAtOpen = useRef(0);
   const [pageTitle, setPageTitle] = useState('');
+  const [heading, setHeading] = useState(''); // ページが知らせてきた、いまの画面の名前（勤務表のタブなど）
   const [reloadKey, setReloadKey] = useState(0); // 変えると WebView を作り直す（= 読み直す）
   // ページの中でダイアログが開いているか（bridge の 8）。開いているあいだは、‹ やスワイプで戻らず、まずダイアログを閉じる
   const [modalOpen, setModalOpen] = useState(false);
@@ -242,7 +243,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     <>
       <Stack.Screen
         options={{
-          title: title || pageTitle,
+          // ページが名前を知らせてきたら（勤務表の「集計」タブなど）、それを出す
+          title: heading || title || pageTitle,
           // ページの中でダイアログやシートが開いているあいだは、上のヘッダーも、ページの後ろと同じだけ暗くする
           // （ページの暗い面はヘッダーの下からしか届かないので、ヘッダーだけ明るく浮いて見えないように）
           headerStyle: { backgroundColor: modalOpen ? dimmed(c.background) : c.background },
@@ -273,6 +275,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           // 時刻のダイヤルを回したときの、カチッという小さな手ごたえ（iOS の時刻の選び方と同じ）
           if (message?.type === 'tick') Haptics.selectionAsync().catch(() => {});
           if (message?.type === 'file') receiveFile(message.base64, message.name, message.mime);
+          if (message?.type === 'title') setHeading(message.text);
           if (message?.type === 'childRefreshed' && refreshWait.current) {
             clearTimeout(refreshWait.current);
             refreshWait.current = null;

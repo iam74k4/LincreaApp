@@ -46,6 +46,7 @@ export type BridgeMessage =
   | { type: 'scroll'; y: number; target: string }
   | { type: 'write'; label: string }
   | { type: 'childRefreshed'; ok: boolean }
+  | { type: 'title'; text: string }
   | { type: 'file'; base64: string; name: string; mime: string }
   | { type: 'apply'; form: string; prefill: Record<string, string>; auto: boolean }
   | { type: 'initApp'; app: string; form: string; id: string; text: string }
@@ -72,6 +73,8 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
     if (message.type === 'write') return { type: 'write', label: typeof message.label === 'string' ? message.label.slice(0, 20) : '' };
     // 重ねて開いた画面から戻ったときの、データだけの読み直し（childClosedJs）ができたか
     if (message.type === 'childRefreshed') return { type: 'childRefreshed', ok: message.ok === true };
+    // ページが決めた、いまの画面の名前（勤務表のタブなど。空ならアプリが決めた名前に戻す）
+    if (message.type === 'title' && typeof message.text === 'string') return { type: 'title', text: message.text.slice(0, 20) };
     if (message.type === 'file' && typeof message.base64 === 'string' && message.base64) {
       const text = (value: unknown, fallback: string) => (typeof value === 'string' && value ? value : fallback);
       return { type: 'file', base64: message.base64, name: text(message.name, ''), mime: text(message.mime, 'application/octet-stream') };

@@ -9,6 +9,7 @@
 // 色の考え方: 設計者がわざわざ付けた色（緑のボタン、青い見出しなど）は残す。
 // 白い地・黒い文字・灰色の線のような「無彩色」だけを、テーマの色に置き換える。
 import { APP_SKINS, roleCss } from './appStyles';
+import { SEARCH_ICON } from './layout';
 
 /** WebView に読み込ませる JavaScript を作る（appId はアプリケーション ID。アプリごとの調整に使う） */
 export function buildSkinScript(appId: string): string {
@@ -316,7 +317,8 @@ const GENERIC_JS = `
       var pager = grid.querySelector('.tcc-pager-navi');
       if (!pager) return;
       var m = /\\/\\s*(\\d+)\\s*p/.exec(pager.textContent || '');
-      var one = !!m && +m[1] <= 1;
+      // 続きをスクロールで足す一覧（growLists）も、ページ送りは出さない
+      var one = (!!m && +m[1] <= 1) || !!grid.__myappGrow;
       if (grid.hasAttribute('data-myapp-onepage') !== one) grid.toggleAttribute('data-myapp-onepage', one);
     });
   }
@@ -492,12 +494,38 @@ const GENERIC_JS = `
       return p.style.display !== 'none' && getComputedStyle(p).display !== 'none';
     });
   }
+  // シートの上の段: つまみ（CSS）・題名・閉じる（✕）。EZCraft が中身を作り直しても、なければ足す
+  function calendarHead(p) {
+    if (p.querySelector(':scope > .myapp-cal-head')) return;
+    var head = document.createElement('div');
+    head.className = 'myapp-cal-head';
+    // 題名は span にしない（EZCraft は、曜日の名前を部品の中の span に順に入れるので、ずれる）
+    var title = document.createElement('div');
+    title.className = 'myapp-cal-title';
+    title.textContent = p.id === 'TccYmPicker' ? '月を選ぶ' : '日付を選ぶ';
+    var x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'myapp-cal-close';
+    x.setAttribute('aria-label', '閉じる');
+    x.textContent = '✕';
+    x.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      p.style.display = 'none';
+      calendarSheets();
+    });
+    head.appendChild(title);
+    head.appendChild(x);
+    p.insertBefore(head, p.firstChild);
+  }
   function calendarSheets() {
     document.querySelectorAll(CAL_SEL).forEach(function (p) {
+      calendarHead(p);
       if (p.__myappCal) return;
       p.__myappCal = true;
       p.setAttribute('data-myapp-nodark', '');
       new MutationObserver(calendarSheets).observe(p, { attributes: true, attributeFilter: ['style'] });
+      new MutationObserver(function () { calendarHead(p); }).observe(p, { childList: true });
     });
     var open = openCalendars().length > 0;
     // 選んで閉じたら、EZCraft は入力欄にフォーカスを戻して文字を選ぶ（スマホでは選択の印やキーボードが出る）。
@@ -607,7 +635,75 @@ const GENERIC_JS = `
     relabel();
     placeholders();
     dedupeRows();
+    textButtons();
+    growLists();
+    emptyChoices();
   }
+
+  // 文字のあるボタン（登録・検索・表示・クリアなど）からは、EZCraft の Font Awesome のアイコンを外す（文字だけのボタンにそろえる）。
+  // アイコンが内容に合っていないもの（表示に開いたフォルダ、目標に地球）や、アイコンの後ろの四角い地が出るものがあるため。
+  // アイコンだけのボタン（ごみ箱など）と、大きなカード型のボタン（メニュー）は、そのまま
+  function textButtons() {
+    document.querySelectorAll('.tcc-btn').forEach(function (b) {
+      if (b.__myappText === b.textContent) return;
+      b.__myappText = b.textContent;
+      var has = !!b.querySelector('i.fa') && /\\S/.test(b.textContent || '');
+      if (b.classList.contains('myapp-text-btn') !== has) b.classList.toggle('myapp-text-btn', has);
+    });
+  }
+
+  // ダイアログの一覧（検索して選ぶもの）: 50 件ずつのページ送り（« ‹ 1 / 2p › »）はやめて、下までスクロールしたら続きを足す。
+  // EZCraft の表は、読んだ全部を手元に持ち、1ページぶん（_pageSize 件）だけを並べるので、1ページの件数を増やして並べ直す
+  var GROW_STEP = 100;
+  function growLists() {
+    document.querySelectorAll('.tcc-modal .tcc-component.grid').forEach(function (grid) {
+      if (grid.__myappGrow || !grid.offsetWidth || !window.jQuery) return;
+      var t = window.jQuery(grid).data('tcc');
+      var body = grid.querySelector('.TccGridBodyScroll');
+      if (!t || !t._pager || !body || typeof t.showPage !== 'function' || typeof t.calcPage !== 'function') return;
+      grid.__myappGrow = true;
+      var grow = function (size) {
+        var top = body.scrollTop;
+        t._pageSize = size;
+        try { t.calcPage(); t.showPage(1); } catch (e) {}
+        body.scrollTop = top;
+      };
+      if (t._pageSize < GROW_STEP) grow(GROW_STEP);
+      body.addEventListener('scroll', function () {
+        var total = (t.rowBuf && t.rowBuf.length) || 0;
+        if (total <= t._pageSize || grow.busy) return;
+        if (body.scrollTop + body.clientHeight < body.scrollHeight - 400) return;
+        grow.busy = true;
+        grow(t._pageSize + GROW_STEP);
+        setTimeout(function () { grow.busy = false; }, 200);
+      }, { passive: true });
+    });
+  }
+
+  // 選択欄の一覧の、名前のない選択肢（「なし」の意味の空の行）に、「なし」と書く（CSS）
+  function emptyChoices() {
+    document.querySelectorAll('body > .tcc-component.cmblist > .cmblist-item').forEach(function (item) {
+      var none = !/\\S/.test((item.textContent || '').replace(/\\u00a0/g, ' '));
+      if (item.hasAttribute('data-myapp-none') !== none) item.toggleAttribute('data-myapp-none', none);
+    });
+  }
+
+  // 日付の欄（右に 📅 のある入力欄）: 欄のどこを押しても、キーボードではなく、日付を選ぶシートを出す
+  var dateStart = null;
+  document.addEventListener('touchstart', function (e) {
+    var t = e.touches && e.touches[0];
+    dateStart = t ? { x: t.clientX, y: t.clientY } : null;
+  }, { capture: true, passive: true });
+  document.addEventListener('touchend', function (e) {
+    var input = e.target && e.target.closest && e.target.closest('.tcc-component.text input.text-box');
+    if (!input || input.disabled || input.readOnly || document.activeElement === input) return;
+    var icon = input.parentElement && input.parentElement.querySelector(':scope > div.icon-rt');
+    if (!icon || !icon.querySelector('i.fa-calendar, i.fa-calendar-o, i.fa-calendar-alt')) return;
+    var t = e.changedTouches && e.changedTouches[0];
+    if (dateStart && t && Math.abs(t.clientX - dateStart.x) + Math.abs(t.clientY - dateStart.y) > 10) return; // スクロールだった
+    e.preventDefault();
+    icon.click();
+  }, true);
 `;
 
 // ---------------------------------------------------------------------------
@@ -984,6 +1080,9 @@ const BASE_CSS = `
   color: var(--myapp-text) !important;
 }
 .tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccGridBodyScroll td:not(.myapp-main) { font-size: 13px !important; color: var(--myapp-text2) !important; }
+/* 補足の行（番号・分類）の中の文字も灰色に（EZCraft が中の要素に色を付けていることがある） */
+.tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccGridBodyScroll td:not(.myapp-main) * { color: inherit !important; }
+.tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccGridBodyScroll td.myapp-main * { color: inherit !important; }
 .tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccGridBodyScroll td.rowHead,
 .tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccGridBodyScroll td[class*="_tdCol0"] { display: none !important; }
 .tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccGridBodyScroll td > * {
@@ -1153,8 +1252,8 @@ body > .myapp-bottom-bar {
   font-size: 17px !important;
   font-weight: 600 !important;
 }
-.myapp-bottom-bar .myapp-bar-primary .tcc-btn,
-.myapp-bottom-bar .myapp-bar-primary .tcc-btn i { background-color: var(--myapp-accent) !important; color: #FFFFFF !important; }
+.myapp-bottom-bar .myapp-bar-primary .tcc-btn { background-color: var(--myapp-accent) !important; color: #FFFFFF !important; }
+.myapp-bottom-bar .myapp-bar-primary .tcc-btn i { background: transparent !important; color: #FFFFFF !important; }
 
 /* EZCraft の年月・日付を選ぶ部品（#TccYmPicker・.tcc-component.datepicker）: パソコン向けの、入力欄の下に出る小さな四角い
    ポップアップをやめて、画面の下から出るシートにする（今月のプロジェクトのシートと同じ形）。
@@ -1359,6 +1458,8 @@ body > .myapp-bottom-bar {
   transform: translateY(-50%);
   text-align: center;
   font-size: 14px;
+  line-height: 1.5;
+  text-wrap: balance; /* 2行になるときは、行の長さをそろえる（2行目が1語だけにならない） */
   color: var(--myapp-text2);
 }
 [data-myapp-empty-msg].myapp-empty .TccGridHeadScroll,
@@ -1556,7 +1657,7 @@ div.tcc-panel .tcc-panel-title {
 /* ---- ボタン: 2種類だけ。ふつうは灰色の面に青い文字（主な操作だけ青く塗る: appStyles の primary） ---- */
 .tcc-btn,
 .tcc-btn-group > .tcc-btn {
-  background-color: var(--myapp-fill) !important;
+  background-color: var(--myapp-segment) !important;
   background-image: none !important;
   border: none !important;
   border-radius: 12px !important;
@@ -1706,7 +1807,7 @@ body *:not(i):not(.fa):not(.fas):not(.far):not(.fab):not([class*="fa-"]):not([cl
   background-color: var(--myapp-inset) !important;
   border-color: transparent !important;
 }
-.myapp-card .tcc-btn { background-color: var(--myapp-inset) !important; }
+.myapp-card .tcc-btn { background-color: var(--myapp-segment) !important; }
 
 /* ---- タブ（どの画面でも）: iOS の切り替えスイッチ。選んでいるものは白い面（青く塗らない） ---- */
 div.tcc-tab > ul.tcc-tab-head { background-color: var(--myapp-segment) !important; border-radius: 12px !important; }
@@ -1872,16 +1973,17 @@ body > .myapp-bottom-bar {
   justify-content: center !important;
 }
 .tcc-msg-box .tcc-msg-box-btn { border-radius: 999px !important; }
-/* 検索して選ぶダイアログ: 画面の端から少し離して浮かせる */
+/* 検索して選ぶダイアログ: ほかのシートと同じ、下から出るシート（上につまみ。下は画面の端まで） */
 .tcc-modal[id$="_mdl"] {
-  left: 8px !important;
-  top: 8px !important;
-  width: calc(100% - 16px) !important;
-  height: calc(100% - 16px) !important;
-  border-radius: 34px !important;
+  left: 0 !important;
+  top: 12px !important;
+  width: 100% !important;
+  height: calc(100% - 12px) !important;
+  border-radius: 30px 30px 0 0 !important;
 }
-.tcc-modal[id$="_mdl"] > .tcc-modal-content { border-radius: 34px !important; }
-.tcc-modal[id$="_mdl"] .tcc-modal-header { height: 52px !important; padding: 0 6px 0 20px; }
+.tcc-modal[id$="_mdl"] > .tcc-modal-content { border-radius: 30px 30px 0 0 !important; }
+.tcc-modal[id$="_mdl"] > .tcc-modal-content::before { content: ''; flex: none; display: block; width: 36px; height: 5px; margin: 6px auto 0; border-radius: 3px; background: var(--myapp-border); }
+.tcc-modal[id$="_mdl"] .tcc-modal-header { height: 48px !important; padding: 0 8px 0 20px; }
 .tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccGridBodyScroll tr { border-bottom-color: var(--myapp-field-border) !important; }
 
 /* ---- 選択欄の一覧: ガラスの小さなシート ---- */
@@ -1893,4 +1995,39 @@ body > .tcc-component.cmblist {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22), inset 0 1px 0 var(--myapp-glass-border) !important;
 }
 body > .tcc-component.cmblist > .cmblist-item { border-radius: 10px; margin: 0 6px; }
+/* 名前のない選択肢（空の行）は「なし」と書く（JS の emptyChoices） */
+body > .tcc-component.cmblist > .cmblist-item[data-myapp-none]::before { content: 'なし'; color: var(--myapp-text2); }
+
+/* 文字のあるボタンには、EZCraft のアイコンを出さない（JS の textButtons）。文字だけのボタンにそろえる */
+.tcc-btn.myapp-text-btn > i.fa { display: none !important; }
+
+/* Web の青い縁取り（押したあとのフォーカスの印）は出さない */
+*:focus { outline: none !important; }
+* { -webkit-tap-highlight-color: transparent; }
+
+/* ダイアログの中身の枠線・影（EZCraft のもの。茶色がかった線に見える）は出さない */
+.tcc-modal > .tcc-modal-content { border: none !important; box-shadow: none !important; }
+
+/* 検索欄は、どこでも同じ形: 灰色の面、左に虫めがね、枠なし（プロジェクトのシートの検索欄と同じ） */
+.tcc-modal[id$="_mdl"] .tcc-modal-body > #txtSearch::before {
+  content: ''; position: absolute; left: 12px; top: 50%; z-index: 2; width: 17px; height: 17px; margin-top: -8.5px; pointer-events: none;
+  background: var(--myapp-text2);
+  -webkit-mask: ${SEARCH_ICON} center / contain no-repeat;
+  mask: ${SEARCH_ICON} center / contain no-repeat;
+}
+.tcc-modal[id$="_mdl"] .tcc-modal-body > #txtSearch input {
+  padding-left: 38px !important; padding-right: 12px !important;
+  border: none !important; border-radius: 12px !important; background: var(--myapp-segment) !important;
+}
+.tcc-modal[id$="_mdl"] .tcc-modal-body > #txtSearch div.icon-rt { display: none !important; }
+
+/* 月・日付を選ぶシートの上の段: つまみ・題名・✕（JS の calendarHead） */
+#TccYmPicker::before,
+.tcc-component.datepicker::before { content: ''; display: block; width: 36px; height: 5px; margin: 0 auto 2px; border-radius: 3px; background: var(--myapp-border); }
+.myapp-cal-head { display: flex; align-items: center; min-height: 44px; padding: 0 0 0 4px; font-size: 17px; font-weight: 600; color: var(--myapp-text); }
+.myapp-cal-head .myapp-cal-close {
+  flex: none; width: 36px; height: 36px; margin-left: auto; padding: 0; border: 0;
+  border-radius: 18px; background: var(--myapp-segment); color: var(--myapp-text);
+  font: inherit; font-size: 16px; font-weight: 600; line-height: 36px; text-align: center;
+}
 `;

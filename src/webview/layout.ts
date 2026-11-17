@@ -314,23 +314,25 @@ export function sheetDialog(
     .join('\n');
   return `
 ${fullWidth(formId)}
+/* ほかのシートと同じ、下から出るシート（上につまみ。下は画面の端まで） */
 #${formId} {
   position: fixed !important;
-  left: 8px !important;
-  top: 8px !important;
-  width: calc(100% - 16px) !important;
-  height: calc(100% - 16px) !important;
+  left: 0 !important;
+  top: 12px !important;
+  width: 100% !important;
+  height: calc(100% - 12px) !important;
   margin: 0 !important; /* EZCraft はダイアログを 5px ずらして置く。そのぶん右と下が画面からはみ出す */
-  border-radius: 34px !important;
+  border-radius: 30px 30px 0 0 !important;
 }
 #${formId} > .tcc-modal-content {
   width: 100% !important;
   height: 100% !important;
-  border-radius: 34px !important;
+  border-radius: 30px 30px 0 0 !important;
   display: flex !important;
   flex-direction: column !important;
 }
-#${formId} .tcc-modal-header { flex: none !important; width: 100% !important; height: 52px !important; box-sizing: border-box; display: flex !important; align-items: center; padding: 0 6px 0 20px; }
+#${formId} > .tcc-modal-content::before { content: ''; flex: none; display: block; width: 36px; height: 5px; margin: 6px auto 0; border-radius: 3px; background: var(--myapp-border); }
+#${formId} .tcc-modal-header { flex: none !important; width: 100% !important; height: 48px !important; box-sizing: border-box; display: flex !important; align-items: center; padding: 0 8px 0 20px; }
 #${formId} .tcc-modal-title { font-size: 17px !important; font-weight: 600 !important; }
 #${formId} .tcc-modal-footer { display: none !important; }
 #${formId}_body {
@@ -393,5 +395,29 @@ export function searchBox(formId: string, query: string): string {
   return `
 ${place(`${formId}_${query}`, '16px', 12, 'calc(100% - 32px)', 40)}
 ${fillInput(`${formId}_${query}`)}
+${searchField(`#${formId}_${query}`)}
+`;
+}
+
+/** 虫めがねの形（CSS の mask に使う） */
+export const SEARCH_ICON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M15.5 15.5 21 21'/%3E%3C/svg%3E")`;
+
+/**
+ * 検索欄の形を、どこでも同じにする: 灰色の面、左に虫めがね、枠なし（プロジェクトのシートの検索欄と同じ）。
+ * selector は入力欄の部品（.tcc-component）。EZCraft の右の 🔍 は出さない
+ */
+export function searchField(selector: string): string {
+  return `
+${selector}::before {
+  content: ''; position: absolute; left: 12px; top: 50%; z-index: 2; width: 17px; height: 17px; margin-top: -8.5px; pointer-events: none;
+  background: var(--myapp-text2);
+  -webkit-mask: ${SEARCH_ICON} center / contain no-repeat;
+  mask: ${SEARCH_ICON} center / contain no-repeat;
+}
+${selector} input {
+  padding-left: 38px !important; padding-right: 12px !important;
+  border: none !important; border-radius: 12px !important; background: var(--myapp-segment) !important;
+}
+${selector} div.icon-rt { display: none !important; }
 `;
 }
