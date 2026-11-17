@@ -35,6 +35,7 @@ ${fullWidth(formId)}
   left: 16px !important;
   top: 96px !important;
   width: calc(100% - 32px) !important;
+  margin: 0 !important; /* 元のページの余白（5px）が残ると、右に寄って左右の余白がそろわない */
   height: ${height}px !important;
 }
 `;

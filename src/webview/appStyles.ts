@@ -210,7 +210,7 @@ ${selector} .tcc-label-text {
   height: 100% !important;
   background-color: var(--myapp-fill) !important;
   border: none !important;
-  border-radius: 20px;
+  border-radius: 22px;
 }`,
     )
     .join('');
@@ -263,33 +263,38 @@ ${selector} .tcc-label-text {
 // （EZCraft が場面に合わせて出し分ける。「閉じる」は上の × と同じなので出さない）
 // ---------------------------------------------------------------------------
 const R = (id: string) => `MC_reserv_Input_${id}`;
+/** 健診の2つのダイアログの欄: ほかの画面の入力欄と同じ高さ（40px）と、見出しの文字（15px）にそろえる。1行は 48px おき */
+const HEALTH_FIELD = 40;
+const HEALTH_PITCH = 48;
 /** 左に見出し（88px）、右に入力欄 */
 function reserveRow(label: string, field: string, top: number, width = 'calc(100% - 120px)'): string {
-  return `${place(R(label), '16px', top, '88px', 36)}
-${text(R(label), 14, { muted: true })}
-${place(R(field), '104px', top, width, 36)}
+  return `${place(R(label), '16px', top, '88px', HEALTH_FIELD)}
+${text(R(label), 15, { muted: true })}
+${place(R(field), '104px', top, width, HEALTH_FIELD)}
 ${fillInput(R(field))}`;
 }
+/** 上から n 行目（0 から）の欄の位置 */
+const reserveTop = (n: number) => 52 + n * HEALTH_PITCH;
 const HEALTH_RESERVE_CSS = `
-${sheetDialog('MC_reserv_Input', [{ id: 'R1', height: 584 }], { scroll: true })}
+${sheetDialog('MC_reserv_Input', [{ id: 'R1', height: 612 }], { scroll: true })}
 ${place(R('lbltytle1'), '16px', 12, 'calc(100% - 32px)', 28)}
 ${text(R('lbltytle1'), 17, { bold: true })}
 #${R('btnClose')} { display: none !important; }
-${reserveRow('lbl_reserv_input_datetime', 'reserv_input_date', 52, '150px')}
-${reserveRow('lbl17', 'checkup_emp_nm_reserv', 96)}
-${reserveRow('lbl15', 'cmbHonbu', 140)}
-${place(R('cmbTeam'), '104px', 184, 'calc(100% - 120px)', 36)}
+${reserveRow('lbl_reserv_input_datetime', 'reserv_input_date', reserveTop(0), '150px')}
+${reserveRow('lbl17', 'checkup_emp_nm_reserv', reserveTop(1))}
+${reserveRow('lbl15', 'cmbHonbu', reserveTop(2))}
+${place(R('cmbTeam'), '104px', reserveTop(3), 'calc(100% - 120px)', HEALTH_FIELD)}
 ${fillInput(R('cmbTeam'))}
-${reserveRow('lbl16', 'cmbMember', 228)}
-${reserveRow('checkup_course_label', 'checkup_course_reserv', 272)}
-${reserveRow('checkup_due_date_label', 'checkup_due_date', 316, '150px')}
-${place(R('agency_type_reserv_label'), '16px', 360, 'calc(100% - 32px)', 24)}
-${text(R('agency_type_reserv_label'), 14, { muted: true })}
-${place(R('rdo1'), '16px', 386, 'calc(100% - 32px)', 108)}
+${reserveRow('lbl16', 'cmbMember', reserveTop(4))}
+${reserveRow('checkup_course_label', 'checkup_course_reserv', reserveTop(5))}
+${reserveRow('checkup_due_date_label', 'checkup_due_date', reserveTop(6), '150px')}
+${place(R('agency_type_reserv_label'), '16px', 388, 'calc(100% - 32px)', 24)}
+${text(R('agency_type_reserv_label'), 15, { muted: true })}
+${place(R('rdo1'), '16px', 414, 'calc(100% - 32px)', 108)}
 ${[1, 2, 3].map((n) => `#${R(`rdo1_${n}`)} { left: 8px !important; top: ${4 + (n - 1) * 34}px !important; width: calc(100% - 16px) !important; }`).join('\n')}
-${place(R('agency_name_reserv_label'), '16px', 504, 'calc(100% - 32px)', 24)}
-${text(R('agency_name_reserv_label'), 14, { muted: true })}
-${place(R('agency_name_reserv'), '16px', 530, 'calc(100% - 32px)', 40)}
+${place(R('agency_name_reserv_label'), '16px', 532, 'calc(100% - 32px)', 24)}
+${text(R('agency_name_reserv_label'), 15, { muted: true })}
+${place(R('agency_name_reserv'), '16px', 558, 'calc(100% - 32px)', HEALTH_FIELD)}
 ${fillInput(R('agency_name_reserv'))}
 `;
 
@@ -298,20 +303,21 @@ ${fillInput(R('agency_name_reserv'))}
 // ---------------------------------------------------------------------------
 const H = (id: string) => `MC_result_Input_1_${id}`;
 function resultRow(label: string, field: string, top: number, width = 'calc(100% - 120px)'): string {
-  return `${place(H(label), '16px', top, '88px', 36)}
-${text(H(label), 14, { muted: true })}
-${place(H(field), '104px', top, width, 36)}
+  return `${place(H(label), '16px', top, '88px', HEALTH_FIELD)}
+${text(H(label), 15, { muted: true })}
+${place(H(field), '104px', top, width, HEALTH_FIELD)}
 ${fillInput(H(field))}`;
 }
 /** 見出しを上に、その下に幅いっぱいの部品 */
-function resultBelow(label: string, field: string, top: number, height = 40): string {
+function resultBelow(label: string, field: string, top: number, height = HEALTH_FIELD): string {
   return `${place(H(label), '16px', top, 'calc(100% - 32px)', 22)}
-${text(H(label), 14, { muted: true })}
+${text(H(label), 15, { muted: true })}
 ${place(H(field), '16px', top + 24, 'calc(100% - 32px)', height)}
 ${fillInput(H(field))}`;
 }
+const resultTop = (n: number) => 76 + n * HEALTH_PITCH;
 const HEALTH_RESULT_CSS = `
-${sheetDialog('MC_result_Input_1', [{ id: 'R1', height: 976 }], { scroll: true })}
+${sheetDialog('MC_result_Input_1', [{ id: 'R1', height: 1012 }], { scroll: true })}
 ${place(H('lbltytle1'), '16px', 12, 'calc(100% - 32px)', 28)}
 ${text(H('lbltytle1'), 17, { bold: true })}
 /* 閉じるは上の × と同じ。後ろの飾りの枠と、2回目の同じ注意書き（lbl22）は出さない */
@@ -319,32 +325,32 @@ ${text(H('lbltytle1'), 17, { bold: true })}
 
 /* 予約の情報（読むだけ） */
 ${place(H('lbl27'), '16px', 48, 'calc(100% - 32px)', 24)}
-${resultRow('lbl_reserv_input_datetime', 'result_input_date', 76, '150px')}
-${resultRow('lbl17', 'checkup_emp_nm', 120)}
-${resultRow('lbl15', 'cmbHonbu', 164)}
-${place(H('cmbTeam'), '104px', 208, 'calc(100% - 120px)', 36)}
+${resultRow('lbl_reserv_input_datetime', 'result_input_date', resultTop(0), '150px')}
+${resultRow('lbl17', 'checkup_emp_nm', resultTop(1))}
+${resultRow('lbl15', 'cmbHonbu', resultTop(2))}
+${place(H('cmbTeam'), '104px', resultTop(3), 'calc(100% - 120px)', HEALTH_FIELD)}
 ${fillInput(H('cmbTeam'))}
-${resultRow('lbl16', 'cmbMember', 252)}
-${resultRow('checkup_course_label', 'checkup_course_reserv', 296)}
-${resultRow('lbl18', 'checkup_due_date', 340, '150px')}
-${resultBelow('lbl21', 'agency_name_reserv', 384)}
-${row(H('lbl25'), 460, 36)}
-${row(H('lbl28'), 496, 60)}
+${resultRow('lbl16', 'cmbMember', resultTop(4))}
+${resultRow('checkup_course_label', 'checkup_course_reserv', resultTop(5))}
+${resultRow('lbl18', 'checkup_due_date', resultTop(6), '150px')}
+${resultBelow('lbl21', 'agency_name_reserv', 412)}
+${row(H('lbl25'), 488, 36)}
+${row(H('lbl28'), 524, 60)}
 
 /* 受診の情報（入力） */
-${place(H('lbl36'), '16px', 564, 'calc(100% - 32px)', 24)}
-${resultRow('checkup_date_label', 'checkup_date', 592, '150px')}
-${place(H('agency_type_reserv_label'), '16px', 640, 'calc(100% - 32px)', 22)}
-${text(H('agency_type_reserv_label'), 14, { muted: true })}
-${place(H('rdo11'), '16px', 664, 'calc(100% - 32px)', 108)}
+${place(H('lbl36'), '16px', 592, 'calc(100% - 32px)', 24)}
+${resultRow('checkup_date_label', 'checkup_date', 620, '150px')}
+${place(H('agency_type_reserv_label'), '16px', 672, 'calc(100% - 32px)', 22)}
+${text(H('agency_type_reserv_label'), 15, { muted: true })}
+${place(H('rdo11'), '16px', 696, 'calc(100% - 32px)', 108)}
 ${[1, 2, 3].map((n) => `#${H(`rdo11_${n}`)} { left: 8px !important; top: ${4 + (n - 1) * 34}px !important; width: calc(100% - 16px) !important; }`).join('\n')}
-${resultBelow('agency_name_reserv_label', 'agency_name', 780)}
+${resultBelow('agency_name_reserv_label', 'agency_name', 816)}
 /* ふだんは出ない部品（場面によって EZCraft が出す）。出たときに重ならないよう、いちばん下に並べる */
-${row(H('lbl24'), 852, 40)}
-${place(H('lbl14'), '16px', 896, '88px', 36)}
-${place(H('rdo13'), '104px', 896, 'calc(100% - 120px)', 36)}
-${place(H('lbl13'), '16px', 936, '88px', 36)}
-${place(H('rdo12'), '104px', 936, 'calc(100% - 120px)', 36)}
+${row(H('lbl24'), 888, 40)}
+${place(H('lbl14'), '16px', 932, '88px', HEALTH_FIELD)}
+${place(H('rdo13'), '104px', 932, 'calc(100% - 120px)', HEALTH_FIELD)}
+${place(H('lbl13'), '16px', 972, '88px', HEALTH_FIELD)}
+${place(H('rdo12'), '104px', 972, 'calc(100% - 120px)', HEALTH_FIELD)}
 `;
 
 // ---------------------------------------------------------------------------
@@ -436,7 +442,7 @@ ${cardGrid('LP_main_grd_details', [[2], [3, 1]], { 3: '支給日' })}
   margin: 0 0 8px !important;
   padding: 14px 40px 14px 16px !important;
   border: none !important;
-  border-radius: 20px !important;
+  border-radius: 22px !important;
   background-color: var(--myapp-fill) !important;
 }
 #LP_main_grd_details .TccGridBodyScroll tr::after {
@@ -453,8 +459,9 @@ ${cardGrid('LP_main_grd_details', [[2], [3, 1]], { 3: '支給日' })}
 
 /* 「明細を見る」で出るパスワードのダイアログ */
 /* 「明細を見る」で出るパスワードのダイアログ: 題名と × の帯 → 説明 → 入力欄 → 「開く」。
-   キーボードに隠れないよう、画面の上のほうに出す。題名の飾りの印と、下の空の帯は出さない */
-${mobileDialog('LP_password', 252)}
+   キーボードに隠れないよう、画面の上のほうに出す。題名の飾りの印と、下の空の帯は出さない。
+   高さは、題名の帯（56）と中身（188）を足したもの（大きいと、下に色の違う細い帯がのぞく） */
+${mobileDialog('LP_password', 244)}
 #LP_password { top: 112px !important; }
 #LP_password .tcc-modal-header {
   height: 56px !important;
@@ -481,15 +488,17 @@ ${fillInput('LP_password_txt_password')}
   right: 16px;
   top: 116px;
   height: 50px;
-  border: none;
-  border-radius: 25px;
-  background: var(--myapp-accent);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: var(--myapp-tint);
+  box-shadow: var(--myapp-tint-shadow);
   color: #FFFFFF;
   font: inherit;
   font-size: 17px;
   font-weight: 600;
 }
-.myapp-pw-go:active { opacity: 0.8; }
+.myapp-pw-go:active { transform: scale(0.97); }
+.myapp-pw-go:disabled { box-shadow: none; }
 .myapp-pw-go:disabled { opacity: 0.4; }
 `,
   },
@@ -569,7 +578,7 @@ ${cardGrid('LIT_main_grd_exa_list', [[1], [3], [2]], { 2: '取得年度' })}
   margin: 0 0 8px !important;
   padding: 12px 16px !important;
   border: none !important;
-  border-radius: 20px !important;
+  border-radius: 22px !important;
   background-color: var(--myapp-fill) !important;
 }
 ${row('LIT_main_btn_Execel', 664, 44)}
@@ -763,7 +772,7 @@ ${row('L_HealthCare_Main_rpt_notice', 472, 176)}
 /* お知らせは、1枚の白いカードの中に、線で区切って並べる */
 #L_HealthCare_Main_rpt_notice {
   border: none !important;
-  border-radius: 20px !important;
+  border-radius: 22px !important;
   background-color: var(--myapp-fill) !important;
   padding: 2px 16px !important;
   box-sizing: border-box !important;

@@ -44,12 +44,14 @@ export type BridgeMessage =
   | { type: 'close' }
   | { type: 'open'; url: string; handoff: Handoff }
   | { type: 'scroll'; y: number; target: string }
-  | { type: 'write' }
+  | { type: 'write'; label: string }
+  | { type: 'childRefreshed'; ok: boolean }
   | { type: 'file'; base64: string; name: string; mime: string }
   | { type: 'apply'; form: string; prefill: Record<string, string>; auto: boolean }
   | { type: 'initApp'; app: string; form: string; id: string; text: string }
   | { type: 'applyQueue'; form: string; items: Record<string, string>[] }
   | { type: 'modal'; open: boolean }
+  | { type: 'tick' }
   | { type: 'ready' };
 
 /** 入れておく値: 短い文字だけ（ページから来たものなので、長いものや文字でないものは捨てる） */
@@ -67,12 +69,16 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
   try {
     const message = JSON.parse(data) as Record<string, unknown>;
     if (message.type === 'close') return { type: 'close' };
-    if (message.type === 'write') return { type: 'write' };
+    if (message.type === 'write') return { type: 'write', label: typeof message.label === 'string' ? message.label.slice(0, 20) : '' };
+    // 重ねて開いた画面から戻ったときの、データだけの読み直し（childClosedJs）ができたか
+    if (message.type === 'childRefreshed') return { type: 'childRefreshed', ok: message.ok === true };
     if (message.type === 'file' && typeof message.base64 === 'string' && message.base64) {
       const text = (value: unknown, fallback: string) => (typeof value === 'string' && value ? value : fallback);
       return { type: 'file', base64: message.base64, name: text(message.name, ''), mime: text(message.mime, 'application/octet-stream') };
     }
     if (message.type === 'ready') return { type: 'ready' };
+    // 時刻のダイヤル（timsSkin.ts の openDial）を1目もり回した
+    if (message.type === 'tick') return { type: 'tick' };
     if (message.type === 'modal') return { type: 'modal', open: message.open === true };
     // 画面の定義（src/webview/initApp.ts）。名前と ID の形を確かめる（中身は initAppCache が確かめる）
     if (
@@ -309,7 +315,7 @@ export const BRIDGE_JS = `
   }, true);
 
   // 5. データを書き込んだら、アプリに知らせる（書き込みの通信と、登録・削除・申請などのボタン）
-  var wrote = function () { post({ type: 'write' }); };
+  var wrote = function (label) { post({ type: 'write', label: label || '' }); };
   var xhrOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url) {
     try {
@@ -329,7 +335,8 @@ export const BRIDGE_JS = `
     var button = e.target && e.target.closest && e.target.closest('.tcc-btn');
     if (!button) return;
     var label = (button.textContent || '').replace(/\\s+/g, '');
-    if (label && WRITE_LABEL.test(label) && !NOT_WRITE_LABEL.test(label)) wrote();
+    // 押したボタンの名前も知らせる（登録が終わってこの画面が閉じたとき、元の画面に「登録」で閉じたと伝えるため）
+    if (label && WRITE_LABEL.test(label) && !NOT_WRITE_LABEL.test(label)) wrote(label.slice(0, 20));
   }, true);
 
   // 8. ダイアログが開いているかを知らせる。閉じるボタン（×）のあるものだけ（ない「お知らせ」は、OK で閉じる）
@@ -457,6 +464,22 @@ export function restoreScrollJs(position: { y: number; target: string }): string
       else if (Date.now() - reached > 2500) clearInterval(timer);
     }
   }, 150);
+})();
+true;
+`;
+}
+
+/**
+ * 重ねて開いた画面が「登録」などで閉じて戻ってきたときに、元の画面で走らせる。
+ * ページを丸ごと読み直す代わりに、Web 版と同じく、その画面が用意した「閉じたあとの処理」（データだけ読み直す）を呼ぶ。
+ * できる画面だけ（アプリごとの調整が window.__myappChildClosed を用意したもの）。できたかどうかを childRefreshed で返す
+ */
+export function childClosedJs(label: string): string {
+  return `
+(function () {
+  var ok = false;
+  try { ok = !!(window.__myappChildClosed && window.__myappChildClosed(${JSON.stringify(label)})); } catch (e) {}
+  try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'childRefreshed', ok: ok })); } catch (e) {}
 })();
 true;
 `;

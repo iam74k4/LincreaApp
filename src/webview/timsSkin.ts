@@ -98,7 +98,7 @@ ${['lblTitle', 'lbl_kenko', 'lbl_kenko_hour', 'lbl56', 'lbl_sorodo', 'lbl_kenko_
   height: 64px;
   box-sizing: border-box;
   padding: 10px 16px;
-  border-radius: 20px;
+  border-radius: 22px;
   background-color: var(--myapp-fill);
 }
 .myapp-kenko-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--myapp-text2); }
@@ -237,7 +237,7 @@ ${fillButton(A('btnCalendarSearch'))}
   gap: 10px 8px;
   margin: 0 16px 12px;
   padding: 12px 16px;
-  border-radius: 20px;
+  border-radius: 22px;
   background-color: var(--myapp-fill);
 }
 /* 押せないので、ボタンや札の形にはしない（名前を小さく、数字を大きく） */
@@ -1178,14 +1178,14 @@ const Y = (id: string) => `frmApply_yukyu_${id}`;
 /** 左に見出し（72px）、右に値を置く1行 */
 function labeled(label: string, value: string, top: number, height = 26): string {
   return `${place(Y(label), '16px', top, '72px', height)}
-${text(Y(label), 13, { muted: true })}
+${text(Y(label), 15, { muted: true })}
 ${place(Y(value), '104px', top, 'calc(100% - 120px)', height)}
 ${text(Y(value), 15)}`;
 }
 /** 見出しを上に、その下に「開始 ～ 終了」の2つの入力欄 */
 function rangeBelow(label: string, from: string, tilde: string, to: string, top: number): string {
   return `${place(Y(label), '16px', top, 'calc(100% - 32px)', 22)}
-${text(Y(label), 13, { muted: true })}
+${text(Y(label), 15, { muted: true })}
 ${place(Y(from), '16px', top + 24, 'calc(50% - 30px)', 40)}
 ${place(Y(tilde), 'calc(50% - 14px)', top + 24, '28px', 40)}
 ${text(Y(tilde), 15, { muted: true, align: 'center' })}
@@ -1196,7 +1196,7 @@ ${fillInput(Y(to))}`;
 /** 見出しを上に、その下に複数行の入力欄 */
 function areaBelow(label: string, area: string, top: number): string {
   return `${place(Y(label), '16px', top, 'calc(100% - 32px)', 22)}
-${text(Y(label), 13, { muted: true })}
+${text(Y(label), 15, { muted: true })}
 ${place(Y(area), '16px', top + 24, 'calc(100% - 32px)', 88)}
 #${Y(area)} textarea { box-sizing: border-box !important; width: 100% !important; height: 100% !important; }`;
 }
@@ -1217,14 +1217,14 @@ ${labeled('lbl22', 'apply_no', 8)}
 :root:has(#frmApply_yukyu[data-myapp-new]) #${Y('btnCancel')} { display: none !important; }
 ${text(Y('apply_status'), 13, { bold: true, align: 'right' })}
 ${place(Y('lbl23'), '16px', 36, '72px', 26)}
-${text(Y('lbl23'), 13, { muted: true })}
+${text(Y('lbl23'), 15, { muted: true })}
 ${place(Y('apply_dt'), '104px', 36, '120px', 26)}
 ${place(Y('apply_tm'), '228px', 36, '80px', 26)}
 ${text(Y('apply_dt'), 15)}
 ${text(Y('apply_tm'), 15)}
 ${labeled('lbl25', 'dept_nm', 64)}
 ${place(Y('lbl24'), '16px', 92, '72px', 40)}
-${text(Y('lbl24'), 13, { muted: true })}
+${text(Y('lbl24'), 15, { muted: true })}
 ${place(Y('qbxEmp'), '104px', 92, 'calc(100% - 120px)', 40)}
 ${fillInput(Y('qbxEmp'))}
 /* 新しく申請するとき（申請No がまだない）は、空の申請No・申請日時を出さずに詰める（JS が data-myapp-new を付ける） */
@@ -1245,7 +1245,7 @@ ${labeled('lbl1', 'apply_title', 8)}
 #frmApply_yukyu[data-myapp-notitle] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 412px !important; }
 #frmApply_yukyu[data-myapp-notitle][data-myapp-hourly] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 488px !important; }
 ${place(Y('lbl33'), '16px', 44, '72px', 26)}
-${text(Y('lbl33'), 13, { muted: true })}
+${text(Y('lbl33'), 15, { muted: true })}
 ${place(Y('apply_tp'), '104px', 40, 'calc(100% - 152px)', 65)}
 ${place(Y('lbl35'), 'calc(100% - 52px)', 36, '40px', 40)}
 ${rangeBelow('lbl3', 'dt_from', 'lbl34', 'dt_to', 116)}
@@ -1422,7 +1422,7 @@ const REFLOW_CSS = `
   letter-spacing: -0.02em;
   justify-content: flex-start !important;
   text-align: left !important;
-  font-size: 14px !important;
+  font-size: 15px !important;
   font-weight: 400 !important;
   color: var(--myapp-text2) !important;
   background: transparent !important;
@@ -1506,7 +1506,7 @@ const REFLOW_CSS = `
   gap: 6px;
   margin: 12px 16px 4px !important;
   padding: 12px 16px !important;
-  border-radius: 20px;
+  border-radius: 22px;
   background-color: var(--myapp-fill);
   box-sizing: border-box !important;
 }
@@ -1635,6 +1635,27 @@ ${searchBox('frmSelEmp', 'txtEmp')}
 ${cardGrid(E('grdEmp'), [[2], [1, 3], [5]], {}, { pager: true })}
 ${listToBottom('frmSelEmp', [E('grdEmp')])}
 `;
+
+// ---------------------------------------------------------------------------
+// 時刻・時間の欄（欄の ID → ダイヤルのシートの題名）。押すと、キーボードではなく、時と分を回して選ぶシートを出す（JS の openDial）
+// ---------------------------------------------------------------------------
+const TIME_DIALS: Record<string, string> = {
+  [D('work_stt_tm')]: '出勤',
+  [D('work_end_tm')]: '退勤',
+  ...Object.fromEntries([1, 2, 3, 4].flatMap((n) => [[D(`break_tm_from${n}`), '休憩の開始'], [D(`break_tm_to${n}`), '休憩の終了']])),
+  ...Object.fromEntries([1, 2].flatMap((n) => [[D(`leave_tm_from${n}`), '休暇の開始'], [D(`leave_tm_to${n}`), '休暇の終了']])),
+  // プロジェクトごとの作業の時間（時刻ではなく長さ。JS は ID の txtTime で見分ける）
+  ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [D(`txtTime${n}`), '作業の時間'])),
+  [Y('tm_from')]: '休暇の開始',
+  [Y('tm_to')]: '休暇の終了',
+  frmApply_zangyo_tm_from: '残業の開始',
+  frmApply_zangyo_tm_to: '残業の終了',
+  frmApply_chikokuSotai_tm_from: '出勤の時刻',
+  frmApply_chikokuSotai_tm_to: '退勤の時刻',
+  frmApply_kyuzitu_tm_from: '出勤',
+  frmApply_kyuzitu_tm_to: '退勤',
+  ...Object.fromEntries(['tokkyu', 'hurikyu', 'daikyu'].flatMap((f) => [[`frmApply_${f}_tm_from`, '開始'], [`frmApply_${f}_tm_to`, '終了']])),
+};
 
 // ---------------------------------------------------------------------------
 // ページの中で動かすもの（画面が変わるたびに呼ばれる。同じ結果なら何も書き換えない）
@@ -2835,6 +2856,44 @@ const SCRIPT = `
       else if (Date.now() - start > 8000) { clearInterval(timer); done(false); }
     }, 200);
   }
+  // 勤務表: 勤怠実績登録で「登録」「削除」をして戻ってきたとき（アプリが呼ぶ。src/webview/bridge.ts の childClosedJs）。
+  // ページを丸ごと読み直さずに、Web 版と同じく、勤務表が用意した「閉じたあとの処理」を呼ぶ
+  // （勤務表のデータだけ読み直して、「登録しました」を出す）。できたら true（できなければ、アプリが丸ごと読み直す）
+  window.__myappChildClosed = function (label) {
+    if (!document.getElementById('frmAttendance')) return false;
+    var name = /削除/.test(label) ? '削除' : /登録/.test(label) ? '登録' : '';
+    if (!name) return false;
+    var F = window.FALCON && FALCON.apps && FALCON.apps.procedure && FALCON.apps.procedure.Forms;
+    var cf = F && F._getCashedform && F._getCashedform(F._getUniqueId());
+    var cb = cf && cf.closedCb;
+    // 何もしない処理（画面が用意していない）なら、丸ごと読み直してもらう
+    if (typeof cb !== 'function' || /^function\\s*\\w*\\s*\\([^)]*\\)\\s*\\{\\s*\\}$/.test(String(cb))) return false;
+    cb(name);
+    // ほかのタブ（工数・出力・集計など）で読んであった一覧も、裏で読み直す（古いまま見えないように）
+    setTimeout(refreshLoadedTabs, 3500);
+    return true;
+  };
+  function refreshLoadedTabs() {
+    var form = document.getElementById('frmAttendance');
+    if (!form) return;
+    var panes = Array.prototype.filter.call(form.querySelectorAll('.tcc-tab-pane'), function (pane) {
+      return !pane.classList.contains('active') && pane.querySelector('.TccGridBodyScroll tbody tr');
+    });
+    var next = function (i) {
+      if (i >= panes.length) return;
+      var go = Array.prototype.filter.call(panes[i].querySelectorAll('a.tcc-btn'), function (a) {
+        return /^(検索|表示)$/.test((a.textContent || '').trim());
+      })[0];
+      if (go) {
+        var root = document.documentElement;
+        root.classList.add('myapp-quiet');
+        go.click();
+        setTimeout(function () { root.classList.remove('myapp-quiet'); }, 3000);
+      }
+      setTimeout(function () { next(i + 1); }, go ? 2000 : 0);
+    };
+    next(0);
+  }
   // 勤務表を開いたら、裏で一度「工数」タブを読んで、今月の工数を控える（30 分以内に読んだものがあれば読まない）
   var kosuQueued = false;
   function preloadKosu() {
@@ -3033,54 +3092,284 @@ const SCRIPT = `
   function closePicker() {
     document.querySelectorAll('.myapp-pick, .myapp-pick-back').forEach(function (el) { el.remove(); });
   }
-  function openPicker(input, list) {
+  // 選べるプロジェクト: この端末に控えたもの全部（今月・先月の工数と、プロジェクト選択で選んだもの）。今月のものが先
+  function knownProjects() {
+    var month = monthOf(textOf('frmAttendanceDtl_lblDt')) || monthOf(ymd(0));
+    var all = readMonthPrj();
+    var seen = {};
+    var out = [];
+    var add = function (p, mine) {
+      if (!p || !p.no || seen[p.no]) return;
+      seen[p.no] = true;
+      out.push({ no: String(p.no), name: p.name || '', content: p.content || '', mine: mine });
+    };
+    monthChoices().forEach(function (p) { add(p, true); });
+    Object.keys(all).sort().reverse().forEach(function (m) {
+      if (m === month) return;
+      ((all[m] && all[m].list) || []).slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); }).forEach(function (p) { add(p, false); });
+    });
+    recentProjects().forEach(function (p) { add(p, false); });
+    return out;
+  }
+  // キーボードが出たら、シートをキーボードのすぐ上に上げ、見えている高さいっぱいに広げる（下にくっつけたままだと、キーボードに隠れる）
+  function fitToKeyboard(sheet) {
+    var vv = window.visualViewport;
+    if (!vv) return;
+    var fit = function () {
+      if (!sheet.isConnected) {
+        vv.removeEventListener('resize', fit);
+        vv.removeEventListener('scroll', fit);
+        return;
+      }
+      var kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      sheet.style.bottom = kb > 40 ? kb + 'px' : '';
+      sheet.style.height = kb > 40 ? Math.round(vv.height - 12) + 'px' : '';
+      sheet.style.maxHeight = kb > 40 ? 'none' : '';
+      sheet.classList.toggle('myapp-kb', kb > 40);
+    };
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+    fit();
+  }
+  // ---- すべてのプロジェクト（番号でしぼるため） ----
+  // EZCraft のプロジェクト選択は、開いたときに全部（プロジェクト・その他業務）をページに読む（見せるのは 50 件ずつ）。
+  // それを、この端末に控える（番号・名前・顧客だけ）。EZCraft の検索は番号ぴったりでしか見つからないので、
+  // 「98」で始まる番号は、控えた一覧からこちらで探す
+  var CATALOG = 'myapp.projectCatalog';
+  function readCatalog() {
+    try {
+      var v = JSON.parse(localStorage.getItem(CATALOG) || 'null');
+      return v && Array.isArray(v.list) ? v : null;
+    } catch (e) { return null; }
+  }
+  function gridData(id) {
+    var g = document.getElementById(id);
+    try {
+      var t = g && window.jQuery && window.jQuery(g).data('tcc');
+      var d = t && t.getData && t.getData();
+      return Array.isArray(d) ? d : [];
+    } catch (e) { return []; }
+  }
+  // 検索欄が空のとき（しぼっていない一覧）だけ控える
+  function harvestCatalog() {
+    var dialog = document.getElementById('frmSelProj');
+    var query = document.querySelector('#frmSelProj_txtQuery input');
+    if (!dialog || !dialog.offsetWidth || !query || query.value.trim()) return false;
+    var rows = gridData('frmSelProj_grdPrj1').concat(gridData('frmSelProj_grdPrj2'));
+    if (rows.length < 20) return false;
+    var key = rows.length + ':' + (rows[0] && rows[0].PRJ_NO);
+    if (harvestCatalog.key === key) return true;
+    var list = [];
+    rows.forEach(function (r) {
+      var no = r && r.PRJ_NO != null ? String(r.PRJ_NO).trim() : '';
+      if (no) list.push({ no: no, name: String(r.PRJ_NM || '').trim(), cust: String(r.CUST_INC_NM || '').trim() });
+    });
+    try {
+      localStorage.setItem(CATALOG, JSON.stringify({ at: Date.now(), list: list }));
+      harvestCatalog.key = key;
+    } catch (e) { return false; }
+    return true;
+  }
+  // 控えがない・1日より古いときは、裏でプロジェクト選択を開いて読み、すぐ閉じる（画面には出さない。読み込み中の印も出さない）
+  var catalogLoading = false;
+  function preloadCatalog(input, done) {
+    var cat = readCatalog();
+    if (catalogLoading || (cat && Date.now() - cat.at < 24 * 3600 * 1000)) return false;
+    var comp = input.closest('[id^="frmAttendanceDtl_txtPrj"]');
+    var n = comp ? comp.id.replace('frmAttendanceDtl_txtPrj', '') : '';
+    var icon = document.querySelector('#frmAttendanceDtl_qbxProj' + n + ' div.icon-rt');
+    var open = document.getElementById('frmSelProj');
+    if (!icon || (open && open.offsetWidth)) return false;
+    catalogLoading = true;
+    var root = document.documentElement;
+    root.classList.add('myapp-quiet', 'myapp-quiet-prj');
+    icon.click();
+    var start = Date.now();
+    var cleared = false;
+    var timer = setInterval(function () {
+      var dialog = document.getElementById('frmSelProj');
+      // ダイアログが自分の入力欄を選んだら外す（キーボードを出さない）
+      if (dialog && document.activeElement && dialog.contains(document.activeElement)) document.activeElement.blur();
+      // 前に検索したままなら、空にして全部を読み直す
+      var query = document.querySelector('#frmSelProj_txtQuery input');
+      if (!cleared && query && query.value.trim() && dialog && dialog.offsetWidth) {
+        cleared = true;
+        typeInto(query, '');
+        var go = document.querySelector('#frmSelProj_btnQuery .tcc-btn');
+        if (go) go.click();
+        start = Date.now();
+        return;
+      }
+      var ok = Date.now() - start > 300 && harvestCatalog();
+      if (!ok && Date.now() - start < 10000) return;
+      clearInterval(timer);
+      var quit = dialog && dialog.querySelector('.tcc-modal-quit');
+      if (quit) quit.click();
+      setTimeout(function () {
+        root.classList.remove('myapp-quiet', 'myapp-quiet-prj');
+        catalogLoading = false;
+        if (done) done(ok);
+      }, 400);
+    }, 200);
+    return true;
+  }
+  // 「プロジェクト選択を開く」: その行の 🔍 を押して、EZCraft のプロジェクト選択を開く（ページをめくって探す・名前で探す）
+  function searchAllProjects(input) {
     closePicker();
+    var comp = input.closest('[id^="frmAttendanceDtl_txtPrj"]');
+    var n = comp ? comp.id.replace('frmAttendanceDtl_txtPrj', '') : '';
+    var icon = document.querySelector('#frmAttendanceDtl_qbxProj' + n + ' div.icon-rt');
+    if (icon) icon.click();
+  }
+  // 番号の欄を押したら出すシート: 上の欄に番号を打つと、その番号で始まるものにしぼる（98 → 98414・98427 …）。
+  // 最近使ったものを先に、つづけて、すべてのプロジェクト（控えた一覧）から番号の順に。何も打っていないときは、今月使ったもの
+  var PICK_MAX = 60; // 一度に出す数（多いときは、もう少し打ってもらう）
+  function openPicker(input) {
+    closePicker();
+    var known = knownProjects();
+    var catalog = (readCatalog() || {}).list || [];
+    var loading = false;
     var back = document.createElement('div');
     back.className = 'myapp-pick-back';
     back.setAttribute('data-myapp-nodark', '');
     back.addEventListener('click', closePicker);
     var sheet = document.createElement('div');
-    sheet.className = 'myapp-pick';
+    sheet.className = 'myapp-pick myapp-prj-pick';
     sheet.setAttribute('data-myapp-nodark', '');
     sheet.setAttribute('role', 'dialog');
-    sheet.setAttribute('aria-label', '今月のプロジェクト');
+    sheet.setAttribute('aria-label', 'プロジェクト');
     var title = document.createElement('div');
     title.className = 'myapp-pick-title';
-    title.textContent = '今月のプロジェクト';
+    title.textContent = 'プロジェクト';
     title.appendChild(pickClose());
     sheet.appendChild(title);
-    list.forEach(function (p) {
+    var search = document.createElement('div');
+    search.className = 'myapp-pick-search';
+    var field = document.createElement('input');
+    field.type = 'text';
+    field.setAttribute('inputmode', 'numeric');
+    field.setAttribute('enterkeyhint', 'done');
+    field.setAttribute('autocomplete', 'off');
+    field.setAttribute('aria-label', '番号で探す');
+    field.placeholder = '番号で探す（例: 98）';
+    search.appendChild(field);
+    sheet.appendChild(search);
+    var note = document.createElement('div');
+    note.className = 'myapp-pick-note';
+    sheet.appendChild(note);
+    var listBox = document.createElement('div');
+    listBox.className = 'myapp-pick-list';
+    sheet.appendChild(listBox);
+    // 一覧のいちばん下に置く（下に固定すると、キーボードが出たときに一覧が2行ぶんしか見えない）
+    var all = document.createElement('button');
+    all.type = 'button';
+    all.className = 'myapp-pick-manual myapp-pick-all';
+    all.addEventListener('click', function (e) {
+      e.preventDefault();
+      searchAllProjects(input);
+    });
+    var pick = function (no) {
+      closePicker();
+      typeInto(input, no);
+    };
+    var row = function (nameText, q, p) {
       var b = document.createElement('button');
       b.type = 'button';
       var name = document.createElement('span');
       name.className = 'myapp-pick-name';
-      name.textContent = p.name || ('No. ' + p.no);
+      name.textContent = nameText;
       var meta = document.createElement('span');
       meta.className = 'myapp-pick-meta';
-      meta.textContent = 'No. ' + p.no + (p.content ? '　' + p.content : '');
+      if (p) {
+        // 打った番号のぶんを太く（98414 の 98）
+        meta.appendChild(document.createTextNode('No. '));
+        if (q && p.no.indexOf(q) === 0) {
+          var hit = document.createElement('b');
+          hit.textContent = q;
+          meta.appendChild(hit);
+          meta.appendChild(document.createTextNode(p.no.slice(q.length)));
+        } else {
+          meta.appendChild(document.createTextNode(p.no));
+        }
+        // 最近使ったものは作業内訳、ほかは顧客
+        var sub = p.content || p.cust || '';
+        if (sub) meta.appendChild(document.createTextNode('　' + sub));
+      }
       b.appendChild(name);
       b.appendChild(meta);
-      b.addEventListener('click', function (e) {
-        e.preventDefault();
-        closePicker();
-        typeInto(input, p.no);
+      return b;
+    };
+    var matches = [];
+    var render = function () {
+      var q = field.value.replace(/[\\s　]/g, '');
+      // 全角の数字（９８）も、半角として探す
+      q = q.replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+      var digits = /^\\d+$/.test(q);
+      var low = q.toLowerCase();
+      var test = digits
+        ? function (p) { return p.no.indexOf(q) === 0; }
+        : function (p) { return (p.name + ' ' + (p.content || '') + ' ' + (p.cust || '')).toLowerCase().indexOf(low) >= 0; };
+      if (!q) {
+        matches = known.filter(function (p) { return p.mine; });
+        if (!matches.length) matches = known;
+      } else {
+        var seen = {};
+        matches = [];
+        known.forEach(function (p) { if (test(p) && !seen[p.no]) { seen[p.no] = true; matches.push(p); } });
+        catalog.filter(test).sort(function (a, b) { return a.no.length - b.no.length || a.no.localeCompare(b.no); }).forEach(function (p) {
+          if (!seen[p.no]) { seen[p.no] = true; matches.push(p); }
+        });
+      }
+      var what = digits ? '「' + q + '」で始まる番号' : '「' + q + '」を含むもの';
+      note.textContent = !q
+        ? (known.some(function (p) { return p.mine; }) ? '今月使ったプロジェクト' : '最近使ったプロジェクト')
+        : (matches.length ? what + '（' + matches.length + '件）' : what + 'はありません')
+          + (loading ? '・すべてのプロジェクトを読み込んでいます…' : (catalog.length ? '' : '（最近使ったものだけ）'));
+      listBox.textContent = '';
+      matches.slice(0, PICK_MAX).forEach(function (p) {
+        var b = row(p.name || ('No. ' + p.no), digits ? q : '', p);
+        b.addEventListener('click', function (e) { e.preventDefault(); pick(p.no); });
+        listBox.appendChild(b);
       });
-      sheet.appendChild(b);
-    });
-    var manual = document.createElement('button');
-    manual.type = 'button';
-    manual.className = 'myapp-pick-manual';
-    manual.textContent = '番号を入力する';
-    manual.addEventListener('click', function (e) {
+      // 一覧にない番号は、そのまま欄に入れる（名前は EZCraft が入れる）
+      // 「98」のように打ちかけのときは出さない（しぼった中に無いか、4けた以上打ったときだけ）
+      if (matches.length > PICK_MAX) {
+        var more = document.createElement('div');
+        more.className = 'myapp-pick-note myapp-pick-more';
+        more.textContent = 'ほかに ' + (matches.length - PICK_MAX) + ' 件あります。番号をもう少し打つと、しぼれます';
+        listBox.appendChild(more);
+      }
+      var exact = function (p) { return p.no === q; };
+      if (digits && !known.some(exact) && !catalog.some(exact) && (!matches.length || q.length >= 4)) {
+        var direct = row(q + ' をそのまま入れる', '', null);
+        direct.classList.add('myapp-pick-direct');
+        direct.querySelector('.myapp-pick-meta').textContent = '番号が分かっているとき';
+        direct.addEventListener('click', function (e) { e.preventDefault(); pick(q); });
+        listBox.appendChild(direct);
+      }
+      all.textContent = 'プロジェクト選択を開く';
+      listBox.appendChild(all);
+      listBox.scrollTop = 0;
+    };
+    field.addEventListener('input', function (e) { if (!e.isComposing) render(); });
+    field.addEventListener('compositionend', render);
+    // 確定（キーボードの「完了」）: しぼれて1つなら、それを選ぶ
+    field.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
       e.preventDefault();
-      closePicker();
-      input.__myappManual = true;
-      input.addEventListener('blur', function off() { input.__myappManual = false; input.removeEventListener('blur', off); });
-      input.focus();
+      if (matches.length === 1 && field.value.trim()) pick(matches[0].no);
+      else field.blur();
     });
-    sheet.appendChild(manual);
     document.body.appendChild(back);
     document.body.appendChild(sheet);
+    fitToKeyboard(sheet);
+    // すべてのプロジェクトの控えがない・古いときは、裏で読む。読めたら一覧を出し直す
+    loading = preloadCatalog(input, function () {
+      loading = false;
+      catalog = (readCatalog() || {}).list || catalog;
+      if (sheet.isConnected) render();
+    });
+    render();
   }
   // シートの行を押しているあいだだけ色を付ける。指が動いたら（スクロール・横にずらした）色を消す
   var press = null;
@@ -3117,10 +3406,191 @@ const SCRIPT = `
     if (!input || input.__myappManual || input.disabled || input.readOnly || document.activeElement === input) return;
     var t = e.changedTouches && e.changedTouches[0];
     if (pickStart && t && Math.abs(t.clientX - pickStart.x) + Math.abs(t.clientY - pickStart.y) > 10) return; // スクロールだった
-    var list = monthChoices();
-    if (!list.length) return;
     e.preventDefault(); // キーボードを出さずに、シートを出す
-    openPicker(input, list);
+    openPicker(input);
+  }, true);
+
+  // 時刻・時間の欄を押したら、キーボードではなく、時と分を回して選ぶダイヤルのシートを出す（iOS の時刻の選び方と同じ）。
+  // 真ん中の帯に来たものが選ばれる。回すたびにアプリに知らせて、指に小さな手ごたえを返す（EzcraftWebView の tick）
+  var DIALS = ${JSON.stringify(TIME_DIALS)};
+  var DIAL_ROW = 40; // 1行の高さ。見えるのは5行（上下2行ずつ）
+  var DIAL_R = DIAL_ROW / (20 * Math.PI / 180); // 1行で 20 度まわる筒の半径
+  var DIAL_LAST = 'myapp.timeDial.'; // この欄で前に選んだ時刻（空の欄を開いたときの始めの値）
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function dialKey(id) { return DIAL_LAST + id.replace(/\\d+$/, ''); }
+  // 空の欄を開いたときに、最初に真ん中に出す値（分）
+  function dialStart(input, id) {
+    var cur = minutesOf(input.value);
+    if (cur != null) return cur;
+    // 作業の時間: 勤務時間から、ほかのプロジェクトに入れた時間を引いた残り
+    if (/_txtTime\\d$/.test(id)) {
+      var work = minutesOf(textOf('frmAttendanceDtl_work_tm'));
+      if (work == null) return 0;
+      var used = 0;
+      document.querySelectorAll('[id^="frmAttendanceDtl_txtTime"] input').forEach(function (el) {
+        if (el !== input) used += minutesOf(el.value) || 0;
+      });
+      return Math.max(0, Math.min(23 * 60 + 59, work - used));
+    }
+    // 終わりの時刻: 始まりが入っていれば、その1時間後
+    if (/_to\\d*$/.test(id)) {
+      var from = document.querySelector('#' + id.replace(/_to(\\d*)$/, '_from$1') + ' input');
+      var f = from && minutesOf(from.value);
+      if (f != null) return Math.min(23 * 60 + 59, f + 60);
+    }
+    var last = null;
+    try { last = minutesOf(localStorage.getItem(dialKey(id))); } catch (e) {}
+    if (last != null) return last;
+    var d = new Date();
+    return Math.min(23 * 60 + 55, d.getHours() * 60 + Math.round(d.getMinutes() / 5) * 5);
+  }
+  // 回す列を1つ作る。values は [{ label, value }]。真ん中に来た値が変わるたびに onPick を呼ぶ
+  function dialWheel(values, start, name, onPick) {
+    var wheel = document.createElement('div');
+    wheel.className = 'myapp-dial-wheel';
+    wheel.setAttribute('aria-label', name);
+    var list = document.createElement('div');
+    list.className = 'myapp-dial-list';
+    values.forEach(function (v, i) {
+      // 止まる位置は行（div）で決め、筒の形に見せる変形は中の文字（span）にだけかける（行を変形すると、止まる位置がずれる）
+      var item = document.createElement('div');
+      item.className = 'myapp-dial-item';
+      var face = document.createElement('span');
+      face.textContent = v.label;
+      item.appendChild(face);
+      // 上下の値を押したら、それを真ん中まで回す
+      item.addEventListener('click', function () { wheel.scrollTo({ top: i * DIAL_ROW, behavior: 'smooth' }); });
+      list.appendChild(item);
+    });
+    wheel.appendChild(list);
+    var index = -1;
+    var queued = false;
+    var lastTick = 0;
+    function paint() {
+      queued = false;
+      var center = wheel.scrollTop / DIAL_ROW;
+      var items = list.children;
+      // 真ん中から離れた行ほど、筒の奥へ回りこむように縮めて寄せる
+      for (var i = Math.max(0, Math.floor(center) - 4); i < Math.min(items.length, Math.ceil(center) + 5); i++) {
+        var d = i - center;
+        var th = Math.max(-80, Math.min(80, d * 20)) * Math.PI / 180;
+        var y = DIAL_R * Math.sin(th) - d * DIAL_ROW;
+        items[i].firstChild.style.transform = 'translateY(' + y.toFixed(1) + 'px) scaleY(' + Math.cos(th).toFixed(3) + ')';
+      }
+      var now = Math.max(0, Math.min(values.length - 1, Math.round(center)));
+      if (now === index) return;
+      if (index >= 0 && Date.now() - lastTick > 35) {
+        lastTick = Date.now();
+        try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tick' })); } catch (e) {}
+      }
+      if (index >= 0) items[index].classList.remove('myapp-dial-on');
+      items[now].classList.add('myapp-dial-on');
+      index = now;
+      onPick(values[now].value);
+    }
+    wheel.addEventListener('scroll', function () {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(paint);
+    }, { passive: true });
+    // シートを画面に置いてから、始めの値を真ん中に
+    wheel.__start = function () {
+      var i = 0;
+      values.forEach(function (v, k) { if (v.value === start) i = k; });
+      wheel.scrollTop = i * DIAL_ROW;
+      paint();
+    };
+    return wheel;
+  }
+  function openDial(input, id) {
+    closePicker();
+    var duration = /_txtTime\\d$/.test(id);
+    var start = dialStart(input, id);
+    var h = Math.floor(start / 60);
+    var m = start % 60;
+    var back = document.createElement('div');
+    back.className = 'myapp-pick-back';
+    back.setAttribute('data-myapp-nodark', '');
+    back.addEventListener('click', closePicker);
+    var sheet = document.createElement('div');
+    sheet.className = 'myapp-pick myapp-dial-sheet';
+    sheet.setAttribute('data-myapp-nodark', '');
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('aria-label', DIALS[id]);
+    var title = document.createElement('div');
+    title.className = 'myapp-pick-title';
+    title.textContent = DIALS[id];
+    title.appendChild(pickClose());
+    sheet.appendChild(title);
+    // 時（0〜23。いま入っている時刻が 24 時を越えていれば、そこまで）と、分（0〜59）
+    var hours = [];
+    for (var i = 0; i <= Math.max(23, h); i++) hours.push({ label: duration ? String(i) : pad2(i), value: i });
+    var minutes = [];
+    for (var k = 0; k < 60; k++) minutes.push({ label: pad2(k), value: k });
+    var dial = document.createElement('div');
+    dial.className = 'myapp-dial' + (duration ? ' myapp-dial-duration' : '');
+    var hw = dialWheel(hours, h, duration ? '時間' : '時', function (v) { h = v; });
+    var mw = dialWheel(minutes, m, '分', function (v) { m = v; });
+    dial.appendChild(hw);
+    var sep = document.createElement('span');
+    sep.className = duration ? 'myapp-dial-unit' : 'myapp-dial-sep';
+    sep.textContent = duration ? '時間' : ':';
+    dial.appendChild(sep);
+    dial.appendChild(mw);
+    if (duration) {
+      var unit = document.createElement('span');
+      unit.className = 'myapp-dial-unit';
+      unit.textContent = '分';
+      dial.appendChild(unit);
+    }
+    sheet.appendChild(dial);
+    var foot = document.createElement('div');
+    foot.className = 'myapp-pick-foot';
+    var go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'myapp-pick-go';
+    go.textContent = '決定';
+    go.addEventListener('click', function (e) {
+      e.preventDefault();
+      var value = pad2(h) + ':' + pad2(m);
+      closePicker();
+      if (!duration) { try { localStorage.setItem(dialKey(id), value); } catch (err) {} }
+      input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      typeInto(input, value);
+    });
+    foot.appendChild(go);
+    // 消す（入っているときだけ）
+    var more = document.createElement('div');
+    more.className = 'myapp-dial-more';
+    if (input.value) {
+      var clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'myapp-pick-manual';
+      clear.textContent = '消す';
+      clear.addEventListener('click', function (e) {
+        e.preventDefault();
+        closePicker();
+        input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+        typeInto(input, '');
+      });
+      more.appendChild(clear);
+    }
+    if (more.firstChild) foot.appendChild(more);
+    sheet.appendChild(foot);
+    document.body.appendChild(back);
+    document.body.appendChild(sheet);
+    hw.__start();
+    mw.__start();
+  }
+  document.addEventListener('touchend', function (e) {
+    var input = e.target && e.target.closest && e.target.closest('input');
+    var comp = input && input.closest('.tcc-component');
+    if (!comp || !DIALS[comp.id]) return;
+    if (input.__myappManual || input.disabled || input.readOnly || document.activeElement === input) return;
+    var t = e.changedTouches && e.changedTouches[0];
+    if (pickStart && t && Math.abs(t.clientX - pickStart.x) + Math.abs(t.clientY - pickStart.y) > 10) return; // スクロールだった
+    e.preventDefault(); // キーボードを出さずに、ダイヤルを出す
+    openDial(input, comp.id);
   }, true);
 
   // メニュー: お知らせのカードの高さを、見えている行の高さの合計にする（多いときは 3 行ぶんまでにして、カードの中でスクロール）
@@ -3195,6 +3665,7 @@ const SCRIPT = `
     var dtl = document.getElementById('frmAttendanceDtl');
     if (dtl) { markProjects(dtl); markBreaks(dtl); dtlCards(); overtimeCard(dtl); dtlLayout(dtl); harvestDtl(); showTimes(['frmAttendanceDtl_lblTotal', 'frmAttendanceDtl_work_tm']); }
     recentChips();
+    harvestCatalog();
     var yk = document.getElementById('frmApply_yukyu');
     if (yk) yukyu(yk);
     ${JSON.stringify(APPLY_FORMS)}.forEach(function (id) {
@@ -3229,11 +3700,12 @@ const PICK_CSS = `
 .myapp-pick:not(:has(> .myapp-pick-foot))::after { content: ''; display: block; height: var(--myapp-safe-bottom, 0px); }
 /* 上のつまみ（下から出たシートだと分かるように）と、題名・閉じる（×） */
 .myapp-pick::before { content: ''; display: block; width: 36px; height: 5px; margin: 0 auto 2px; border-radius: 3px; background: var(--myapp-border); }
-.myapp-pick-title { display: flex; align-items: center; min-height: 36px; padding: 6px 4px 6px 14px; font-size: 16px; font-weight: 600; color: var(--myapp-text); }
+.myapp-pick-title { display: flex; align-items: center; min-height: 40px; padding: 6px 8px 6px 14px; font-size: 17px; font-weight: 600; color: var(--myapp-text); }
 .myapp-pick button.myapp-pick-close {
-  flex: none; width: 32px; height: 32px; margin: 0 0 0 auto; padding: 0;
-  border-radius: 16px; background: var(--myapp-inset); color: var(--myapp-text2);
-  font-size: 17px; line-height: 32px; text-align: center;
+  /* ダイアログの × と同じ形 */
+  flex: none; width: 36px; height: 36px; margin: 0 0 0 auto; padding: 0;
+  border-radius: 18px; background: var(--myapp-segment); color: var(--myapp-text);
+  font-size: 16px; font-weight: 600; line-height: 36px; text-align: center;
 }
 .myapp-pick button {
   display: block; width: 100%; box-sizing: border-box;
@@ -3244,9 +3716,11 @@ const PICK_CSS = `
 .myapp-pick button.myapp-press { background: var(--myapp-pressed-bg); }
 .myapp-pick-name { display: block; font-size: 16px; font-weight: 600; line-height: 1.3; }
 .myapp-pick-meta { display: block; margin-top: 2px; font-size: 13px; color: var(--myapp-text2); }
+/* 2つ目の操作（番号を入力する・やめる）は、青いカプセルと同じ形の灰色。白いシートの上でも、ボタンだと分かる */
 .myapp-pick button.myapp-pick-manual {
-  margin-top: 6px; text-align: center; font-size: 16px; font-weight: 600; color: var(--myapp-accent-text);
-  background: var(--myapp-fill);
+  margin-top: 10px; height: 50px; padding: 0; border-radius: 999px;
+  text-align: center; font-size: 17px; font-weight: 600; color: var(--myapp-accent-text);
+  background: var(--myapp-segment);
 }
 @keyframes myapp-pick-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes myapp-pick-fade { from { opacity: 0; } to { opacity: 1; } }
@@ -3270,14 +3744,80 @@ const PICK_CSS = `
   background: var(--myapp-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4L18 8' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 16px no-repeat;
 }
 .myapp-pick-foot {
-  position: sticky; bottom: -8px; margin: 4px -8px -8px; padding: 6px 8px calc(8px + var(--myapp-safe-bottom, 0px));
+  /* ボタンの左右は、ほかの画面のカードと同じ 16px 空ける */
+  position: sticky; bottom: -8px; margin: 4px -8px -8px; padding: 6px 16px calc(8px + var(--myapp-safe-bottom, 0px));
   background: var(--myapp-surface); /* 透けると、後ろにスクロールした行がのぞく */
   border-top: 1px solid var(--myapp-border);
 }
 .myapp-pick button.myapp-pick-go {
-  margin-top: 8px; text-align: center; font-size: 17px; font-weight: 700; color: #fff; background: var(--myapp-accent);
+  /* 主な操作は、どの画面でも同じ青いカプセル（登録・検索・開く と同じ） */
+  margin-top: 8px; height: 50px; padding: 0; text-align: center; font-size: 17px; font-weight: 600; color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 999px;
+  background: var(--myapp-tint); box-shadow: var(--myapp-tint-shadow);
 }
+.myapp-pick button.myapp-pick-go:active { background: var(--myapp-tint); transform: scale(0.97); }
+.myapp-pick button.myapp-pick-go:disabled { box-shadow: none; }
 .myapp-pick button.myapp-pick-go:disabled { opacity: 0.4; }
+
+/* プロジェクトのシート（JS の openPicker）: 上に番号の検索欄、まん中に一覧（ここだけスクロール）、下に「すべてのプロジェクトから探す」 */
+.myapp-pick.myapp-prj-pick { display: flex; flex-direction: column; overflow: hidden; }
+.myapp-prj-pick > * { flex: none; }
+.myapp-prj-pick .myapp-pick-list {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
+.myapp-prj-pick .myapp-pick-note { padding-top: 2px; }
+.myapp-pick-search { position: relative; margin: 2px 8px 10px; }
+.myapp-pick-search::before {
+  content: ''; position: absolute; left: 13px; top: 50%; width: 17px; height: 17px; margin-top: -8.5px; pointer-events: none;
+  background: var(--myapp-text2);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M15.5 15.5 21 21'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M15.5 15.5 21 21'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.myapp-pick-search input {
+  display: block; width: 100%; box-sizing: border-box; height: 44px; margin: 0; padding: 0 14px 0 40px;
+  border: 0; border-radius: 12px; outline: none; -webkit-appearance: none; appearance: none;
+  background: var(--myapp-segment); color: var(--myapp-text); font: inherit; font-size: 17px;
+}
+.myapp-pick-search input::placeholder { color: var(--myapp-text2); }
+/* 打った番号のぶん（98414 の 98）を太く */
+.myapp-pick-meta b { font-weight: 700; color: var(--myapp-accent-text); }
+.myapp-pick button.myapp-pick-direct .myapp-pick-name { color: var(--myapp-accent-text); }
+.myapp-prj-pick .myapp-pick-more { padding: 10px 14px 4px; }
+/* すべてのプロジェクトを裏で読むあいだ、開いたプロジェクト選択と後ろの暗い面は見せない（JS の preloadCatalog） */
+html.myapp-quiet-prj #frmSelProj, html.myapp-quiet-prj .tcc-modal-back { visibility: hidden !important; }
+/* キーボードが出ているあいだは、ホームに戻るバーのぶんのすきまは要らない */
+.myapp-pick.myapp-kb::after { height: 0 !important; }
+/* 左右は、ほかの画面のボタンと同じ 16px 空ける */
+.myapp-pick button.myapp-pick-all { width: calc(100% - 16px); margin: 10px 8px 2px; }
+
+/* 時刻を選ぶダイヤル（JS の openDial）: 時と分の列を回す。真ん中の帯に来たものが選ばれる。上下は薄く消えていく */
+.myapp-dial { position: relative; display: flex; justify-content: center; align-items: center; height: 200px; margin: 6px 0 2px; }
+.myapp-dial::before {
+  content: ''; position: absolute; left: 8px; right: 8px; top: 80px; height: 40px;
+  border-radius: 12px; background: var(--myapp-segment); pointer-events: none;
+}
+.myapp-dial-wheel {
+  position: relative; z-index: 1; flex: none; width: 88px; height: 200px;
+  overflow-y: scroll; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  scroll-snap-type: y mandatory; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 38%, #000 62%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 38%, #000 62%, transparent 100%);
+}
+.myapp-dial-wheel::-webkit-scrollbar { display: none; }
+.myapp-dial-list { padding: 80px 0; }
+.myapp-dial-item {
+  height: 40px; line-height: 40px; text-align: center; scroll-snap-align: center;
+  font-size: 22px; color: var(--myapp-text2); font-variant-numeric: tabular-nums;
+}
+.myapp-dial-item > span { display: block; }
+.myapp-dial-item.myapp-dial-on { color: var(--myapp-text); font-weight: 600; }
+.myapp-dial-sep { position: relative; z-index: 1; width: 16px; text-align: center; font-size: 22px; font-weight: 600; color: var(--myapp-text); }
+.myapp-dial-unit { position: relative; z-index: 1; width: 44px; font-size: 17px; color: var(--myapp-text); }
+.myapp-dial-duration .myapp-dial-wheel { width: 64px; }
+.myapp-dial-duration .myapp-dial-item { text-align: right; padding-right: 8px; }
+/* 消す（入っているときだけ出す） */
+.myapp-dial-more { display: flex; gap: 10px; }
+.myapp-dial-more button.myapp-pick-manual { flex: 1 1 0; width: auto; }
 
 /* 勤務表を開いたときに、裏で「工数」を読むあいだは、読み込み中の印を出さない（preloadKosu） */
 html.myapp-quiet #loadingIcon { display: none !important; }
@@ -3322,14 +3862,8 @@ export const TIMS_SKIN: AppSkin = {
     ...Object.fromEntries(APPLY_FORMS.map((f) => [f, [`${f}_btnCancel`, `${f}_btnDone`]])),
   },
   danger: [D('btnDel'), ...[1, 2, 3, 4, 5, 6].map((n) => D(`btnDel${n}`))],
-  numeric: [
-    ...['work_stt_tm', 'work_end_tm', 'leave_tm_from1', 'leave_tm_to1', 'leave_tm_from2', 'leave_tm_to2'].map(D),
-    ...[1, 2, 3, 4].flatMap((n) => [D(`break_tm_from${n}`), D(`break_tm_to${n}`)]),
-    ...[1, 2, 3, 4, 5, 6].map((n) => D(`txtTime${n}`)),
-    Y('tm_from'),
-    Y('tm_to'),
-    ...APPLY_FORMS.flatMap((f) => [`${f}_tm_from`, `${f}_tm_to`]),
-  ],
+  // 時刻の欄はダイヤルで選ぶ。ダイヤルを出さずに欄に入ったとき（外付けのキーボードなど）だけ、数字のキーボードにする
+  numeric: Object.keys(TIME_DIALS),
   pickers: [
     { dialog: 'frmSelProj', ok: 'frmSelProj_btnOK' },
     { dialog: 'frmSelEmp', ok: 'frmSelEmp_btnOK' },

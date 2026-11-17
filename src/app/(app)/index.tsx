@@ -358,8 +358,9 @@ function createStyles(c: Colors) {
     listContent: {
       paddingBottom: 32,
     },
+    // 小見出しは、アプリの中の画面（お知らせ・今日と未登録の日 など）と同じ 13pt の太字の灰色
     sectionTitle: {
-      fontSize: 15,
+      fontSize: 13,
       fontWeight: '600',
       color: c.textSecondary,
       paddingHorizontal: 20,

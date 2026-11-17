@@ -903,7 +903,7 @@ const BASE_CSS = `
   align-items: center;
   box-sizing: border-box;
 }
-.tcc-modal[id$="_mdl"] .tcc-modal-title { font-size: 16px !important; font-weight: 600 !important; }
+.tcc-modal[id$="_mdl"] .tcc-modal-title { font-size: 17px !important; font-weight: 600 !important; }
 /* 閉じる（×）は、ほかのダイアログと同じ丸いボタン（GLASS_CSS）。押せる広さは、まわりの余白で取る */
 .tcc-modal[id$="_mdl"] .tcc-modal-footer { display: none !important; }
 .tcc-modal[id$="_mdl"] .tcc-modal-body {
@@ -1093,9 +1093,11 @@ div.tcc-component.radio {
 /* 必須の印（EZCraft が欄の右の外に ::after で付ける「＊」）: 画面の端にはみ出し、欄の印とも重なるので、欄の見出しの後ろに移す
    （JS の requiredMarks が見出しに .myapp-required を付ける。見出しが見つからない欄は、そのまま） */
 div.tcc-component.text.myapp-req-moved::after { display: none !important; }
+/* 見出しが長いとき（健診予定日＊ など）も、欄にかからないよう少しだけ詰める */
+.tcc-component.lbl.myapp-required .tcc-label-text { letter-spacing: -0.02em; }
 .tcc-component.lbl.myapp-required .tcc-label-text::after {
   content: '＊';
-  margin-left: 2px;
+  margin-left: 1px;
   font-size: 11px;
   font-weight: 700;
   color: var(--myapp-danger);
@@ -1286,7 +1288,7 @@ body > .myapp-bottom-bar {
   box-sizing: border-box !important;
   padding: 12px 16px 12px 48px !important;
   border: 1px solid var(--myapp-glass-border) !important;
-  border-radius: 20px !important;
+  border-radius: 22px !important;
   background: var(--myapp-sheet) !important;
   background: color-mix(in srgb, var(--myapp-fill) 94%, transparent) !important;
   -webkit-backdrop-filter: blur(20px) saturate(180%);

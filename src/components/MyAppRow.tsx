@@ -82,7 +82,7 @@ function createStyles(c: Colors) {
       color: c.text,
     },
     description: {
-      fontSize: 14,
+      fontSize: 13, // 上の近道やメニューのカードの説明と同じ大きさ
       color: c.textSecondary,
     },
     tag: {

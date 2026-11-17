@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { ActivityIndicator, Alert, Linking, StyleSheet, Text, View } from 'react-native';
 import { router, Stack, useFocusEffect, usePreventRemove } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
@@ -19,13 +20,13 @@ import { fileName, openFile, saveIncoming } from '../files';
 import { advanceApplyQueue, applyQueueActive, openApplication, startApplyQueue } from '../openShortcut';
 import { useSession } from '../session/SessionContext';
 import { useColors } from '../theme';
-import { autoClickJs, BRIDGE_JS, openerStubJs, parseBridgeMessage, restoreScrollJs } from '../webview/bridge';
+import { autoClickJs, BRIDGE_JS, childClosedJs, openerStubJs, parseBridgeMessage, restoreScrollJs } from '../webview/bridge';
 import { bootJs, buildSkinScript, SHOW_PAGE_JS } from '../webview/ezcraftSkin';
 import { appDataKeyOfUrl, rememberAppData } from '../webview/appDataCache';
 import { depositHandoff, type Handoff } from '../webview/handoff';
 import { initAppJs } from '../webview/initApp';
 import { initAppFormOfUrl, recallInitApp, rememberInitApp } from '../webview/initAppCache';
-import { noteWrite, writeCount } from '../webview/writes';
+import { noteClosedByPage, noteWrite, takeChildResult, writeCount } from '../webview/writes';
 
 type Props = {
   /** 開く URL（このサーバーの中のもの） */
@@ -50,6 +51,8 @@ type Props = {
 
 /** 登録のあとに自動で開く申請の画面を、少し待ってから開く（待つあいだにページが閉じたら、閉じてから開く） */
 const APPLY_DELAY_MS = 700;
+// 戻ってきた画面に、データだけの読み直しを頼んでから、返事を待つ長さ（来なければ、丸ごと読み直す）
+const REFRESH_REPLY_MS = 1500;
 
 /** ダイアログの後ろの暗さ（ページの .tcc-modal-back などと同じ。src/webview/ezcraftSkin.ts） */
 const DIM = 0.28;
@@ -110,6 +113,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       pendingApply.current = null;
     }
     const nextInQueue = !waiting && sheet && ownWrites.current > 0 && applyQueueActive();
+    noteClosedByPage(); // 元の画面は、これを見て、丸ごと読み直さずにデータだけ読み直す
     // ページが自分で閉じるときは、ダイアログが開いていても止めない（止める設定を外してから戻る）
     setModalOpen(false);
     setTimeout(() => {
@@ -139,24 +143,46 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     return () => clearTimeout(timer);
   }, [shown, reloadKey]);
 
-  // 重ねて開いた画面から戻ってきたら、その画面（とその先）でデータを書き込んだときだけ、この画面を読み直す
-  // （Web 版では、開いた画面が閉じるときに元の画面へ「読み直して」と知らせている。その代わり。
-  //   登録・削除などをせずに戻ったときは、読み直さずにそのまま見せる）
+  // ページを丸ごと読み直す（白い画面と読み込み中の印が、数秒出る）
+  const reloadPage = useCallback(() => {
+    setRestoreTo(scroll.current); // 読み直しても、見ていた位置に戻す
+    setShown(false);
+    setInitApp(cachedInitApp(uri));
+    setReloadKey((k) => k + 1);
+  }, [uri]);
+  // データだけの読み直しを頼んで、返事を待っているあいだのタイマー（返事がなければ、丸ごと読み直す）
+  const refreshWait = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (refreshWait.current) clearTimeout(refreshWait.current);
+  }, []);
+
+  // 重ねて開いた画面から戻ってきたら、その画面（とその先）でデータを書き込んだときだけ、この画面を新しくする
+  // （何も変えずに戻ったときは、そのまま見せる）。
+  // その画面が「登録」などを終えて自分で閉じたときは、Web 版と同じく、閉じたあとの処理（データだけ読み直す）を
+  // ページで走らせる。一覧はそのまま見えていて、変わった行だけが少しあとで新しくなる（丸ごと読み直すより待たない）。
+  // できない画面（処理を用意していない・ページが消えていた）や、閉じ方が違うときは、今までどおり丸ごと読み直す
   useFocusEffect(
     useCallback(() => {
       if (openedChild.current) {
         const wrote = writeCount() - ownWrites.current !== othersWritesAtOpen.current;
+        const child = takeChildResult();
         // まとめて申請の途中なら、次の1件から戻ってきたときも見る（src/openShortcut.ts）
         openedChild.current = applyQueueActive();
         othersWritesAtOpen.current = writeCount() - ownWrites.current;
         // 重ねて開いた画面（とその先）で書き込みがなければ、そのまま見せる（読み直すと数秒かかる）
         if (!wrote) return;
-        setRestoreTo(scroll.current); // 読み直しても、見ていた位置に戻す
-        setShown(false);
-        setInitApp(cachedInitApp(uri));
-        setReloadKey((k) => k + 1);
+        if (!child.closedByPage || !child.label || !webRef.current) {
+          reloadPage();
+          return;
+        }
+        if (refreshWait.current) clearTimeout(refreshWait.current);
+        refreshWait.current = setTimeout(() => {
+          refreshWait.current = null;
+          reloadPage();
+        }, REFRESH_REPLY_MS);
+        webRef.current.injectJavaScript(childClosedJs(child.label));
       }
-    }, [uri]),
+    }, [reloadPage]),
   );
 
   // ページが作った PDF・CSV・Excel を受け取り、一時的な場所に置いて見せる。PDF はアプリの画面、ほかは iPhone の標準のプレビュー
@@ -244,9 +270,16 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           if (message?.type === 'scroll') scroll.current = { y: message.y, target: message.target };
           if (message?.type === 'ready') setShown(true);
           if (message?.type === 'modal') setModalOpen(message.open);
+          // 時刻のダイヤルを回したときの、カチッという小さな手ごたえ（iOS の時刻の選び方と同じ）
+          if (message?.type === 'tick') Haptics.selectionAsync().catch(() => {});
           if (message?.type === 'file') receiveFile(message.base64, message.name, message.mime);
+          if (message?.type === 'childRefreshed' && refreshWait.current) {
+            clearTimeout(refreshWait.current);
+            refreshWait.current = null;
+            if (!message.ok) reloadPage();
+          }
           if (message?.type === 'write') {
-            noteWrite();
+            noteWrite(message.label);
             ownWrites.current += 1;
           }
           if (message?.type === 'close') close();
