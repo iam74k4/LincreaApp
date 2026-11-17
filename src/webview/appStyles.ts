@@ -367,7 +367,43 @@ export const APP_SKINS: Record<string, AppSkin> = {
         var date = String(data.pay_date || '').trim().split(' ')[0].split('/').join('-');
         return kind + (date ? '_' + date : '');
       };
+      // パスワードのダイアログ: スマホには「Enter キー」がないので、「開く」のボタンを置く（押すと、欄で Enter を押したのと同じ）。
+      // キーボードの右下も「開く」にする。パスワードが空のあいだは押せない。パスワードはアプリでは覚えない（欄に入れるだけ）
+      var pwWasOpen = false;
+      window.__myappAppUpdate = function () {
+        var body = document.getElementById('LP_password_blank1_body');
+        var input = document.querySelector('#LP_password_txt_password input');
+        // ダイアログを閉じたら、押した明細の行の色を戻す（選んだままに見えないように）
+        var pwOpen = !!body && body.offsetParent !== null;
+        if (pwWasOpen && !pwOpen) {
+          document.querySelectorAll('#LP_main_grd_details tr.myapp-tapped').forEach(function (tr) { tr.classList.remove('myapp-tapped'); });
+        }
+        pwWasOpen = pwOpen;
+        if (!body || !input) return;
+        if (input.getAttribute('enterkeyhint') !== 'go') input.setAttribute('enterkeyhint', 'go');
+        if (input.getAttribute('autocomplete') !== 'current-password') input.setAttribute('autocomplete', 'current-password');
+        var go = body.querySelector(':scope > .myapp-pw-go');
+        if (!go) {
+          go = document.createElement('button');
+          go.type = 'button';
+          go.className = 'myapp-pw-go';
+          go.setAttribute('data-myapp-nodark', '');
+          go.textContent = '開く';
+          go.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (!input.value) return;
+            ['keydown', 'keyup'].forEach(function (type) {
+              jQuery(input).trigger(jQuery.Event(type, { keyCode: 13, which: 13, key: 'Enter' }));
+            });
+          });
+          input.addEventListener('input', function () { go.disabled = !input.value; });
+          body.appendChild(go);
+        }
+        go.disabled = !input.value;
+      };
     `,
+    // パスワードのダイアログの説明（スマホには Enter キーがないので、「開く」を押すように）
+    relabel: { LP_password_lbl1: 'イントラと同じパスワードを入れて、「開く」を押してください。' },
     rowOpens: [{ grid: 'LP_main_grd_details', button: 'LP_main_btn_view_detail' }],
     hidden: ['LP_main_lbl_title', 'LP_main_btn_close'],
     layout: `
@@ -416,12 +452,45 @@ ${cardGrid('LP_main_grd_details', [[2], [3, 1]], { 3: '支給日' })}
 }
 
 /* 「明細を見る」で出るパスワードのダイアログ */
-${mobileDialog('LP_password', 150)}
-${place('LP_password_lbl1', '16px', 12, 'calc(100% - 32px)', 48)}
+/* 「明細を見る」で出るパスワードのダイアログ: 題名と × の帯 → 説明 → 入力欄 → 「開く」。
+   キーボードに隠れないよう、画面の上のほうに出す。題名の飾りの印と、下の空の帯は出さない */
+${mobileDialog('LP_password', 252)}
+#LP_password { top: 112px !important; }
+#LP_password .tcc-modal-header {
+  height: 56px !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 0 56px 0 20px !important;
+  box-sizing: border-box !important;
+}
+#LP_password .tcc-modal-title { font-size: 17px !important; font-weight: 600 !important; }
+#LP_password .tcc-modal-header > i { display: none !important; }
+#LP_password .tcc-modal-quit { position: absolute !important; top: 10px !important; right: 10px !important; margin: 0 !important; }
+#LP_password .tcc-modal-footer { display: none !important; }
+#LP_password_body, #LP_password_R1, #LP_password_R1 > *, #LP_password_blank1, #LP_password_blank1_body { height: 188px !important; }
+${place('LP_password_lbl1', '20px', 0, 'calc(100% - 40px)', 40)}
 #LP_password_lbl1 * { max-width: 100% !important; white-space: normal !important; word-break: break-all; text-align: left !important; }
-#LP_password_lbl1 .tcc-label { width: 100% !important; }
-${place('LP_password_txt_password', '16px', 72, 'calc(100% - 32px)', 44)}
+#LP_password_lbl1 .tcc-label { width: 100% !important; padding: 0 !important; vertical-align: top !important; }
+#LP_password_lbl1 .tcc-label-text { padding: 0 !important; font-size: 14px !important; line-height: 1.45 !important; color: var(--myapp-text2) !important; }
+${place('LP_password_txt_password', '16px', 52, 'calc(100% - 32px)', 48)}
 ${fillInput('LP_password_txt_password')}
+#LP_password_txt_password input { font-size: 17px !important; }
+.myapp-pw-go {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 116px;
+  height: 50px;
+  border: none;
+  border-radius: 25px;
+  background: var(--myapp-accent);
+  color: #FFFFFF;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+}
+.myapp-pw-go:active { opacity: 0.8; }
+.myapp-pw-go:disabled { opacity: 0.4; }
 `,
   },
 

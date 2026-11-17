@@ -1855,7 +1855,8 @@ body > .myapp-bottom-bar {
 /* ダイアログの後ろの暗さは、アプリのシート（今月のプロジェクトなど）と同じ 28% に。
    アプリは、ダイアログが開いているあいだ、上のヘッダーも同じだけ暗くする（src/components/EzcraftWebView.tsx の DIM） */
 .tcc-modal-back, .tcc-msg-box-back, .tcc-popover-back { background: rgba(0, 0, 0, 0.28) !important; }
-/* 閉じる（×）は、丸いボタンに */
+/* 閉じる（×）は、丸いボタンに。ダイアログの中の部品（z-index の付いた見出しなど）が上に重なって押せなくならないよう、いちばん上に */
+.tcc-modal .tcc-modal-quit { z-index: 20 !important; }
 .tcc-modal .tcc-modal-quit {
   width: 36px !important;
   height: 36px !important;
