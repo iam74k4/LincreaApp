@@ -26,8 +26,6 @@ import { GlassButton } from '../components/GlassButton';
 import { sizes, useColors, type Colors } from '../theme';
 
 type Props = {
-  /** 見出しの下に出す、ログイン先の名前（Web 版ならサブドメインにあたる） */
-  workspaceName: string;
   /** ログインできたら呼ぶ。次の画面へ進むのは呼んだ側の仕事 */
   onLoggedIn: (session: Session) => void;
   onForgotPassword: () => void;
@@ -38,7 +36,7 @@ type Props = {
 const LOGO = require('../../assets/logo.png');
 const LOGO_DARK = require('../../assets/logo-dark.png');
 
-export function LoginScreen({ workspaceName, onLoggedIn, onForgotPassword, onLoginHelp }: Props) {
+export function LoginScreen({ onLoggedIn, onForgotPassword, onLoginHelp }: Props) {
   const c = useColors();
   const scheme = useColorScheme();
   const styles = useMemo(() => createStyles(c), [c]); // ライト / ダークが切り替わったら作り直す
@@ -161,7 +159,6 @@ export function LoginScreen({ workspaceName, onLoggedIn, onForgotPassword, onLog
                 accessibilityRole="header"
                 accessibilityLabel="LINCREA"
               />
-              <Text style={styles.subtitle}>{workspaceName}</Text>
             </View>
 
             <View style={styles.fields}>
@@ -346,17 +343,11 @@ function createStyles(c: Colors) {
     },
     heading: {
       alignItems: 'center',
-      gap: 4,
-      marginBottom: 16,
+      marginBottom: 24,
     },
     logo: {
       width: 220,
       height: 40,
-      marginBottom: 12,
-    },
-    subtitle: {
-      fontSize: 15,
-      color: c.textSecondary,
     },
     fields: {
       gap: 12,
