@@ -227,6 +227,7 @@ ${selector} .tcc-label-text {
 .myapp-bottom-bar > #${id} {
   position: relative !important;
   left: auto !important;
+  right: auto !important; /* 右から置いていたボタン（right: 20px など）が、帯の中でずれないように */
   top: auto !important;
   width: auto !important;
   height: 50px !important;
@@ -461,6 +462,326 @@ const HEALTH_STEPS_JS = `
         else if (!found) healthNote('ヘルスケアに、この週の歩数がありませんでした');
       });
     });
+  }
+`;
+
+/** EZCraft の進み具合の棒（ProgressBar）を、細い角丸の棒にする（% の字は出さない） */
+function progressBar(id: string): string {
+  return `
+#${id} .progress {
+  height: 8px !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 4px !important;
+  background: var(--myapp-inset) !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+#${id} .progress-bar { height: 100% !important; background-color: var(--myapp-accent) !important; border-radius: 4px !important; box-shadow: none !important; }
+#${id} :is(.progressbar-back-text, .progressbar-front-text) { display: none !important; }`;
+}
+
+// Walk the Talk の「歩数入力」（週ごとのダイアログ。weeklyStepCount_id_2026Walk）を、ほかと同じ下から出るシートに:
+//   上 … 今週の合計（大きな数字）と今週の目標、進み具合の棒
+//   中 … 月〜日の7行（曜日・日付・入力欄・歩）。今日の行は差し色
+//   下 … 「閉じる」と「保存」（保存は青）を、シートの下の帯に（bottomBars）
+const WK = (id: string) => `${WEEKLY}_${id}`;
+const WEEK_ROW = 52;
+/** 曜日ごとの「歩」のラベル（EZCraft の部品の名前は、曜日の順になっていない） */
+const WEEK_UNITS: Record<string, string> = {
+  monday: 'lbl8',
+  tuesday: 'lbl9',
+  wednesday: 'lbl14',
+  thursday: 'lbl13',
+  friday: 'lbl12',
+  saturday: 'lbl11',
+  sunday: 'lbl10',
+};
+const WEEKLY_CSS = `
+${sheetDialog(WEEKLY, [{ id: 'R1', height: 104 }, { id: 'R2', height: 16 + 7 * WEEK_ROW }, { id: 'R3', height: 0 }], { scroll: true })}
+#${WK('R3')} { display: none !important; }
+#${WEEKLY} :is(.tcc-tile, .tcc-panel, .tcc-panel-body) { background: transparent !important; }
+#${WEEKLY} .tcc-component.lbl .tcc-label { padding-left: 0 !important; padding-right: 0 !important; border-left-width: 0 !important; background: transparent !important; }
+#${WEEKLY} .tcc-component.lbl .tcc-label-text { padding-left: 0 !important; padding-right: 0 !important; }
+/* 上: 今週の合計（左）と今週の目標（右）。右の列は左の列に重ねて置く */
+#${WK('R1')} { position: relative !important; }
+#${WK('R1')} .tcc-tile.col { float: none !important; }
+#${WK('R1_C1')} { width: 100% !important; }
+#${WK('R1_C2')} { position: absolute !important; top: 0 !important; right: 0 !important; left: auto !important; width: 50% !important; height: 100% !important; }
+#${WK('R1_C2')} :is(.tcc-panel, .tcc-panel-body) { width: 100% !important; height: 100% !important; }
+${place(WK('lbl22'), '20px', 6, 'calc(100% - 40px)', 20)}
+${text(WK('lbl22'), 13, { muted: true })}
+${place(WK('lbl_sum_steps'), '20px', 28, 'calc(100% - 80px)', 36)}
+#${WK('lbl_sum_steps')} { right: auto !important; }
+${text(WK('lbl_sum_steps'), 26, { bold: true })}
+#${WK('lbl_sum_steps')} .tcc-label-text { font-variant-numeric: tabular-nums; }
+${place(WK('lbl24'), '90px', 38, '20px', 20)}
+${text(WK('lbl24'), 13, { muted: true })}
+#${WK('lbl25')} { left: auto !important; right: 20px !important; top: 6px !important; width: calc(100% - 20px) !important; height: 20px !important; }
+${text(WK('lbl25'), 13, { muted: true, align: 'right' })}
+#${WK('lbl_step_goal')} { left: auto !important; right: 38px !important; top: 32px !important; width: calc(100% - 58px) !important; height: 28px !important; }
+${text(WK('lbl_step_goal'), 17, { bold: true, align: 'right' })}
+#${WK('lbl27')} { left: auto !important; right: 20px !important; top: 36px !important; width: 16px !important; height: 20px !important; }
+${text(WK('lbl27'), 13, { muted: true, align: 'right' })}
+${place(WK('pbr_steps'), '20px', 78, 'calc(100% - 40px)', 8)}
+${progressBar(WK('pbr_steps'))}
+/* 中: 月〜日（上に区切りの線） */
+#${WK('R2')} { position: relative !important; }
+#${WK('R2')}::before { content: ''; position: absolute; left: 20px; right: 20px; top: 0; height: 1px; background: var(--myapp-border); z-index: 1; }
+${WEEK_DAYS.map((day, i) => {
+  const top = 8 + i * WEEK_ROW;
+  const unit = WEEK_UNITS[day];
+  return `${place(WK(`lbl_${day}`), '20px', top, '28px', 40)}
+${text(WK(`lbl_${day}`), 17, { bold: true })}
+${place(WK(`lbl_date_${day}`), '50px', top, '80px', 40)}
+${text(WK(`lbl_date_${day}`), 15, { muted: true })}
+#${WK(`num_steps_${day}`)} { left: auto !important; right: 44px !important; top: ${top}px !important; width: 150px !important; height: 40px !important; }
+${fillInput(WK(`num_steps_${day}`))}
+#${WK(unit)} { left: auto !important; right: 20px !important; top: ${top}px !important; width: 16px !important; height: 40px !important; }
+${text(WK(unit), 15, { muted: true, align: 'right' })}`;
+}).join('\n')}
+/* 入力欄は、シートの地と見分けがつく面。ライトは白、ダークは少し明るい灰色（シートの地は半透明の灰色） */
+#${WEEKLY} [id^="${WK('num_steps_')}"] input {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  background-color: var(--myapp-field) !important;
+  border-color: transparent !important;
+  border-radius: 12px !important;
+}
+[data-myapp-theme="dark"] #${WEEKLY} [id^="${WK('num_steps_')}"] input { background-color: var(--myapp-inset) !important; }
+/* 今日の行は、曜日と日付を差し色に */
+#${WEEKLY} [data-myapp-today] .tcc-label-text { color: var(--myapp-accent) !important; font-weight: 700 !important; }
+`;
+
+// 歩数入力: 開いたときに EZCraft が月曜の欄を選んでしまう（つまみが出て、ヘルスケアの歩数も入らない）ので外す。今日の行に印
+const WEEKLY_JS = `
+  function weeklySheet() {
+    var form = document.getElementById('${WEEKLY}');
+    if (!form) return;
+    if (!form.__myappUnfocused) {
+      form.__myappUnfocused = true;
+      var unfocus = function () {
+        var a = document.activeElement;
+        if (a && a !== document.body && form.contains(a) && a.blur) a.blur();
+      };
+      setTimeout(unfocus, 0);
+      setTimeout(unfocus, 400);
+    }
+    var now = new Date();
+    var key = (now.getMonth() + 1) + '/' + now.getDate();
+    ${JSON.stringify(WEEK_DAYS)}.forEach(function (day) {
+      var date = document.getElementById('${WEEKLY}_lbl_date_' + day);
+      var name = document.getElementById('${WEEKLY}_lbl_' + day);
+      if (!date) return;
+      var m = /(\\d{1,2})\\/(\\d{1,2})/.exec(date.textContent || '');
+      var on = !!m && (+m[1]) + '/' + (+m[2]) === key;
+      [date, name].forEach(function (el) { if (el && el.hasAttribute('data-myapp-today') !== on) el.toggleAttribute('data-myapp-today', on); });
+    });
+  }
+`;
+
+// Walk the Talk の「歩数の記録」（今日の歩数を登録する で開く。stepCount_id_2026Walk）。パソコン向けのページを、2枚のカードと1つのボタンに:
+//   1枚目 … 今週の合計（大きな数字）と目標・進み具合の棒、その下に「1日の平均」「これまでの合計」の2つ並び
+//   2枚目 … 4週ぶんのカレンダー（曜日・日付・その日の歩数）。日付を押すと、その週の歩数入力（weeklyStepCount）が開く
+//   いちばん下 … 「目標を設定する」（灰色のカプセル）
+// 大きな題名・閉じる（左上の ‹ で戻る）・飾りの印と線・ロゴは出さない（hidden）。
+// 日付のボタンは、部品の名前が日付で変わる（btn_date1117 など）ので、元の並び（行・列）をスクリプトが印にして、それで置く（STEP_CAL_JS）
+const SC = (id: string) => `stepCount_id_2026Walk_${id}`;
+const CAL_TOP = 44; // 曜日の下から、日付のマス
+const CAL_CELL = 60; // マスの高さ
+const CAL_PITCH = 68; // 1週の段の間隔
+const CAL_HEIGHT = CAL_TOP + 3 * CAL_PITCH + CAL_CELL + 52; // 4週 + 下の説明
+/** カレンダーの列（0〜6）の左の位置と幅（左右 16px の余白、列のあいだ 6px） */
+const calLeft = (col: number) => `calc(16px + ${col} * ((100% - 68px) / 7 + 6px))`;
+const CAL_WIDTH = 'calc((100% - 68px) / 7)';
+const STEP_CAL_CSS = `
+${fullWidth('stepCount_id_2026Walk')}
+#stepCount_id_2026Walk { height: auto !important; display: flex !important; flex-direction: column !important; padding-bottom: 24px !important; }
+#stepCount_id_2026Walk .tcc-tile.col { float: none !important; }
+#stepCount_id_2026Walk :is(.tcc-tile, .tcc-panel, .tcc-panel-body) { background: transparent !important; }
+/* カードの中の字は、カードの端から 16px。EZCraft の字の左右の余白と縁の線はなくす */
+#stepCount_id_2026Walk .tcc-component.lbl .tcc-label { padding-left: 0 !important; padding-right: 0 !important; border-left-width: 0 !important; background: transparent !important; }
+#stepCount_id_2026Walk .tcc-component.lbl .tcc-label-text { padding-left: 0 !important; padding-right: 0 !important; }
+
+/* 2枚のカード */
+#stepCount_id_2026Walk > :is(#${SC('R3')}, #${SC('R4')}) {
+  width: calc(100% - 32px) !important;
+  max-width: calc(100% - 32px) !important;
+  margin: 12px 16px 0 !important;
+  border-radius: 22px !important;
+  background-color: var(--myapp-fill) !important;
+  overflow: hidden !important;
+}
+
+/* 1枚目: 今週の合計 */
+#${SC('R3')} { height: 188px !important; display: block !important; }
+:is(#${SC('R3_C1')}, #${SC('blank5')}, #${SC('blank5_body')}) { width: 100% !important; height: 112px !important; }
+${place(SC('lbl26'), '16px', 16, 'calc(100% - 160px)', 20)}
+${text(SC('lbl26'), 13, { muted: true })}
+/* 目標 10,000 歩（右上） */
+#${SC('lbl28')} { left: auto !important; right: 16px !important; top: 16px !important; width: 14px !important; height: 20px !important; }
+${text(SC('lbl28'), 13, { muted: true, align: 'right' })}
+#${SC('lbl_step_goal')} { left: auto !important; right: 33px !important; top: 16px !important; width: 64px !important; height: 20px !important; }
+${text(SC('lbl_step_goal'), 13, { muted: true, align: 'right' })}
+#${SC('lbl27')} { left: auto !important; right: 100px !important; top: 16px !important; width: 30px !important; height: 20px !important; }
+${text(SC('lbl27'), 13, { muted: true, align: 'right' })}
+/* 合計の数字と「歩」（「歩」は、数字のすぐ後ろにスクリプトが置く） */
+${place(SC('lbl_sum_week_steps'), '16px', 40, 'calc(100% - 80px)', 40)}
+#${SC('lbl_sum_week_steps')} { right: auto !important; }
+${text(SC('lbl_sum_week_steps'), 30, { bold: true })}
+#${SC('lbl_sum_week_steps')} .tcc-label-text { font-variant-numeric: tabular-nums; }
+${place(SC('lbl18'), '96px', 52, '20px', 24)}
+${text(SC('lbl18'), 15, { muted: true })}
+/* 進み具合の棒（数字の % は出さない） */
+${place(SC('pbr_steps'), '16px', 90, 'calc(100% - 32px)', 8)}
+${progressBar(SC('pbr_steps'))}
+/* 1日の平均・これまでの合計（2つ並び。上に区切りの線） */
+#${SC('R3_C2')} { position: relative !important; width: 100% !important; height: 76px !important; display: flex !important; flex-direction: row !important; }
+#${SC('R3_C2')}::before { content: ''; position: absolute; left: 16px; right: 16px; top: 0; height: 1px; background: var(--myapp-border); }
+:is(#${SC('R3_C2_R1')}, #${SC('R3_C2_R2')}) { width: 50% !important; height: 76px !important; }
+:is(#${SC('R3_C2_R1')}, #${SC('R3_C2_R2')}) :is(.tcc-tile, .tcc-panel, .tcc-panel-body) { width: 100% !important; height: 76px !important; }
+${[
+  ['lbl21', 'lbl_ave_all_steps', 'lbl24'],
+  ['lbl17', 'lbl_sum_all_steps', 'lbl20'],
+]
+  .map(
+    ([title, num, unit]) => `${place(SC(title), '16px', 14, 'calc(100% - 24px)', 18)}
+${text(SC(title), 13, { muted: true })}
+${place(SC(num), '16px', 34, 'calc(100% - 52px)', 28)}
+#${SC(num)} { right: auto !important; }
+${text(SC(num), 20, { bold: true })}
+#${SC(num)} .tcc-label-text { font-variant-numeric: tabular-nums; }
+${place(SC(unit), '80px', 40, '20px', 20)}
+${text(SC(unit), 13, { muted: true })}`,
+  )
+  .join('\n')}
+
+/* 2枚目: カレンダー */
+#${SC('R4')}, #${SC('R4')} :is(.tcc-tile, .tcc-panel, .tcc-panel-body) { height: ${CAL_HEIGHT}px !important; }
+${['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+  .map((day, col) => `${place(SC(`lbl_${day}`), calLeft(col), 14, CAL_WIDTH, 20)}
+${text(SC(`lbl_${day}`), 12, { muted: true, align: 'center' })}
+#${SC(`lbl_${day}`)}, #${SC(`lbl_${day}`)} * { border: none !important; background: transparent !important; }`)
+  .join('\n')}
+/* 日付のマス（押すと、その週の歩数入力が開く）。日付は上、歩数は下（歩数のラベルは押せない飾り） */
+#${SC('blank3_body')} > .tcc-component.btn[data-myapp-row] { height: ${CAL_CELL}px !important; }
+${[0, 1, 2, 3].map((r) => `#${SC('blank3_body')} > .tcc-component.btn[data-myapp-row="${r}"] { top: ${CAL_TOP + r * CAL_PITCH}px !important; }`).join('\n')}
+${[0, 1, 2, 3, 4, 5, 6].map((c) => `#${SC('blank3_body')} > .tcc-component.btn[data-myapp-col="${c}"] { left: ${calLeft(c)} !important; right: auto !important; width: ${CAL_WIDTH} !important; }`).join('\n')}
+#${SC('blank3_body')} > .tcc-component.btn[data-myapp-row] :is(.tcc-btn-group, .tcc-btn) {
+  width: 100% !important;
+  height: 100% !important;
+}
+#${SC('blank3_body')} > .tcc-component.btn[data-myapp-row] .tcc-btn {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  padding: 10px 0 0 !important;
+  border: none !important;
+  border-radius: 14px !important;
+  background: var(--myapp-inset) !important;
+  box-shadow: none !important;
+  color: var(--myapp-text) !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+  white-space: nowrap !important;
+}
+/* 月の初めと、いちばん初めのマスは「12/1」のように月も出すので、字を小さく */
+#${SC('blank3_body')} > .tcc-component.btn[data-myapp-md] .tcc-btn { font-size: 13px !important; padding-top: 12px !important; }
+/* 今日は差し色の輪、これからの日は薄く */
+#${SC('blank3_body')} > .tcc-component.btn[data-myapp-today] .tcc-btn { box-shadow: inset 0 0 0 2px var(--myapp-accent) !important; color: var(--myapp-accent) !important; }
+#${SC('blank3_body')} > .tcc-component.btn[data-myapp-future] .tcc-btn { color: var(--myapp-text2) !important; font-weight: 400 !important; }
+${Array.from({ length: 28 }, (_, i) => `${place(SC(`lbl_daily_steps_${i}`), calLeft(i % 7), CAL_TOP + Math.floor(i / 7) * CAL_PITCH + 34, CAL_WIDTH, 18)}`).join('\n')}
+/* 日付のボタンより上に出す（ボタンの上に重ねる。押したときはボタンに届く） */
+#${SC('blank3_body')} > [id^="${SC('lbl_daily_steps_')}"] { pointer-events: none !important; z-index: 60 !important; }
+#${SC('blank3_body')} > [id^="${SC('lbl_daily_steps_')}"] :is(.tcc-label, .tcc-label-text) {
+  width: 100% !important;
+  height: 100% !important;
+  font-size: 11px !important;
+  line-height: 18px !important;
+  text-align: center !important;
+  color: var(--myapp-text2) !important;
+  font-variant-numeric: tabular-nums;
+  overflow: visible !important;
+}
+#${SC('blank3_body')} > [id^="${SC('lbl_daily_steps_')}"] i { display: none !important; }
+#${SC('blank3_body')} > [id^="${SC('lbl_daily_steps_')}"][data-myapp-future] { visibility: hidden !important; }
+/* 歩数のある日は、字を濃く */
+#${SC('blank3_body')} > [id^="${SC('lbl_daily_steps_')}"][data-myapp-has] .tcc-label-text { color: var(--myapp-text) !important; font-weight: 600 !important; }
+/* カレンダーの下の説明 */
+#${SC('blank3_body')}::after {
+  content: '日付を押すと、その週の歩数を入れられます';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: ${CAL_TOP + 3 * CAL_PITCH + CAL_CELL + 16}px;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+  color: var(--myapp-text2);
+}
+
+/* 目標を設定する: カードの下の、灰色のカプセル（閉じるは左上の ‹） */
+#${SC('R2')} { order: 9; height: 72px !important; }
+#${SC('R2')} :is(.tcc-tile, .tcc-panel, .tcc-panel-body) { height: 72px !important; }
+#${SC('targetStep_btn')} { left: 16px !important; right: auto !important; top: 16px !important; width: calc(100% - 32px) !important; height: 48px !important; }
+${fillButton(SC('targetStep_btn'))}
+`;
+
+// 歩数の記録: 日付のマスに、元の並び（行・列）と、今日・これからの日の印を付ける。歩数のある日にも印。数字の後ろの「歩」を置く
+const STEP_CAL_JS = `
+  function stepCalendar() {
+    var body = document.getElementById('${SC('blank3_body')}');
+    if (!body) return;
+    var now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var mark = function (el, name, on) { if (el.hasAttribute(name) !== on) el.toggleAttribute(name, on); };
+    var future = {}; // 「行,列」→ これからの日か（その日の歩数のラベルにも印を付けるため）
+    body.querySelectorAll(':scope > [id^="${SC('btn_date')}"]').forEach(function (b) {
+      if (!b.hasAttribute('data-myapp-row')) {
+        var top = parseInt(b.style.top, 10);
+        var left = parseInt(b.style.left, 10);
+        if (isNaN(top) || isNaN(left)) return;
+        b.setAttribute('data-myapp-row', String(Math.max(0, Math.min(3, Math.round((top - 45) / 90)))));
+        b.setAttribute('data-myapp-col', String(Math.max(0, Math.min(6, Math.round((left - 15) / 55)))));
+      }
+      // 日付は「日」だけを出す（月の初めと、いちばん初めのマスは「12/1」）。元の「11/17」は印に取っておく
+      var a = b.querySelector('.tcc-btn');
+      if (!a) return;
+      var shown = (a.textContent || '').trim();
+      if (/^\\d{1,2}\\/\\d{1,2}$/.test(shown) && b.getAttribute('data-myapp-date') !== shown) b.setAttribute('data-myapp-date', shown);
+      var m = /^(\\d{1,2})\\/(\\d{1,2})$/.exec(b.getAttribute('data-myapp-date') || '');
+      if (!m) return;
+      var md = +m[2] === 1 || (b.getAttribute('data-myapp-row') === '0' && b.getAttribute('data-myapp-col') === '0');
+      var label = md ? (+m[1]) + '/' + (+m[2]) : String(+m[2]);
+      if (shown !== label) a.textContent = label;
+      mark(b, 'data-myapp-md', md);
+      b.setAttribute('aria-label', (+m[1]) + '月' + (+m[2]) + '日');
+      var d = new Date(today.getFullYear(), +m[1] - 1, +m[2]);
+      if (d - today > 180 * 864e5) d.setFullYear(d.getFullYear() - 1);
+      if (today - d > 180 * 864e5) d.setFullYear(d.getFullYear() + 1);
+      mark(b, 'data-myapp-today', d.getTime() === today.getTime());
+      mark(b, 'data-myapp-future', d > today);
+      future[b.getAttribute('data-myapp-row') + ',' + b.getAttribute('data-myapp-col')] = d > today;
+    });
+    // その日の歩数（lbl_daily_steps_0〜27 は、左上から右へ、週ごとの順）。これからの日は出さない
+    body.querySelectorAll(':scope > [id^="${SC('lbl_daily_steps_')}"]').forEach(function (l) {
+      var i = parseInt(l.id.slice(l.id.lastIndexOf('_') + 1), 10);
+      var n = parseInt(((l.textContent || '').replace(/[^0-9]/g, '')), 10) || 0;
+      mark(l, 'data-myapp-has', n > 0);
+      mark(l, 'data-myapp-future', future[Math.floor(i / 7) + ',' + (i % 7)] === true);
+    });
+    // 「目標 10,000 歩」: 「目標」を数字のすぐ左に（数字の長さは目標で変わるので、測って置く）
+    var goal = document.querySelector('#${SC('lbl_step_goal')} .tcc-label-text');
+    var goalLabel = document.getElementById('${SC('lbl27')}');
+    if (goal && goalLabel) {
+      var range = document.createRange();
+      range.selectNodeContents(goal);
+      var w = range.getBoundingClientRect().width;
+      var right = Math.round(33 + w + 6) + 'px';
+      if (w && goalLabel.style.getPropertyValue('right') !== right) goalLabel.style.setProperty('right', right, 'important');
+    }
   }
 `;
 
@@ -1031,10 +1352,16 @@ ${HEALTH_RESULT_CSS}
 
   // Walk the Talk: ポイント → 次の目的地の写真 → 歩数の数字（灰色の面）→ 登録ボタン
   YIF_walk_the_talk: {
-    mobileForms: ['mainMenu_id_2026Walk', 'ranking_id_2026Walk', 'stepGoalSet_id_2026Walk'],
-    titles: { ranking_id_2026Walk: 'ランキング', stepGoalSet_id_2026Walk: '目標歩数の設定' },
-    // 平均歩数の見出しの「１日」（全角の数字）を、ほかと同じ半角に
-    relabel: { mainMenu_id_2026Walk_lbl_word_average: 'リンクレア社員の1日の平均歩数' },
+    mobileForms: ['mainMenu_id_2026Walk', 'ranking_id_2026Walk', 'stepGoalSet_id_2026Walk', 'stepCount_id_2026Walk'],
+    titles: { ranking_id_2026Walk: 'ランキング', stepGoalSet_id_2026Walk: '目標歩数の設定', stepCount_id_2026Walk: '歩数の記録' },
+    // 平均歩数の見出しの「１日」（全角の数字）を、ほかと同じ半角に。歩数の記録の曜日は、歩数入力と同じ日本語に
+    relabel: {
+      mainMenu_id_2026Walk_lbl_word_average: 'リンクレア社員の1日の平均歩数',
+      [SC('lbl21')]: '1日の平均',
+      ...Object.fromEntries(
+        (['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const).map((day, i) => [SC(`lbl_${day}`), '月火水木金土日'.charAt(i)]),
+      ),
+    },
     primary: ['stepGoalSet_id_2026Walk_btn2'],
     // 週の歩数の入力（weeklyStepCount）: 数字のキーボードにする
     numeric: WEEK_DAYS.map((d) => `${WEEKLY}_num_steps_${d}`),
@@ -1045,12 +1372,23 @@ ${HEALTH_RESULT_CSS}
     // ランキング: 更新日の曜日が合っていないことがある（2026/11/13(日) など）。日付から曜日を出し直し、「時点分」は「時点」に
     script: `
       ${HEALTH_STEPS_JS}
+      ${STEP_CAL_JS}
+      ${WEEKLY_JS}
       window.__myappAppUpdate = function () {
+        weeklySheet();
         healthSteps();
+        stepCalendar();
         // 歩数のカード: 単位の「歩」を、カードの右の端ではなく、数字のすぐ後ろに置く（数字の長さは毎日変わるので、測って置く）
-        [['lbl_varia_day_step_goal_number', 'lbl_word_walk_big_1'], ['lbl_variable_sum_step_number', 'lbl_word_walk_big_2']].forEach(function (pair) {
-          var num = document.getElementById('mainMenu_id_2026Walk_' + pair[0]);
-          var unit = document.getElementById('mainMenu_id_2026Walk_' + pair[1]);
+        [
+          ['mainMenu_id_2026Walk_lbl_varia_day_step_goal_number', 'mainMenu_id_2026Walk_lbl_word_walk_big_1'],
+          ['mainMenu_id_2026Walk_lbl_variable_sum_step_number', 'mainMenu_id_2026Walk_lbl_word_walk_big_2'],
+          ['${SC('lbl_sum_week_steps')}', '${SC('lbl18')}'],
+          ['${SC('lbl_ave_all_steps')}', '${SC('lbl24')}'],
+          ['${SC('lbl_sum_all_steps')}', '${SC('lbl20')}'],
+          ['${WK('lbl_sum_steps')}', '${WK('lbl24')}'],
+        ].forEach(function (pair) {
+          var num = document.getElementById(pair[0]);
+          var unit = document.getElementById(pair[1]);
           var text = num && num.querySelector('.tcc-label-text');
           if (!text || !unit) return;
           var range = document.createRange();
@@ -1078,6 +1416,8 @@ ${HEALTH_RESULT_CSS}
       mainMenu_id_2026Walk: ['mainMenu_id_2026Walk_btn_walk'],
       // 目標歩数の設定: 「保存」は、画面の下に浮かせた青いボタンに（閉じるのは、左上の ‹）
       stepGoalSet_id_2026Walk: ['stepGoalSet_id_2026Walk_btn2'],
+      // 歩数入力: 「閉じる」と「保存」（保存は青）は、シートの下の帯に
+      [WEEKLY]: [`${WEEKLY}_btn_close`, `${WEEKLY}_btn_register`],
     },
     panels: [
       'mainMenu_id_2026Walk_lbl_background_1',
@@ -1107,9 +1447,22 @@ ${HEALTH_RESULT_CSS}
       'stepGoalSet_id_2026Walk_img5',
       'stepGoalSet_id_2026Walk_lbl37',
       'stepGoalSet_id_2026Walk_lbl44',
+      // 歩数の記録: 大きな題名（上のヘッダーと同じ）・閉じる（左上の ‹ で戻る）・飾りの印と線・ロゴは出さない
+      SC('R1'),
+      SC('btn_close'),
+      SC('lbl22'),
+      SC('lbl23'),
+      SC('lin1'),
+      SC('lin2'),
+      SC('img1'),
+      // 歩数入力: 旗と的の絵は出さない
+      WK('lbl30'),
+      WK('lbl31'),
     ],
     layout: `
 ${WTT_GOAL_CSS}
+${STEP_CAL_CSS}
+${WEEKLY_CSS}
 ${fullWidth('mainMenu_id_2026Walk')}
 #mainMenu_id_2026Walk,
 #mainMenu_id_2026Walk_R2,

@@ -1359,7 +1359,7 @@ body > .myapp-health-note {
   position: fixed;
   left: 16px;
   right: 16px;
-  bottom: calc(24px + var(--myapp-safe-bottom, 0px));
+  bottom: calc(92px + var(--myapp-safe-bottom, 0px)); /* 下のボタンの帯（保存など）に重ならない高さ */
   z-index: 2147483000;
   padding: 12px 16px;
   border-radius: 16px;
