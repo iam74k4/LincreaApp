@@ -351,6 +351,26 @@ ${rows}
 }
 
 /**
+ * シートの下まで一覧が続くダイアログ（プロジェクト選択・社員選択）: 一覧をシートの下の端まで伸ばす（iOS の一覧と同じ）。
+ * シートの下には、ホームに戻るバーのぶんの余白（sheetDialog の padding）があり、一覧がその上で切れて、
+ * 下にぼんやりした帯が残るため。代わりに、ページ送りの帯（ページが1つなら一覧の最後）を、そのぶん持ち上げる。
+ */
+export function listToBottom(formId: string, gridIds: string[]): string {
+  const safe = 'var(--myapp-safe-bottom, 0px)';
+  return `
+#${formId}_body { padding-bottom: 0 !important; }
+${gridIds
+  .map(
+    (g) => `#${formId} #${g} .TccScrollOuter { height: calc(100% - 52px - ${safe}) !important; }
+#${formId} #${g}[data-myapp-onepage] .TccScrollOuter { height: 100% !important; }
+#${formId} #${g}[data-myapp-onepage] .TccGridBodyScroll { padding-bottom: ${safe} !important; box-sizing: border-box !important; }
+#${formId} #${g} .tcc-pager-navi { height: calc(52px + ${safe}) !important; padding-bottom: ${safe} !important; box-sizing: border-box !important; border-top: 1px solid var(--myapp-border) !important; }`,
+  )
+  .join('\n')}
+`;
+}
+
+/**
  * 検索して選ぶダイアログ（プロジェクト選択・社員選択など）の、上の2段。
  * 1段目: 検索欄と「検索」/ 2段目: Cancel と OK（OK は青く塗る）。下の一覧のための行は sheetDialog で残りの高さにする。
  */

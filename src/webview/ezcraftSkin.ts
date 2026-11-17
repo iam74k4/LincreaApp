@@ -292,6 +292,21 @@ const GENERIC_JS = `
   // 一覧のカード（cardGrid）のために: 値のない欄にしるし（見出しだけが出ないように）、
   // ページが1つしかない一覧にもしるし（« < 1 / 1p > » を出さないように）
   function tidyGrids() {
+    // 名前の中に、文字の番号のまま入っているもの（「ハ&#12442;スキー」= パスキー）は、文字に直して見せる（見せるだけ。データはそのまま）
+    document.querySelectorAll('.TccGridBodyScroll td').forEach(function (td) {
+      if ((td.textContent || '').indexOf('&#') < 0) return;
+      var w = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+      var node;
+      while ((node = w.nextNode())) {
+        if (node.nodeValue.indexOf('&#') < 0) continue;
+        var v = node.nodeValue.replace(/&#(x[0-9a-fA-F]+|\\d+);/g, function (all, code) {
+          var n = code.charAt(0) === 'x' ? parseInt(code.slice(1), 16) : parseInt(code, 10);
+          return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : all;
+        });
+        if (v.normalize) v = v.normalize('NFC');
+        if (v !== node.nodeValue) node.nodeValue = v;
+      }
+    });
     document.querySelectorAll('.TccGridBodyScroll td').forEach(function (td) {
       var blank = !(td.textContent || '').trim() && !td.querySelector('input:checked, img, i');
       if (td.hasAttribute('data-myapp-blank') !== blank) td.toggleAttribute('data-myapp-blank', blank);
@@ -511,6 +526,13 @@ const GENERIC_JS = `
       back.remove();
     }
   }
+
+  // ダイアログの中の一覧（プロジェクト選択・作業内訳など）: EZCraft の表は指の動きを自分で受け取って、少しずつしか動かさない
+  // （500pt なぞっても 120pt ほど）。指の動きは EZCraft に渡さず、iOS のふつうのスクロール（勢いで流れる）にする
+  window.addEventListener('touchmove', function (e) {
+    var t = e.target;
+    if (t && t.closest && t.closest('.tcc-modal .tcc-component.grid .TccGridBodyScroll')) e.stopPropagation();
+  }, { capture: true, passive: true });
 
   // 必須の印（＊）を、欄の右の外から、その欄の見出し（同じ高さの左、またはすぐ上）の後ろに移す。
   // EZCraft は場面によって必須を変える（「その他健診機関」を選ぶと健診機関名が必須に）ので、毎回見直す
@@ -865,7 +887,7 @@ const BASE_CSS = `
   min-height: 0 !important;
   overflow: hidden !important;
   box-sizing: border-box !important;
-  padding-bottom: var(--myapp-safe-bottom, 0px) !important; /* ホームに戻るバーのぶん */
+  padding-bottom: 0 !important; /* ホームに戻るバーのぶんは、一覧の下（ページ送りの帯・最後の行の下）で空ける */
 }
 .tcc-modal[id$="_mdl"] .tcc-modal-body > #txtSearch {
   left: 16px !important; top: 12px !important; width: calc(100% - 32px) !important; height: 40px !important;
@@ -884,8 +906,13 @@ const BASE_CSS = `
 }
 .tcc-modal[id$="_mdl"] .tcc-modal-body > #btnOK .tcc-btn { background-color: var(--myapp-accent) !important; color: #FFFFFF !important; }
 .tcc-modal[id$="_mdl"] .tcc-modal-body > #btnOK .tcc-btn i { color: #FFFFFF !important; }
-.tcc-modal[id$="_mdl"] [id$="_mdl_grd"] { left: 0 !important; top: 64px !important; width: 100% !important; height: calc(100% - 64px) !important; border: none !important; }
-.tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccScrollOuter { width: 100% !important; height: calc(100% - 40px) !important; }
+/* 一覧はシートの下の端まで。ページ送りは一覧の下の 56px の帯に（ボタン 44px が切れないように）。
+   ホームに戻るバーのぶんは、ページ送りの帯（ページが1つなら一覧の最後）の下で空ける（下にぼんやりした帯を残さない） */
+/* （ページの番号の欄も ID が _mdl_grd で終わるので、一覧そのもの（.grid）だけに当てる） */
+.tcc-modal[id$="_mdl"] .tcc-component.grid[id$="_mdl_grd"] { left: 0 !important; top: 64px !important; width: 100% !important; height: calc(100% - 64px) !important; border: none !important; }
+.tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccScrollOuter { width: 100% !important; height: calc(100% - 56px - var(--myapp-safe-bottom, 0px)) !important; }
+.tcc-modal[id$="_mdl"] [id$="_mdl_grd"][data-myapp-onepage] .TccScrollOuter { height: 100% !important; }
+.tcc-modal[id$="_mdl"] [id$="_mdl_grd"][data-myapp-onepage] .TccGridBodyScroll { padding-bottom: var(--myapp-safe-bottom, 0px) !important; box-sizing: border-box !important; }
 .tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccGridHeadFixed,
 .tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccGridHeadScroll,
 .tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .TccGridBodyFixed { display: none !important; }
@@ -936,7 +963,24 @@ const BASE_CSS = `
   width: auto !important; max-width: none !important; height: auto !important;
   overflow: visible !important; white-space: normal !important; text-overflow: clip !important; font-size: inherit !important;
 }
-.tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .tcc-pager-navi { width: 100% !important; box-sizing: border-box; padding: 0 16px; }
+.tcc-modal[id$="_mdl"] [id$="_mdl_grd"] .tcc-pager-navi {
+  position: absolute !important;
+  left: 0 !important;
+  top: auto !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: calc(56px + var(--myapp-safe-bottom, 0px)) !important;
+  padding-bottom: var(--myapp-safe-bottom, 0px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box;
+  padding-left: 16px;
+  padding-right: 16px;
+  border-top: 1px solid var(--myapp-border);
+  overflow: visible !important;
+}
+.tcc-modal[id$="_mdl"] [id$="_mdl_grd"][data-myapp-onepage] .tcc-pager-navi { display: none !important; }
 
 /* ダイアログの × は、ライトでもダークでも見える色に */
 .tcc-modal .tcc-modal-quit,

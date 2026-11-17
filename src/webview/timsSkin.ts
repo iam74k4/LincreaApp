@@ -8,7 +8,7 @@
 //
 // どれも見た目を変えるだけで、データの項目と EZCraft の動き（押したときの処理・登録）はそのまま。
 import type { AppSkin } from './appStyles';
-import { cardGrid, fillButton, fillInput, fillLabel, fullWidth, place, row, scoped, searchBox, sheetDialog, text } from './layout';
+import { cardGrid, fillButton, fillInput, fillLabel, fullWidth, listToBottom, place, row, scoped, searchBox, sheetDialog, text } from './layout';
 
 // ---------------------------------------------------------------------------
 // メニュー（frmLTiMSTop）: メニューのカード → お知らせ → 各種申請。タイトル・ロゴ・時計は出さない
@@ -1565,6 +1565,7 @@ ${searchBox('frmSelProj', 'txtQuery')}
 }
 ${cardGrid(S('grdPrj1'), [[4], [1, 2, 3], [6, 7]], { 1: 'No.', 3: '〜', 7: 'チーム' }, { pager: true })}
 ${cardGrid(S('grdPrj2'), [[4], [1, 2, 3], [6, 7]], { 1: 'No.', 3: '〜' }, { pager: true })}
+${listToBottom('frmSelProj', [S('grdPrj1'), S('grdPrj2')])}
 `;
 
 // ---------------------------------------------------------------------------
@@ -1581,6 +1582,7 @@ ${searchBox('frmSelEmp', 'txtEmp')}
 #${E('grdEmp')} { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; }
 #${E('grdEmp')} { border: none !important; border-top: 1px solid var(--myapp-border) !important; border-radius: 0 !important; }
 ${cardGrid(E('grdEmp'), [[2], [1, 3], [5]], {}, { pager: true })}
+${listToBottom('frmSelEmp', [E('grdEmp')])}
 `;
 
 // ---------------------------------------------------------------------------
