@@ -169,6 +169,7 @@ ${
   word-break: break-all;
   text-align: left !important;
   font-size: 13px !important;
+  font-weight: 400 !important;
   color: var(--myapp-text2) !important;
 }
 /* 文の箱は、EZCraft が1行ぶんの高さに決めている。2行目が切れないように、文の長さに合わせる */
@@ -475,14 +476,19 @@ ${['LIT_main_cmb_year', 'LIT_main_cmb_season', 'LIT_main_cmb_exa_name', 'LIT_mai
 #LIT_main_lbl_year .tcc-label-text,
 #LIT_main_lbl_exa_name .tcc-label-text,
 #LIT_main_lbl_last_name .tcc-label-text,
-#LIT_main_lbl_first_name .tcc-label-text { text-align: left !important; letter-spacing: 0 !important; }
-${place('LIT_main_btn_search', '16px', 176, 'calc(50% - 22px)', 48)}
-${place('LIT_main_btn_clear_search', 'calc(50% + 6px)', 176, 'calc(50% - 22px)', 48)}
+#LIT_main_lbl_first_name .tcc-label-text { text-align: left !important; letter-spacing: 0 !important; color: var(--myapp-text2) !important; font-size: 15px !important; }
+/* クリアは左、検索（主な操作）は右に（勤怠の検索と同じ並び） */
+${place('LIT_main_btn_clear_search', '16px', 176, 'calc(50% - 22px)', 48)}
+${place('LIT_main_btn_search', 'calc(50% + 6px)', 176, 'calc(50% - 22px)', 48)}
 ${fillButton('LIT_main_btn_search')}
 ${fillButton('LIT_main_btn_clear_search')}
-#LIT_main_lbl_cond_cnt { left: auto !important; right: 48px !important; top: 240px !important; width: 96px !important; height: 24px !important; }
-#LIT_main_lbl_cont_nin { left: auto !important; right: 16px !important; top: 240px !important; width: 28px !important; height: 24px !important; }
-#LIT_main_lbl_cond_cnt .tcc-label-text { text-align: right !important; }
+/* 「656件」: 数と「件」のあいだをあけない */
+#LIT_main_lbl_cond_cnt { left: auto !important; right: 34px !important; top: 240px !important; width: 96px !important; height: 24px !important; }
+#LIT_main_lbl_cont_nin { left: auto !important; right: 16px !important; top: 240px !important; width: 18px !important; height: 24px !important; }
+#LIT_main_lbl_cond_cnt .tcc-label-text { text-align: right !important; padding-right: 1px !important; }
+#LIT_main_lbl_cont_nin .tcc-label, #LIT_main_lbl_cont_nin .tcc-label-text { padding: 0 !important; text-align: left !important; }
+#LIT_main_lbl_cond_cnt .tcc-label, #LIT_main_lbl_cond_cnt .tcc-label-text,
+#LIT_main_lbl_cont_nin .tcc-label, #LIT_main_lbl_cont_nin .tcc-label-text { color: var(--myapp-text2) !important; font-size: 13px !important; }
 ${fillLabel('LIT_main_lbl_cond_cnt')}
 ${fillLabel('LIT_main_lbl_cont_nin')}
 ${row('LIT_main_grd_exa_list', 272, 380)}
@@ -499,6 +505,12 @@ ${cardGrid('LIT_main_grd_exa_list', [[1], [3], [2]], { 2: '取得年度' })}
 }
 ${row('LIT_main_btn_Execel', 664, 44)}
 ${fillButton('LIT_main_btn_Execel')}
+/* Excel 出力のボタンが出ていない（ふつうの人）ときは、一覧を画面の下の端まで伸ばす（下に空いた場所を残さない）。
+   最後のカードは、ホームに戻るバーの上まで上がる */
+#LIT_main:not(:has(#LIT_main_btn_Execel:not([style*="visibility: hidden"]))) :is(#LIT_main_lit_tab, #LIT_main_lit_tab > .tcc-tab-content, #LIT_main_lit_tab_tabs_0) { overflow: visible !important; }
+/* 一覧の上の端は、画面の上から 287px（ヘッダーの下から）。そこから画面の下の端まで */
+#LIT_main:not(:has(#LIT_main_btn_Execel:not([style*="visibility: hidden"]))) #LIT_main_grd_exa_list { height: max(380px, calc(100vh - 290px)) !important; }
+#LIT_main_grd_exa_list .TccGridBodyScroll { padding-bottom: calc(12px + var(--myapp-safe-bottom, 0px)) !important; box-sizing: border-box !important; }
 `,
   },
 
@@ -598,6 +610,22 @@ ${row('LPJZ_Main_lbl_kome', 90, 32)}
         });
         var n = String(Math.min(shown, 3));
         if (form.getAttribute('data-myapp-notices') !== n) form.setAttribute('data-myapp-notices', n);
+        // 注意書きの1つの文が、2つの部品（lbl8 と lbl16）に分けてある。lbl8 に続けて1つの段落にし、lbl16 は隠す（CSS）
+        var a = document.querySelector('#L_HealthCare_Main_lbl8 .tcc-label-text');
+        var b = document.querySelector('#L_HealthCare_Main_lbl16 .tcc-label-text');
+        if (a && b) {
+          var rest = (b.textContent || '').trim();
+          if (rest && (a.textContent || '').indexOf(rest) < 0) a.textContent = (a.textContent || '').trim() + rest;
+        }
+        // 受診登録のダイアログの題名は「受診登録_本人」と出るので、「受診登録」に
+        document.querySelectorAll('#MC_result_Input_1 .tcc-modal-title, .tcc-modal:has(#MC_result_Input_1) .tcc-modal-title').forEach(function (t) {
+          var w = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+          var node;
+          while ((node = w.nextNode())) {
+            var v = node.nodeValue.replace(/_本人\\s*$/, '');
+            if (v !== node.nodeValue) node.nodeValue = v;
+          }
+        });
       };
     `,
     cards: [
@@ -656,9 +684,10 @@ ${fillButton('L_HealthCare_Main_btnResult_spouse')}
 
 /* 注意書き */
 ${row('L_HealthCare_Main_lbl6', 332, 40)}
-${row('L_HealthCare_Main_lbl8', 380, 40)}
-/* lbl16 は lbl8 の続き（1つの文を2つの部品に分けてある）。あいだをあけずに続ける */
-${row('L_HealthCare_Main_lbl16', 418, 40)}
+/* lbl16 は lbl8 の続き（1つの文を2つの部品に分けてある）。JS が lbl8 に続けて1つの段落にするので、lbl16 は出さない */
+${row('L_HealthCare_Main_lbl8', 380, 80)}
+#L_HealthCare_Main_lbl16 { display: none !important; }
+#L_HealthCare_Main_lbl6 .tcc-label, #L_HealthCare_Main_lbl8 .tcc-label { vertical-align: top !important; }
 
 /* お知らせ（1件を2行に: 区分と日付 / 本文） */
 ${row('L_HealthCare_Main_rpt_notice', 472, 176)}
@@ -712,6 +741,7 @@ ${HEALTH_RESULT_CSS}
   // Walk the Talk: ポイント → 次の目的地の写真 → 歩数の数字（灰色の面）→ 登録ボタン
   YIF_walk_the_talk: {
     mobileForms: ['mainMenu_id_2026Walk', 'ranking_id_2026Walk'],
+    titles: { ranking_id_2026Walk: 'ランキング' },
     emptyGrids: {
       ranking_id_2026Walk_ranking_grd_kojin: 'まだランキングはありません',
       ranking_id_2026Walk_ranking_grd_dantai: 'まだランキングはありません',
@@ -739,6 +769,10 @@ ${HEALTH_RESULT_CSS}
         var d = new Date(+m[1], +m[2] - 1, +m[3]);
         var text = m[1] + '/' + m[2] + '/' + m[3] + '（' + '日月火水木金土'.charAt(d.getDay()) + '）時点';
         if (el.textContent !== text) el.textContent = text;
+        // いつの集計かは、一覧の上の1行（更新の決まりの注意書き）にまとめる（一覧の下に離れて浮かないように。下の行は隠す）
+        var note = document.querySelector('#ranking_id_2026Walk_lbl4 .tcc-label-text');
+        var line = text + '・毎週金曜日 9:00 に更新';
+        if (note && note.textContent !== line) note.textContent = line;
       };
     `,
     // 主な操作（歩数の登録など）は、画面の下に浮かせたガラスのボタンに
@@ -753,8 +787,9 @@ ${HEALTH_RESULT_CSS}
       'mainMenu_id_2026Walk_lin1',
       'mainMenu_id_2026Walk_lin2',
       'mainMenu_id_2026Walk_img_LINCREA',
-      // ランキング: 大きな題名・「閉じる」（左上の ‹ で戻る）・飾りの線・ロゴは出さない
+      // ランキング: 大きな題名（上のヘッダーが「ランキング」）・「閉じる」（左上の ‹ で戻る）・飾りの線・ロゴは出さない
       'ranking_id_2026Walk_R1',
+      'ranking_id_2026Walk_lbl1',
       'ranking_id_2026Walk_btnClose',
       'ranking_id_2026Walk_lin1',
       'ranking_id_2026Walk_img1',
@@ -768,7 +803,8 @@ ${fullWidth('mainMenu_id_2026Walk')}
 #mainMenu_id_2026Walk_R3_C1, #mainMenu_id_2026Walk_blank2 { height: 128px !important; }
 
 /* ポイント */
-${place('mainMenu_id_2026Walk_lbl_word_now_wtt_point', '16px', 16, '200px', 36)}
+/* 「現在のWTTポイント」「0」「Pt」の3つは、文字の下の線（ベースライン）をそろえる（数字の下の線は、上から 58px ほど） */
+${place('mainMenu_id_2026Walk_lbl_word_now_wtt_point', '16px', 29, '200px', 36)}
 ${text('mainMenu_id_2026Walk_lbl_word_now_wtt_point', 15, { muted: true })}
 #mainMenu_id_2026Walk_lbl_wtt_point { left: auto !important; right: 48px !important; top: 8px !important; width: 140px !important; height: 48px !important; }
 #mainMenu_id_2026Walk_lbl_wtt_point,
@@ -776,7 +812,7 @@ ${text('mainMenu_id_2026Walk_lbl_word_now_wtt_point', 15, { muted: true })}
 ${text('mainMenu_id_2026Walk_lbl_wtt_point', 30, { bold: true, align: 'right' })}
 #mainMenu_id_2026Walk_lbl_word_Pt { left: auto !important; right: 16px !important; top: 8px !important; width: 28px !important; height: 48px !important; }
 #mainMenu_id_2026Walk_lbl_word_Pt,
-#mainMenu_id_2026Walk_lbl_word_Pt * { line-height: 56px !important; }
+#mainMenu_id_2026Walk_lbl_word_Pt * { line-height: 72px !important; overflow: visible !important; }
 ${text('mainMenu_id_2026Walk_lbl_word_Pt', 15, { muted: true, align: 'right' })}
 
 /* 次の目的地 */
@@ -827,14 +863,14 @@ ${fullWidth('ranking_id_2026Walk')}
 #ranking_id_2026Walk_R2_C1, #ranking_id_2026Walk_blank4 { height: 28px !important; }
 ${place('ranking_id_2026Walk_lbl4', '16px', 4, 'calc(100% - 32px)', 22)}
 ${text('ranking_id_2026Walk_lbl4', 13, { muted: true })}
-#ranking_id_2026Walk_R3_C1, #ranking_id_2026Walk_blank3 { height: 96px !important; }
-${place('ranking_id_2026Walk_lbl1', '16px', 4, 'calc(100% - 32px)', 32)}
-${text('ranking_id_2026Walk_lbl1', 22, { bold: true })}
-${place('ranking_id_2026Walk_search_box_kojin', '16px', 46, 'calc(50% - 22px)', 40)}
-${place('ranking_id_2026Walk_search_box_dantai', 'calc(50% + 6px)', 46, 'calc(50% - 22px)', 40)}
+#ranking_id_2026Walk_R3_C1, #ranking_id_2026Walk_blank3 { height: 52px !important; }
+${place('ranking_id_2026Walk_search_box_kojin', '16px', 4, 'calc(50% - 22px)', 40)}
+${place('ranking_id_2026Walk_search_box_dantai', 'calc(50% + 6px)', 4, 'calc(50% - 22px)', 40)}
 ${fillInput('ranking_id_2026Walk_search_box_kojin')}
 ${fillInput('ranking_id_2026Walk_search_box_dantai')}
-#ranking_id_2026Walk_R4_C1, #ranking_id_2026Walk_blank5 { height: calc(100vh - 230px) !important; min-height: 420px; }
+/* 一覧は、画面の下の端（ホームに戻るバーの上）まで。いつの集計かは、上の注意書きの行に出す（下の行 R5 は出さない） */
+#ranking_id_2026Walk_R4_C1, #ranking_id_2026Walk_blank5 { height: calc(100vh - 96px - var(--myapp-safe-bottom, 0px)) !important; min-height: 420px; }
+#ranking_id_2026Walk_R5 { display: none !important; }
 #ranking_id_2026Walk_tab1 { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; }
 /* 個人・団体: 画面の幅に収まる切り替えスイッチ（2つを同じ幅で） */
 #ranking_id_2026Walk_tab1 > ul.tcc-tab-head {
@@ -844,7 +880,7 @@ ${fillInput('ranking_id_2026Walk_search_box_dantai')}
 #ranking_id_2026Walk_tab1 > ul.tcc-tab-head > li { flex: 1 1 0 !important; min-width: 0 !important; }
 #ranking_id_2026Walk_tab1 > ul.tcc-tab-head a { display: block !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; text-align: center; padding-left: 0 !important; padding-right: 0 !important; }
 #ranking_id_2026Walk_ranking_grd_kojin,
-#ranking_id_2026Walk_ranking_grd_dantai { left: 16px !important; top: 8px !important; width: calc(100% - 32px) !important; height: calc(100% - 64px) !important; }
+#ranking_id_2026Walk_ranking_grd_dantai { left: 16px !important; top: 8px !important; width: calc(100% - 32px) !important; height: calc(100% - 16px) !important; }
 ${cardGrid('ranking_id_2026Walk_ranking_grd_kojin', [[2], [1, 3, 8], [9, 10]], { 1: '順位', 3: 'ポイント', 8: '合計歩数', 9: '拠点', 10: 'チーム' }, { pager: true })}
 ${cardGrid('ranking_id_2026Walk_ranking_grd_dantai', [[2], [1, 3, 5]], { 1: '順位', 3: '平均ポイント', 5: '合計歩数' }, { pager: true })}
 #ranking_id_2026Walk_R5_C1, #ranking_id_2026Walk_blank2 { height: 36px !important; }

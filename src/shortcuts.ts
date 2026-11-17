@@ -34,7 +34,7 @@ export const SHORTCUTS: Shortcut[] = [
     key: 'tims-attendance',
     title: '勤務表',
     subtitle: '毎日の登録',
-    symbol: { ios: 'calendar', android: 'calendar_month', web: 'calendar_month' },
+    symbol: { ios: 'calendar.badge.clock', android: 'calendar_month', web: 'calendar_month' },
     color: '#007AFF',
     ...TIMS,
     steps: ['frmLTiMSTop_btnAttendance'],

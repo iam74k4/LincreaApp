@@ -257,7 +257,7 @@ export default function MyAppsScreen() {
         ListHeaderComponent={
           apps ? (
             <View>
-              {shortcuts.length > 0 && <Text style={styles.sectionTitle}>よく使う</Text>}
+              {shortcuts.length > 0 && <Text style={[styles.sectionTitle, styles.firstSectionTitle]}>よく使う</Text>}
               {shortcuts.length > 0 && (
                 <View style={styles.shortcuts}>
                   {shortcuts.map((shortcut) => (
@@ -272,7 +272,7 @@ export default function MyAppsScreen() {
                         {pending?.key === shortcut.key ? (
                           <ActivityIndicator size="small" color="#FFFFFF" />
                         ) : (
-                          <SymbolView name={shortcut.symbol} size={17} tintColor="#FFFFFF" />
+                          <SymbolView name={shortcut.symbol} size={18} weight="semibold" tintColor="#FFFFFF" />
                         )}
                       </View>
                       <View style={styles.shortcutText}>
@@ -365,6 +365,10 @@ function createStyles(c: Colors) {
       paddingHorizontal: 20,
       paddingTop: 8,
       paddingBottom: 8,
+    },
+    // 大きな見出し（マイアプリ）のすぐ下の小見出しは、「アプリ」の上と同じくらい間をあける
+    firstSectionTitle: {
+      paddingTop: 16,
     },
     shortcuts: {
       flexDirection: 'row',

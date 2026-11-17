@@ -308,7 +308,8 @@ const GENERIC_JS = `
       }
     });
     document.querySelectorAll('.TccGridBodyScroll td').forEach(function (td) {
-      var blank = !(td.textContent || '').trim() && !td.querySelector('input:checked, img, i');
+      // 「----」（値なし）も、空として扱う（見出しだけが「合計 ----」と出ないように）
+      var blank = !/[^\\s\\-－―ー]/.test(td.textContent || '') && !td.querySelector('input:checked, img, i');
       if (td.hasAttribute('data-myapp-blank') !== blank) td.toggleAttribute('data-myapp-blank', blank);
     });
     document.querySelectorAll('.tcc-component.grid').forEach(function (grid) {
@@ -527,17 +528,41 @@ const GENERIC_JS = `
     }
   }
 
-  // ダイアログの中の一覧（プロジェクト選択・作業内訳など）: EZCraft の表は指の動きを自分で受け取って、少しずつしか動かさない
-  // （500pt なぞっても 120pt ほど）。指の動きは EZCraft に渡さず、iOS のふつうのスクロール（勢いで流れる）にする
+  // 一覧（表）: EZCraft の表は指の動きを自分で受け取って、少しずつしか動かさない（500pt なぞっても 120pt ほど。
+  // 給与明細の一覧・資格取得者の検索・プロジェクト選択など）。指の動きは EZCraft に渡さず、iOS のふつうのスクロール
+  // （勢いで流れる。一覧がページといっしょに流れる画面では、ページのスクロール）にする
   window.addEventListener('touchmove', function (e) {
     var t = e.target;
-    if (t && t.closest && t.closest('.tcc-modal .tcc-component.grid .TccGridBodyScroll')) e.stopPropagation();
+    if (t && t.closest && t.closest('.tcc-component.grid .TccGridBodyScroll')) e.stopPropagation();
   }, { capture: true, passive: true });
+
+  // 検索して選ぶダイアログ（_mdl）は、開くと EZCraft が検索欄にフォーカスを当てる。キーボードと入力の補助の帯が
+  // 一覧の半分を隠すので、開いた直後のフォーカスは外す（探したいときは、検索欄を押せばキーボードが出る）
+  var mdlSeen = [];
+  function quietDialogs() {
+    var open = Array.prototype.filter.call(document.querySelectorAll('.tcc-modal[id$="_mdl"]'), function (m) { return m.offsetParent !== null; });
+    open.forEach(function (m) {
+      if (mdlSeen.indexOf(m) >= 0) return;
+      mdlSeen.push(m);
+      var at = Date.now();
+      [50, 300, 700].forEach(function (ms) {
+        setTimeout(function () {
+          var a = document.activeElement;
+          if (a && a.tagName === 'INPUT' && m.contains(a) && lastTouchAt < at) a.blur();
+        }, ms);
+      });
+    });
+    mdlSeen = mdlSeen.filter(function (m) { return open.indexOf(m) >= 0; });
+  }
+  var lastTouchAt = 0;
+  document.addEventListener('touchstart', function () { lastTouchAt = Date.now(); }, { capture: true, passive: true });
 
   // 必須の印（＊）を、欄の右の外から、その欄の見出し（同じ高さの左、またはすぐ上）の後ろに移す。
   // EZCraft は場面によって必須を変える（「その他健診機関」を選ぶと健診機関名が必須に）ので、毎回見直す
   function requiredMarks() {
     document.querySelectorAll('div.tcc-component.text').forEach(function (field) {
+      // 勤怠の申請のフォーム（.myapp-row に並べ直したもの・有給休暇申請）は、＊ を出さずに「任意」を添える決まりなので、ここでは触らない
+      if (field.closest('.myapp-row, [id^="frmApply"]')) return;
       var required = field.offsetParent !== null && /[＊*]/.test(getComputedStyle(field, '::after').content || '');
       var label = field.__myappReqLabel;
       if (required && !label) {
@@ -546,6 +571,7 @@ const GENERIC_JS = `
         var bestScore = Infinity;
         Array.prototype.forEach.call(field.parentElement.children, function (el) {
           if (!el.classList.contains('lbl') || el.offsetParent === null) return;
+          if ((el.textContent || '').trim().length <= 2) return; // 「〜」「：」のようなつなぎの言葉は見出しではない
           var r = el.getBoundingClientRect();
           var sameRow = Math.abs(r.top - fr.top) < 8 && r.right <= fr.left + 4;
           var above = r.bottom <= fr.top + 2 && fr.top - r.bottom < 16 && Math.abs(r.left - fr.left) < 8;
@@ -563,6 +589,7 @@ const GENERIC_JS = `
   }
 
   function applyConfig() {
+    quietDialogs();
     notices();
     requiredMarks();
     calendarSheets();
@@ -877,7 +904,7 @@ const BASE_CSS = `
   box-sizing: border-box;
 }
 .tcc-modal[id$="_mdl"] .tcc-modal-title { font-size: 16px !important; font-weight: 600 !important; }
-.tcc-modal[id$="_mdl"] .tcc-modal-quit { width: 44px !important; height: 44px !important; font-size: 24px !important; }
+/* 閉じる（×）は、ほかのダイアログと同じ丸いボタン（GLASS_CSS）。押せる広さは、まわりの余白で取る */
 .tcc-modal[id$="_mdl"] .tcc-modal-footer { display: none !important; }
 .tcc-modal[id$="_mdl"] .tcc-modal-body {
   position: relative !important;
@@ -1027,6 +1054,8 @@ const BASE_CSS = `
 .tcc-component .icon-lt:not(input),
 .tcc-component .icon-rt:not(input) *,
 .tcc-component .icon-lt:not(input) * { background-color: transparent !important; background-image: none !important; }
+/* 欄と印のあいだの縦の線（パソコン向けの区切り）は出さない。印は欄の中の飾りとして見せる */
+.tcc-component div.icon-rt:not(input), .tcc-component div.icon-lt:not(input) { border-left: none !important; border-right: none !important; }
 
 /* 入力欄の中の薄い説明（プレースホルダー）は、入れた値と見分けがつくように灰色に（読める濃さは残す） */
 input::placeholder,
@@ -1050,11 +1079,15 @@ div.tcc-component.chkbox input[type="checkbox"]:checked + label::before {
   border-color: var(--myapp-accent) !important;
 }
 div.tcc-component.chkbox input[type="checkbox"]:checked + label::after { border-color: #FFFFFF !important; }
+/* チェックボックス・ラジオの文字と、欄の右の印（カレンダー・▼）は、EZCraft が決まった濃い灰色（rgb(76,79,83)）で塗る。
+   ダークでは地に溶けて読めないので、テーマの色に */
+div.tcc-component.chkbox label, div.tcc-component.radioBtn label { color: var(--myapp-text) !important; }
+div.tcc-component div.icon-rt, div.tcc-component div.icon-rt i { color: var(--myapp-text2) !important; }
 /* ラジオボタンの組（.tcc-component.radio）: パソコン向けの細い四角い枠をやめて、入力欄と同じ角の丸い面にする（どの画面でも同じ見た目に） */
 div.tcc-component.radio {
   border: none !important;
   border-radius: 16px !important;
-  background-color: var(--myapp-field) !important;
+  background-color: var(--myapp-inset) !important; /* field だと、ダークではシートの地と同じ色になって面が消える */
   box-sizing: border-box !important;
 }
 /* 必須の印（EZCraft が欄の右の外に ::after で付ける「＊」）: 画面の端にはみ出し、欄の印とも重なるので、欄の見出しの後ろに移す
@@ -1352,7 +1385,7 @@ body > .myapp-bottom-bar {
   line-height: 1 !important;
   padding: 0 !important;
   border-radius: 50% !important;
-  background-color: var(--myapp-fill) !important;
+  background-color: var(--myapp-inset) !important; /* fill だと、ダークでは一覧の地と同じ色になって丸が消える */
   color: var(--myapp-accent-text) !important;
   font-size: 20px !important;
   font-weight: 600 !important;
@@ -1705,6 +1738,8 @@ div.tcc-tab > ul.tcc-tab-head > li.active > a {
   font-size: 0 !important;
   transition: background-color 0.2s;
 }
+/* ダークでは、切ったときの溝が地に溶けて見えないので、iOS と同じ明るさに */
+:root[data-myapp-theme="dark"] .tcc-component.switch > label > i { background: rgba(120, 120, 128, 0.36) !important; }
 .tcc-component.switch > label > i::before {
   content: '' !important;
   position: absolute !important;
@@ -1817,6 +1852,9 @@ body > .myapp-bottom-bar {
   border-bottom: none !important;
 }
 .tcc-modal .tcc-modal-title, .tcc-msg-box .tcc-msg-box-title { font-weight: 600 !important; }
+/* ダイアログの後ろの暗さは、アプリのシート（今月のプロジェクトなど）と同じ 28% に。
+   アプリは、ダイアログが開いているあいだ、上のヘッダーも同じだけ暗くする（src/components/EzcraftWebView.tsx の DIM） */
+.tcc-modal-back, .tcc-msg-box-back, .tcc-popover-back { background: rgba(0, 0, 0, 0.28) !important; }
 /* 閉じる（×）は、丸いボタンに */
 .tcc-modal .tcc-modal-quit {
   width: 36px !important;

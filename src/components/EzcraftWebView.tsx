@@ -51,6 +51,15 @@ type Props = {
 /** 登録のあとに自動で開く申請の画面を、少し待ってから開く（待つあいだにページが閉じたら、閉じてから開く） */
 const APPLY_DELAY_MS = 700;
 
+/** ダイアログの後ろの暗さ（ページの .tcc-modal-back などと同じ。src/webview/ezcraftSkin.ts） */
+const DIM = 0.28;
+/** #RRGGBB の色に、黒を DIM だけ重ねた色 */
+function dimmed(hex: string): string {
+  const n = parseInt(hex.slice(1, 7), 16);
+  const ch = (v: number) => Math.round(v * (1 - DIM));
+  return `rgb(${ch((n >> 16) & 255)}, ${ch((n >> 8) & 255)}, ${ch(n & 255)})`;
+}
+
 export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = null, prefill = null, sheet = false }: Props) {
   const { signOut } = useSession();
   const c = useColors();
@@ -205,7 +214,15 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
 
   return (
     <>
-      <Stack.Screen options={{ title: title || pageTitle }} />
+      <Stack.Screen
+        options={{
+          title: title || pageTitle,
+          // ページの中でダイアログやシートが開いているあいだは、上のヘッダーも、ページの後ろと同じだけ暗くする
+          // （ページの暗い面はヘッダーの下からしか届かないので、ヘッダーだけ明るく浮いて見えないように）
+          headerStyle: { backgroundColor: modalOpen ? dimmed(c.background) : c.background },
+          headerTitleStyle: { color: modalOpen ? dimmed(c.text) : c.text },
+        }}
+      />
       <WebView
         ref={webRef}
         key={reloadKey}

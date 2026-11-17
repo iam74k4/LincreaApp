@@ -20,7 +20,7 @@ export type KnownApp = {
 
 export const KNOWN_APPS: Record<string, KnownApp> = {
   L_Tims: {
-    name: '勤怠（TiMS）',
+    name: '勤怠 TiMS',
     subtitle: '勤務表・各種申請',
     symbol: { ios: 'clock.fill', android: 'schedule', web: 'schedule' },
     background: '#FF9500',
@@ -29,7 +29,7 @@ export const KNOWN_APPS: Record<string, KnownApp> = {
   L_Payslip: {
     name: '給与・賞与明細',
     subtitle: '毎月の明細を見る',
-    symbol: { ios: 'yensign', android: 'currency_yen', web: 'currency_yen' },
+    symbol: { ios: 'yensign.circle.fill', android: 'currency_yen', web: 'currency_yen' },
     background: '#34C759',
     order: 2,
   },
