@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'rea
 import { ActivityIndicator, Alert, Linking, StyleSheet, Text, View } from 'react-native';
 import { router, Stack, useFocusEffect, usePreventRemove } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
@@ -20,7 +21,9 @@ import { fileName, openFile, saveIncoming } from '../files';
 import { advanceApplyQueue, applyQueueActive, openApplication, startApplyQueue } from '../openShortcut';
 import { useSession } from '../session/SessionContext';
 import { useColors } from '../theme';
-import { autoClickJs, BRIDGE_JS, childClosedJs, openerStubJs, parseBridgeMessage, restoreScrollJs } from '../webview/bridge';
+import { GlassButton } from './GlassButton';
+import { healthAvailable, stepsOn } from '../health';
+import { autoClickJs, BRIDGE_JS, childClosedJs, healthFlagJs, openerStubJs, parseBridgeMessage, restoreScrollJs, stepsReplyJs } from '../webview/bridge';
 import { bootJs, buildSkinScript, SHOW_PAGE_JS } from '../webview/ezcraftSkin';
 import { appDataKeyOfUrl, rememberAppData } from '../webview/appDataCache';
 import { depositHandoff, type Handoff } from '../webview/handoff';
@@ -64,7 +67,7 @@ function dimmed(hex: string): string {
 }
 
 export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = null, prefill = null, sheet = false }: Props) {
-  const { signOut } = useSession();
+  const { signOut, reauthenticate } = useSession();
   const c = useColors();
   const insets = useSafeAreaInsets(); // 画面の下の、ホームに戻るバーの高さ。ページの下に固定するものを、その上に置く
   const expiredShown = useRef(false);
@@ -85,6 +88,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const [initApp, setInitApp] = useState(() => cachedInitApp(uri));
   // ページが整ったか。整うまでは中身を隠し（bootJs）、読み込み中の印を出しておく（整える前の見た目が一瞬見えないように）
   const [shown, setShown] = useState(false);
+  // ページを読み込めなかったときに出す文（通信できない・サーバーが答えない）。「もう一度読み込む」で消す
+  const [failure, setFailure] = useState<LoadFailure | null>(null);
   const webRef = useRef<ComponentRef<typeof WebView>>(null);
   const scroll = useRef({ y: 0, target: '' }); // いまのスクロール位置（ページが知らせてくる。target は動いた箱）
   const [restoreTo, setRestoreTo] = useState({ y: 0, target: '' }); // 読み直したあとに戻すスクロール位置
@@ -147,6 +152,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // ページを丸ごと読み直す（白い画面と読み込み中の印が、数秒出る）
   const reloadPage = useCallback(() => {
     setRestoreTo(scroll.current); // 読み直しても、見ていた位置に戻す
+    setFailure(null);
     setShown(false);
     setInitApp(cachedInitApp(uri));
     setReloadKey((k) => k + 1);
@@ -207,6 +213,23 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     }
   };
 
+  // ログインが切れた（ログイン画面に飛ばされた・401 が返った）。Face ID で入り直せたら、この画面を読み直して続ける。
+  // できなければ、アプリ側もログアウトして、ログイン画面に戻す
+  const handleExpired = () => {
+    if (expiredShown.current) return;
+    expiredShown.current = true;
+    setShown(false); // EZCraft のログイン画面や 401 のページは見せない（読み込み中の印を出しておく）
+    reauthenticate().then((ok) => {
+      if (ok) {
+        expiredShown.current = false;
+        reloadPage();
+        return;
+      }
+      Alert.alert('ログインが切れました', 'もう一度ログインしてください。');
+      signOut();
+    });
+  };
+
   const openWindow = (targetUrl: string, childHandoff: Handoff | null = null) => {
     const next = resolveTarget(targetUrl);
     if (!next) return;
@@ -264,7 +287,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         // 画面の端で引っぱっても、外（何もないところ）を出さない。横のスクロールは、ページの側で画面の幅に切る（ezcraftSkin の BASE_CSS）
         bounces={false}
         overScrollMode="never"
-        injectedJavaScriptBeforeContentLoaded={bootJs(c.background) + openerStubJs(handoff) + prefillJs(prefill) + initAppJs(initApp)}
+        injectedJavaScriptBeforeContentLoaded={bootJs(c.background) + openerStubJs(handoff) + prefillJs(prefill) + initAppJs(initApp) + healthFlagJs(HEALTH)}
         injectedJavaScript={safeAreaJs(insets.bottom) + BRIDGE_JS + buildSkinScript(appId) + (autoClick && autoClick.steps.length > 0 ? autoClickJs(autoClick.steps[0], autoClick.ready) : '') + restoreScrollJs(restoreTo)}
         // iOS では onMessage を渡さないと injectedJavaScript が実行されない（react-native-webview の既知の動き）
         onMessage={(e) => {
@@ -276,6 +299,17 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           if (message?.type === 'tick') Haptics.selectionAsync().catch(() => {});
           if (message?.type === 'file') receiveFile(message.base64, message.name, message.mime);
           if (message?.type === 'title') setHeading(message.text);
+          // Walk the Talk: 歩数の登録の欄に入れる、ヘルスケアの歩数（初めてなら、iOS が読んでよいかを聞く）
+          if (message?.type === 'steps') {
+            const { id, day } = message;
+            stepsOn(day).then((steps) => webRef.current?.injectJavaScript(stepsReplyJs(id, steps)));
+          }
+          // 開発中だけ: EZCraft の画面が変わって、見た目の直しが効かなくなった部品がある（黄色い知らせで気づけるように）
+          if (message?.type === 'skinMissing' && __DEV__) {
+            console.warn(
+              `[見た目] ${message.form} に、見た目を直している部品が ${message.ids.length} 個見つかりません。EZCraft の画面が変わったかもしれません: ${message.ids.join(', ')}`,
+            );
+          }
           if (message?.type === 'childRefreshed' && refreshWait.current) {
             clearTimeout(refreshWait.current);
             refreshWait.current = null;
@@ -296,13 +330,41 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           }
         }}
         onLoadStart={() => setModalOpen(false)} // 読み直したら、ダイアログは閉じている
+        // 読み込めなかった（電波がない・サーバーにつながらない）。WebView が出す英語の開発者向けの文の代わりに、
+        // 分かる言葉と「もう一度読み込む」を出す。取り消された読み込み（次のページへ移ったなど）は失敗ではない
+        onError={(e) => {
+          e.preventDefault();
+          const { code } = e.nativeEvent;
+          if (code === NSURL_CANCELLED || code === FRAME_LOAD_INTERRUPTED) return;
+          launchingRef.current = false;
+          setLaunching(false);
+          setFailure(describeLoadError(code));
+        }}
+        // サーバーが「中で問題が起きた」と答えた（HTTP 500 番台）。4xx は EZCraft が自分の画面で知らせるので、そのまま見せる
+        onHttpError={(e) => {
+          const status = e.nativeEvent.statusCode;
+          // ログインが切れていると、EZCraft はアプリの画面の代わりに「401 Authorization Required」を返す
+          if (status === 401) {
+            handleExpired();
+            return;
+          }
+          if (status < 500) return;
+          launchingRef.current = false;
+          setLaunching(false);
+          setFailure({
+            symbol: 'exclamationmark.icloud',
+            title: 'サーバーで問題が起きています',
+            message: `少し待ってから、もう一度読み込んでください（HTTP ${status}）。`,
+          });
+        }}
+        // iPhone のメモリが足りなくなると、裏に回したページの中身を iOS が捨てることがある（そのままだと真っ白）。
+        // 捨てられたら、自動で読み直す（見ていた位置にも戻す）
+        onContentProcessDidTerminate={() => reloadPage()}
         onOpenWindow={(e) => openWindow(e.nativeEvent.targetUrl)} // target="_blank" のリンクなど
         onNavigationStateChange={(nav) => {
-          // ログイン画面に飛ばされた = ログインが切れた。アプリ側もログアウトして、ログイン画面に戻す
-          if (!expiredShown.current && pathOf(nav.url).startsWith('/login')) {
-            expiredShown.current = true;
-            Alert.alert('ログインが切れました', 'もう一度ログインしてください。');
-            signOut();
+          // ログイン画面に飛ばされた = ログインが切れた
+          if (pathOf(nav.url).startsWith('/login')) {
+            handleExpired();
             return;
           }
           // ページの名前（「〇〇 - EZCraft」）から、末尾の「 - EZCraft」を外してヘッダーに出す
@@ -324,8 +386,54 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           </Text>
         </View>
       )}
+      {failure && (
+        <View style={[StyleSheet.absoluteFill, styles.failure, { backgroundColor: c.background }]}>
+          <SymbolView name={{ ios: failure.symbol, android: 'wifi_off', web: 'wifi_off' }} size={44} tintColor={c.textSecondary} />
+          <Text style={[styles.failureTitle, { color: c.text }]} accessibilityRole="header">
+            {failure.title}
+          </Text>
+          <Text style={[styles.failureMessage, { color: c.textSecondary }]}>{failure.message}</Text>
+          <GlassButton onPress={reloadPage} accessibilityLabel="もう一度読み込む" style={styles.failureButton}>
+            <Text style={[styles.failureButtonText, { color: c.onAccent }]}>もう一度読み込む</Text>
+          </GlassButton>
+        </View>
+      )}
     </>
   );
+}
+
+/** ヘルスケアから歩数を読めるか（開発ビルドで、ヘルスケアのある端末） */
+const HEALTH = healthAvailable();
+
+/** 読み込めなかったときに出すもの */
+type LoadFailure = { symbol: 'wifi.slash' | 'exclamationmark.icloud'; title: string; message: string };
+
+// 失敗ではない読み込みの終わり方（iOS の番号）
+const NSURL_CANCELLED = -999; // 読み込みを取り消した（次のページへ移った・同じページを読み直した）
+const FRAME_LOAD_INTERRUPTED = 102; // ページではなくファイルとして受け取った（PDF など。bridge が受け取る）
+
+/** iOS の読み込みの失敗の番号（NSURLError）を、利用者に分かる言葉にする */
+function describeLoadError(code: number): LoadFailure {
+  // 電波がない・機内モード・モバイル通信が切られている
+  if (code === -1009 || code === -1020 || code === -1018) {
+    return {
+      symbol: 'wifi.slash',
+      title: 'インターネットにつながっていません',
+      message: '電波のよい所で、もう一度読み込んでください。',
+    };
+  }
+  if (code === -1001) {
+    return {
+      symbol: 'exclamationmark.icloud',
+      title: 'サーバーの返事がありません',
+      message: '時間がかかりすぎたので、止めました。少し待ってから、もう一度読み込んでください。',
+    };
+  }
+  return {
+    symbol: 'exclamationmark.icloud',
+    title: 'サーバーにつながりません',
+    message: '通信が途中で切れたか、サーバーが止まっています。少し待ってから、もう一度読み込んでください。',
+  };
 }
 
 type Target =
@@ -369,6 +477,31 @@ const styles = StyleSheet.create({
   },
   launchingText: {
     fontSize: 15,
+  },
+  failure: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  failureTitle: {
+    marginTop: 4,
+    fontSize: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  failureMessage: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  failureButton: {
+    marginTop: 12,
+    alignSelf: 'stretch',
+  },
+  failureButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
   },
 });
 

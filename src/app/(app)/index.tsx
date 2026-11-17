@@ -31,7 +31,7 @@ import { sizes, useColors, type Colors } from '../../theme';
 const SEARCH_FROM = 8;
 
 export default function MyAppsScreen() {
-  const { session, signOut } = useSession();
+  const { session, signOut, reauthenticate } = useSession();
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]); // ライト / ダークが切り替わったら作り直す
 
@@ -62,7 +62,14 @@ export default function MyAppsScreen() {
       if (loadingRef.current) return; // 読み込みが重ならないように
       loadingRef.current = true;
       try {
-        const result = await fetchMyApps();
+        let result: MyApp[];
+        try {
+          result = await fetchMyApps();
+        } catch (e) {
+          // ログインが切れていても、Face ID で入り直せたら、もう一度読む
+          if (!(e instanceof SessionExpiredError) || !(await reauthenticate())) throw e;
+          result = await fetchMyApps();
+        }
         if (isActive()) {
           setApps(result);
           setError(null);
@@ -73,7 +80,7 @@ export default function MyAppsScreen() {
         loadingRef.current = false;
       }
     },
-    [handleError],
+    [handleError, reauthenticate],
   );
 
   // この画面が前に出るたびに読み直す。

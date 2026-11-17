@@ -18,6 +18,7 @@ import { SymbolView } from 'expo-symbols';
 import Constants from 'expo-constants';
 
 import { login, LoginError, type Session } from '../auth/api';
+import { biometry, disableFaceId, enableFaceId, faceIdUser, loginWithFaceId, renewFaceIdToken, type Biometry } from '../auth/faceId';
 import { loadRememberedUsername, saveRememberedUsername } from '../auth/rememberedUsername';
 import { GlassButton } from '../components/GlassButton';
 import { sizes, useColors, type Colors } from '../theme';
@@ -42,17 +43,27 @@ export function LoginScreen({ workspaceName, onLoggedIn, onForgotPassword, onLog
   const [showPassword, setShowPassword] = useState(false); // パスワードを見えるようにする（打ち間違いの確認）
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Face ID（Touch ID）。kind はこの端末で使えるもの（使えなければ null）、bioUser は Face ID でログインできる人
+  const [kind, setKind] = useState<Biometry | null>(null);
+  const [bioUser, setBioUser] = useState<string | null>(null);
+  const [useBio, setUseBio] = useState(false); // 「Face ID でログイン」のスイッチ（パスワードでログインしたときに決まる）
 
   // 「次へ」でパスワード欄に移るために、パスワード欄を直接触れるようにしておく
   const passwordRef = useRef<TextInputInstance>(null);
 
-  // ② 開いたとき、前回保存したユーザー名があれば入れておく
+  // ② 開いたとき、前回保存したユーザー名があれば入れておく。Face ID が使えるかも見る
   useEffect(() => {
     let active = true;
     loadRememberedUsername().then((saved) => {
       if (!active || !saved) return;
       setUsername((current) => (current === '' ? saved : current)); // 先に打ち始めていたら上書きしない
       setRememberUsername(true);
+    });
+    Promise.all([biometry(), faceIdUser()]).then(([k, user]) => {
+      if (!active) return;
+      setKind(k);
+      setBioUser(k ? user : null);
+      setUseBio(k !== null && user !== null);
     });
     return () => {
       active = false;
@@ -73,9 +84,17 @@ export function LoginScreen({ workspaceName, onLoggedIn, onForgotPassword, onLog
     setSubmitting(true);
     setError(null);
     try {
-      const session = await login(name, password, rememberUsername);
+      const { session, refreshToken } = await login(name, password, rememberUsername);
       await saveRememberedUsername(rememberUsername ? name : null);
       setPassword(''); // パスワードは画面に残さない
+      // Face ID: スイッチがオンなら、次から Face ID でログインできるようにする（同じ人なら、鍵を新しくするだけ）。
+      // オフなら、前に入れた鍵を消す。Face ID をやめても（顔が合わなくても）、ログインはそのまま進める
+      if (kind && useBio) {
+        if (bioUser === name) await renewFaceIdToken(name, refreshToken);
+        else await enableFaceId(name, refreshToken, kind);
+      } else if (bioUser) {
+        await disableFaceId();
+      }
       onLoggedIn(session);
     } catch (e) {
       if (e instanceof LoginError) {
@@ -89,6 +108,28 @@ export function LoginScreen({ workspaceName, onLoggedIn, onForgotPassword, onLog
             ? `通信でつまずきました: ${detail}`
             : '通信できませんでした。電波のよい所でもう一度お試しください。',
         );
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Face ID でログインする（パスワードは使わない）
+  async function handleFaceId() {
+    if (submitting) return;
+    Keyboard.dismiss();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await loginWithFaceId();
+      if (result.ok) {
+        onLoggedIn(result.session);
+        return;
+      }
+      // やめた・顔が合わなかったときは、何も言わない（パスワードでもログインできる）
+      if (result.message) setError(result.message);
+      if (result.reason === 'reset' || result.reason === 'expired' || result.reason === 'off') {
+        setBioUser(null); // 鍵はもう使えないので、ボタンを消す（スイッチはオンのまま。パスワードでログインすると入れ直す）
       }
     } finally {
       setSubmitting(false);
@@ -186,6 +227,18 @@ export function LoginScreen({ workspaceName, onLoggedIn, onForgotPassword, onLog
               />
             </View>
 
+            {kind && (
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>次から {kind} でログイン</Text>
+                <Switch
+                  value={useBio}
+                  onValueChange={setUseBio}
+                  trackColor={{ true: c.accent }}
+                  accessibilityLabel={`次から ${kind} でログイン`}
+                />
+              </View>
+            )}
+
             {error && (
               <Text style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
                 {error}
@@ -199,6 +252,23 @@ export function LoginScreen({ workspaceName, onLoggedIn, onForgotPassword, onLog
                 <Text style={styles.buttonText}>ログイン</Text>
               )}
             </GlassButton>
+
+            {kind && bioUser && (
+              <Pressable
+                onPress={handleFaceId}
+                disabled={submitting}
+                accessibilityRole="button"
+                accessibilityLabel={`${kind} でログイン`}
+                style={({ pressed }) => [styles.bioButton, (pressed || submitting) && styles.bioButtonPressed]}
+              >
+                <SymbolView
+                  name={kind === 'Face ID' || kind === '顔認証' ? { ios: 'faceid', android: 'face', web: 'face' } : { ios: 'touchid', android: 'fingerprint', web: 'fingerprint' }}
+                  size={22}
+                  tintColor={c.accent}
+                />
+                <Text style={styles.bioButtonText}>{kind} でログイン</Text>
+              </Pressable>
+            )}
 
             <View style={styles.links}>
               <TextLink styles={styles} label="パスワードをお忘れの方はこちら" onPress={onForgotPassword} />
@@ -339,6 +409,24 @@ function createStyles(c: Colors) {
     },
     button: {
       marginTop: 4,
+    },
+    // Face ID でログイン: 2つ目のボタンなので、灰色のカプセルに差し色の文字（ほかの画面の2つ目のボタンと同じ）
+    bioButton: {
+      height: sizes.control,
+      borderRadius: sizes.control / 2,
+      backgroundColor: c.fill,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    bioButtonPressed: {
+      opacity: 0.6,
+    },
+    bioButtonText: {
+      fontSize: 17,
+      fontWeight: '600',
+      color: c.accent,
     },
     buttonText: {
       fontSize: 17,

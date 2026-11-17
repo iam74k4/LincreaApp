@@ -8,7 +8,7 @@
 //
 // どれも見た目を変えるだけで、データの項目と EZCraft の動き（押したときの処理・登録）はそのまま。
 import type { AppSkin } from './appStyles';
-import { cardGrid, fillButton, fillInput, fillLabel, fullWidth, listToBottom, place, row, scoped, searchBox, sheetDialog, text } from './layout';
+import { cardGrid, fillButton, fillInput, fillLabel, fullWidth, listToBottom, place, row, scoped, searchBox, searchField, sheetDialog, text } from './layout';
 
 // ---------------------------------------------------------------------------
 // メニュー（frmLTiMSTop）: メニューのカード → お知らせ → 各種申請。タイトル・ロゴ・時計は出さない
@@ -25,6 +25,11 @@ ${fullWidth('frmLTiMSTop')}
 ${place('frmLTiMSTop_lblUser', '16px', 12, 'calc(100% - 32px)', 24)}
 #frmLTiMSTop_lblUser .tcc-label-text { text-align: left !important; }
 #frmLTiMSTop_lblUser * { font-size: 15px !important; font-weight: 400 !important; color: var(--myapp-text2) !important; }
+/* 人の印と名前のあいだを少し空ける（くっついて見えないように） */
+#frmLTiMSTop_lblUser i { margin-right: 6px !important; }
+/* 名前の行も、小見出し（お知らせ・各種申請）と同じく、画面の左から 20pt に */
+#frmLTiMSTop_lblUser .tcc-label { padding-left: 0 !important; border-left-width: 0 !important; }
+#frmLTiMSTop_lblUser .tcc-label-text { padding-left: 4px !important; }
 ${row('frmLTiMSTop_btnAttendance', 48, 76)}
 /* 説明は、見出しの文字（色の付いた印の右）の下にそろえる */
 ${place('frmLTiMSTop_lbl1', '88px', 86, 'calc(100% - 136px)', 20)}
@@ -33,7 +38,6 @@ ${place('frmLTiMSTop_lbl5', '88px', 174, 'calc(100% - 136px)', 20)}
 ${text('frmLTiMSTop_lbl1', 13, { muted: true })}
 ${text('frmLTiMSTop_lbl5', 13, { muted: true })}
 #frmLTiMSTop_lbl1 .tcc-label, #frmLTiMSTop_lbl5 .tcc-label, #frmLTiMSTop_lbl1 .tcc-label-text, #frmLTiMSTop_lbl5 .tcc-label-text { padding: 0 !important; margin: 0 !important; text-indent: 0 !important; }
-#frmLTiMSTop #frmLTiMSTop_lbl1, #frmLTiMSTop #frmLTiMSTop_lbl5 { left: 72px !important; }
 /* メニューのカード: マイアプリ・勤怠申請の一覧と同じく、左に色の付いた四角の印（白い線の絵）。EZCraft の小さな印は出さない */
 #frmLTiMSTop_btnAttendance .tcc-btn > i, #frmLTiMSTop_btnApply .tcc-btn > i { display: none !important; }
 /* fillButton（余白 0）より強く書く */
@@ -72,6 +76,9 @@ ${cardGrid('frmLTiMSTop_grdAnnouncement', [[3], [1, 2]])}
 /* お知らせの、中身のない行（区切りの線だけが出る）は出さない。最後の行の下には線を引かない */
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr:not(:has(> td.frmLTiMSTop_grdAnnouncement_tdCol3:not([data-myapp-blank]))) { display: none !important; }
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr[data-myapp-last] { border-bottom: none !important; }
+/* お知らせは読むだけ。押しても選んだ色を残さない（選ぶ意味のない表なので、青く光ったままにしない） */
+#frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr.myapp-tapped,
+#frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr.myapp-tapped > td { background-color: transparent !important; }
 ${place('frmLTiMSTop_lbl12', '16px', 204, '160px', 24)}
 #frmLTiMSTop #frmLTiMSTop_lbl12 { top: calc(54px + var(--myapp-ann, 150px)) !important; }
 ${row('frmLTiMSTop_grdApply', 232, 196)}
@@ -228,6 +235,8 @@ ${fillButton(A('btnCalendarSearch'))}
   color: var(--myapp-accent);
   font-size: 28px;
   line-height: 1;
+  /* ‹ › の字は下寄りに描かれるので、少し上げて、真ん中の年月と高さをそろえる */
+  padding-bottom: 4px;
 }
 .myapp-month-nav button:active { background-color: var(--myapp-tab-on); }
 #frmAttendance:has(#${A('qbxDept1')}:not([style*="visibility: hidden"])) .myapp-month-nav { display: none; }
@@ -504,7 +513,22 @@ const SEARCH_CSS = `
   font-weight: 600;
 }
 .myapp-search-toggle-value { margin-left: auto; margin-right: 10px; font-weight: 400; color: var(--myapp-text2); font-variant-numeric: tabular-nums; }
-.myapp-search-toggle::after { content: '›'; font-size: 22px; color: var(--myapp-text2); transform: rotate(90deg); transition: transform 0.2s; }
+/* › を回して ⌄ / ⌃ にする。字の箱は横に広く、字が片寄っているので、正方形の箱の真ん中に置いてから回す（開け閉めで横にずれない） */
+.myapp-search-toggle::after {
+  content: '›';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-right: -4px;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--myapp-text2);
+  transform: rotate(90deg);
+  transition: transform 0.2s;
+}
 .myapp-search.myapp-open .myapp-search-toggle::after { transform: rotate(-90deg); }
 .myapp-search.myapp-collapsible:not(.myapp-open) > .myapp-row,
 .myapp-search.myapp-collapsible:not(.myapp-open) > .myapp-search-actions { display: none !important; }
@@ -556,6 +580,8 @@ const SEARCH_CSS = `
 /* 見出しの左の余白は、外の .tcc-label だけに付ける（中の文字にも付くと、二重になって 32px 右に寄る） */
 .myapp-search .myapp-switch-row > .myapp-heading .tcc-label-text { padding-left: 0 !important; }
 .myapp-search .myapp-switch-row > .myapp-switch-field { position: relative !important; left: auto !important; top: auto !important; flex: none !important; }
+/* スイッチの部品は、箱（40px）の上に寄せて描かれるので、箱の中で上下の真ん中に置く（行の見出しと高さをそろえる） */
+.myapp-search .myapp-switch-row > .myapp-switch-field { display: flex !important; align-items: center !important; }
 /* 年月の欄の右に「前の月・次の月」（勤務表のタブと同じ見た目） */
 .myapp-month-pill {
   flex: 1 1 0;
@@ -693,7 +719,7 @@ const ATT_TABS_CSS = `
 #${A('tabAttd')} .tcc-tab-pane > .tcc-component.hline { display: none !important; }
 /* 健康管理時間の帯は、「勤務表」のタブだけに出す（ほかのタブに同じものが出ても場所を取るだけ）。
    組織の欄（管理する人だけ）が出ているときは、その欄のために上の段を残す。
-   （この CSS は :root.myapp-att-tab を頭に付けて入れるので、セレクターの ( ) の中に , は書かない） */
+   （この CSS は :root.myapp-att-tab を頭に付けて入れる。( ) の中の , には付けない: layout.ts の scoped） */
 .myapp-kenko { display: none !important; }
 ${['R2', 'R2_C1', 'blank3', 'blank3_body']
   .map((id) => `#frmAttendance:not(:has(#${A('qbxDept1')}:not([style*="visibility: hidden"]))) #${A(id)}`)
@@ -726,8 +752,9 @@ ${cardGrid(A('grdPrj'), [[3], [5], [9, 8, 4], [10]], { 9: '作業時間', 8: '�
 ${cardGrid(A('grdTotal'), [[2], [3, 4], [6, 12, 16, 17], [24, 23, 18]], { 4: '申請', 6: '出勤', 12: '有休', 16: '欠勤', 17: '代休', 24: '総労働', 23: '総残業', 18: '平日時間外' }, { pager: true })}
 /* 集計の数字は、勤務表のまとめと同じく、見出しの下に大きな数字を4列で並べる（1行の文の中に並べない） */
 #${A('grdTotal')} .TccGridBodyScroll td:is(${[6, 12, 16, 17, 24, 23, 18].map((n) => `.${A('grdTotal')}_tdCol${n}`).join(', ')}) {
-  flex: 0 0 25% !important;
-  max-width: 25% !important;
+  /* 4つで1段。項目のあいだのすき間（cardGrid の column-gap 10px × 3）のぶんを引く */
+  flex: 0 0 calc(25% - 7.5px) !important;
+  max-width: calc(25% - 7.5px) !important;
   box-sizing: border-box !important;
   display: flex !important;
   flex-direction: column !important;
@@ -884,6 +911,8 @@ ${fullWidth('frmAttendanceDtl')}
 ${place(D('lblUserName'), '16px', 4, 'calc(100% - 32px)', 24)}
 ${text(D('lblUserName'), 14, { muted: true })}
 #${D('lblUserName')} i { margin-right: 6px !important; }
+/* 名前の行は、ほかの画面の小見出しと同じく、画面の左から 20pt に（下の「カードの中の文字」の決まりより強く） */
+#frmAttendanceDtl #${D('lblUserName')} .tcc-label-text { padding-left: 4px !important; }
 ${['lbl5', 'btnClose', 'lbl37', 'lbl18', 'lbl19', 'lbl22', 'lbl23', 'restBg1', 'restBg2', 'lbl35', 'lbl27', 'lbl34', 'lbl28', 'lbl29']
   .map((id) => `#${D(id)}`)
   .join(',\n')} { display: none !important; }
@@ -892,14 +921,15 @@ ${['lbl5', 'btnClose', 'lbl37', 'lbl18', 'lbl19', 'lbl22', 'lbl23', 'restBg1', '
 #${D('R2')}, #${D('R2')} > *, #${D('blank2')} { height: 304px !important; }
 ${place(D('lbl32'), '16px', 4, '64px', 36)}
 ${text(D('lbl32'), 15, { muted: true })}
-/* 勤怠日・勤務体系の値は、下の時刻の欄の中の文字（76px の欄 + 12px）と同じ位置から始める */
-${place(D('lblDt'), '88px', 4, 'calc(100% - 104px)', 36)}
+/* 勤怠日・勤務体系の値は、下の時刻の欄の中の文字と同じ位置から始める
+   （欄は 76px から。欄の中の文字は真ん中寄せで、左に 7px ほど空く） */
+${place(D('lblDt'), '84px', 4, 'calc(100% - 100px)', 36)}
 ${text(D('lblDt'), 17, { bold: true })}
 
 /* 勤務体系 */
 ${place(D('lbl7'), '16px', 44, '72px', 28)}
 ${text(D('lbl7'), 15, { muted: true })}
-${place(D('work_tp'), '88px', 44, 'calc(100% - 104px)', 28)}
+${place(D('work_tp'), '84px', 44, 'calc(100% - 100px)', 28)}
 ${text(D('work_tp'), 15)}
 #${D('lblDt')} .tcc-label, #${D('lblDt')} .tcc-label-text, #${D('work_tp')} .tcc-label, #${D('work_tp')} .tcc-label-text { padding-left: 0 !important; margin-left: 0 !important; }
 
@@ -998,6 +1028,8 @@ ${text(D('lbl26'), 13, { bold: true, muted: true })}
 #${D('lblTotal')} { left: auto !important; right: 16px !important; top: 8px !important; width: 140px !important; height: 24px !important; }
 ${text(D('lblTotal'), 13, { bold: true, muted: true, align: 'right' })}
 #${D('lblTotal')} .tcc-label-text { width: auto !important; max-width: none !important; overflow: visible !important; }
+/* 右端は、下の欄の右端（カードの右から 16px）にそろえる。EZCraft の右の余白 5px はなくす */
+#frmAttendanceDtl #${D('lblTotal')} .tcc-label-text { padding-right: 0 !important; }
 #${D('lblTotal')} .tcc-label-text::before { content: '合計 '; font-weight: 400; }
 /* 時間の札は、頭の 0 を取った形で見せる（JS の showTimes。元の文字は消さずに見えなくする） */
 #${D('lblTotal')} .tcc-label-text[data-myapp-time], #${D('work_tm')} .tcc-label-text[data-myapp-time] { font-size: 0 !important; }
@@ -1103,8 +1135,10 @@ ${fullWidth('frmApply')}
   height: auto !important;
   overflow: visible !important;
 }
-/* タブ（新規申請・承認待ち・申請検索・休暇照会）: 画面の幅に収まる切り替えスイッチ（横にはみ出さない） */
-#${AP('tabApply')} > ul.tcc-tab-head {
+/* タブ（新規申請・承認待ち・申請検索・休暇照会）: ふだんは勤務表と同じく、画面の下のガラスのタブ（tabBars）に出すので、ここには出さない。
+   下のタブが作れなかったときだけ、画面の幅に収まる切り替えスイッチにする（横にはみ出さない） */
+#${AP('tabApply')}[data-myapp-tabbar] > ul.tcc-tab-head { display: none !important; }
+#${AP('tabApply')}:not([data-myapp-tabbar]) > ul.tcc-tab-head {
   display: flex !important;
   flex-wrap: nowrap !important;
   width: auto !important;
@@ -1164,6 +1198,8 @@ ${place(AP(title), '88px', top + 12, 'calc(100% - 140px)', 26)}
 ${text(AP(title), 17, { bold: true })}
 ${place(AP(note), '88px', top + 40, 'calc(100% - 140px)', 24)}
 ${text(AP(note), 13, { muted: true })}
+/* 名前と説明の字は、色の付いた印の右 16pt から（TiMS のメニューのカードと同じ）。EZCraft のラベルの左の余白はなくす */
+#${AP(title)} .tcc-label, #${AP(note)} .tcc-label, #${AP(title)} .tcc-label-text, #${AP(note)} .tcc-label-text { padding-left: 0 !important; margin-left: 0 !important; border-left-width: 0 !important; }
 /* 名前と説明はボタンの上に（この画面ではボタンのほうが後ろに書かれていて、上に重なるため）。押すとボタンが押される */
 #${AP(title)}, #${AP(note)} { z-index: 50 !important; pointer-events: none !important; }
 #${AP(title)} .tcc-label-text, #${AP(note)} .tcc-label-text { width: 100% !important; max-width: 100% !important; }
@@ -1176,6 +1212,8 @@ ${text(AP(note), 13, { muted: true })}
 // 勤怠申請のほかのタブ（承認待ち・申請検索・休暇照会）: 検索の条件（.myapp-search）と、結果の1件1枚のカード
 const APPLY_TAB_BUTTONS = ['approve_search', 'btnApprove', 'btnReject', 'apply_search', 'apply_clear', 'leave_search', 'leave_clear'];
 const APPLY_TABS_CSS = `
+/* 承認待ちの「申請書名・タイトルで探す」: ほかの検索欄と同じ形（灰色の面・左に虫めがね） */
+${searchField('#frmApply_approve_search_text')}
 #${AP('tabApply')} > .tcc-tab-content > .tcc-tab-pane.active {
   position: relative !important;
   top: 0 !important;
@@ -1327,7 +1365,7 @@ ${scoped('#frmApply_yukyu[data-myapp-hourly]', areaBelow('lbl10', 'remarks', 440
 #${Y('lbl10')} .tcc-label-text::after { content: '任意'; margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--myapp-text2); }
 
 /* 付与・使用・残りの日数（タブ）と、申請のステータス。いちばん知りたい残りの日数なので、画面のいちばん上に出す（JS が並べ替える） */
-#${Y('R3')}, #${Y('R3')} > *, #${Y('blank3')} { height: 128px !important; }
+#${Y('R3')}, #${Y('R3')} > *, #${Y('blank3')} { height: 140px !important; }
 #${Y('R3')}:has(#${Y('tabApply_tabs_1')}.active),
 #${Y('R3')}:has(#${Y('tabApply_tabs_1')}.active) > *,
 #${Y('R3')}:has(#${Y('tabApply_tabs_1')}.active) #${Y('blank3')},
@@ -1347,17 +1385,34 @@ ${scoped('#frmApply_yukyu[data-myapp-hourly]', areaBelow('lbl10', 'remarks', 440
 #${Y('tabApply')} > ul.tcc-tab-head a { display: block !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; text-align: center; font-size: 13px !important; padding-left: 0 !important; padding-right: 0 !important; }
 #${Y('tabApply')} > .tcc-tab-content { height: calc(100% - 44px) !important; }
 #${Y('tabApply_tabs_0')}, #${Y('tabApply_tabs_1')}, #${Y('tabApply_tabs_2')} { height: 100% !important; }
-${place(Y('lbl13'), '16px', 12, 'calc((100% - 32px) / 3)', 22)}
-${place(Y('lbl14'), 'calc(16px + (100% - 32px) / 3)', 12, 'calc((100% - 32px) / 3)', 22)}
-${place(Y('lbl31'), 'calc(16px + (100% - 32px) * 2 / 3)', 12, 'calc((100% - 32px) / 3)', 22)}
-${place(Y('grant_days1'), '16px', 38, 'calc((100% - 32px) / 3)', 32)}
-${place(Y('num_use1'), 'calc(16px + (100% - 32px) / 3)', 38, 'calc((100% - 32px) / 3)', 32)}
-${place(Y('remaining1'), 'calc(16px + (100% - 32px) * 2 / 3)', 38, 'calc((100% - 32px) / 3)', 32)}
-${['lbl13', 'lbl14', 'lbl31'].map((id) => text(Y(id), 13, { muted: true, align: 'center' })).join('')}
-${['grant_days1', 'num_use1', 'remaining1'].map((id) => text(Y(id), 15, { bold: true, align: 'center' })).join('')}
+/* 代休申請・勤務表のまとめと同じ形: カードの左から 16px、3 列。見出しの下に大きな数字を左寄せで */
+${place(Y('lbl13'), '32px', 24, 'calc((100% - 64px) / 3)', 22)}
+${place(Y('lbl14'), 'calc(32px + (100% - 64px) / 3)', 24, 'calc((100% - 64px) / 3)', 22)}
+${place(Y('lbl31'), 'calc(32px + (100% - 64px) * 2 / 3)', 24, 'calc((100% - 64px) / 3)', 22)}
+${place(Y('grant_days1'), '32px', 48, 'calc((100% - 64px) / 3)', 32)}
+${place(Y('num_use1'), 'calc(32px + (100% - 64px) / 3)', 48, 'calc((100% - 64px) / 3)', 32)}
+${place(Y('remaining1'), 'calc(32px + (100% - 64px) * 2 / 3)', 48, 'calc((100% - 64px) / 3)', 32)}
+${['lbl13', 'lbl14', 'lbl31'].map((id) => text(Y(id), 13, { muted: true })).join('')}
+/* 「27日 6時間」と長いので、数字は 17px（20px だと隣の列とくっついて見える） */
+${['grant_days1', 'num_use1', 'remaining1'].map((id) => text(Y(id), 17, { bold: true })).join('')}
+:is(#${Y('lbl13')}, #${Y('lbl14')}, #${Y('lbl31')}, #${Y('grant_days1')}, #${Y('num_use1')}, #${Y('remaining1')}) :is(.tcc-label, .tcc-label-text) { padding-left: 0 !important; padding-right: 0 !important; }
+:is(#${Y('grant_days1')}, #${Y('num_use1')}, #${Y('remaining1')}) .tcc-label-text { font-variant-numeric: tabular-nums; }
+/* 付与・使用・残りの数字は、残業申請のその月の数字と同じく、白いカードの上に（灰色の地にじかに置かない）。
+   数字の置き場所は変えずに、後ろにカードを敷く */
+#${Y('tabApply_tabs_0')}::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 10px;
+  bottom: 0;
+  border-radius: 22px;
+  background-color: var(--myapp-fill);
+  pointer-events: none;
+}
 /* 残りの日数をいちばん目立たせる（枠の線は出さない） */
 :is(#${Y('grant_days1')}, #${Y('num_use1')}, #${Y('remaining1')}) .tcc-label { border: none !important; }
-#${Y('remaining1')} .tcc-label-text { font-size: 18px !important; color: var(--myapp-accent) !important; }
+#${Y('remaining1')} .tcc-label-text { color: var(--myapp-accent) !important; }
 #${Y('grdStatus')} { left: 16px !important; top: 8px !important; width: calc(100% - 32px) !important; height: calc(100% - 16px) !important; border-radius: 20px !important; overflow: hidden !important; }
 /* 承認の流れがまだないときは、空の面を低く */
 #frmApply_yukyu_tabApply .tcc-tab-pane:has(#${Y('grdStatus')}.myapp-empty) { height: 120px !important; }
@@ -1522,10 +1577,12 @@ const REFLOW_CSS = `
   padding: 4px 0 !important;
   box-sizing: border-box !important;
 }
-/* 選択肢を囲む枠や面は出さない（見出しの右に縦に並んでいれば、ひとまとまりと分かる。共通の .radio の面も消す） */
+/* 選択肢を囲む枠は出さない。ラジオの組だけは、ほかの入力欄と同じ白い面に（有給休暇申請の休暇種別と同じ。
+   面がないと、ダークでは共通の灰色の面が出て、明るいときは地と同じ色で消える、と見え方がそろわない） */
 .myapp-row > .myapp-choice,
 .myapp-row > .myapp-choice > *,
 .myapp-row > .myapp-choice .tcc-radio-group { border: none !important; background: transparent !important; }
+.myapp-row > .myapp-choice.radio { background-color: var(--myapp-field) !important; border-radius: 16px !important; }
 /* 1つ目の選択肢を、見出し（40px の行の真ん中）と同じ高さに */
 .myapp-row > .myapp-choice.radio > *, .myapp-row > .myapp-choice .tcc-radio-group { padding-top: 3px !important; padding-bottom: 3px !important; }
 .myapp-row > .myapp-choice .tcc-component {
@@ -1537,11 +1594,14 @@ const REFLOW_CSS = `
   min-height: 34px;
   display: flex !important;
   align-items: center;
+  /* 選択肢の字と丸を、行（34px）の上下の真ん中に（この行は縦向きの flex なので justify で。EZCraft は上に寄せる） */
+  justify-content: center !important;
   padding: 0 10px !important;
   box-sizing: border-box !important;
 }
 .myapp-row > .myapp-choice .tcc-component * { white-space: normal !important; }
-.myapp-row > .myapp-choice .tcc-component,
+.myapp-row > .myapp-choice .tcc-component { text-align: left !important; }
+/* 選択肢の中身（丸と字）は左に寄せる。選択肢の行そのものは縦向きの flex なので、ここでは寄せない（上の justify-content: center で上下の真ん中に） */
 .myapp-row > .myapp-choice .tcc-component > *,
 .myapp-row > .myapp-choice label { justify-content: flex-start !important; text-align: left !important; }
 .myapp-row > .myapp-choice .tcc-component > * { margin-left: 0 !important; margin-right: auto !important; width: auto !important; }
@@ -1572,17 +1632,18 @@ const REFLOW_CSS = `
   box-sizing: border-box !important;
 }
 .myapp-stats-month { font-size: 13px; color: var(--myapp-text2); }
-.myapp-stat { display: inline-flex; gap: 4px; align-items: baseline; padding: 2px 10px; border-radius: 999px; background-color: var(--myapp-inset); }
+/* 札の左右の余白は、ページの側の「div の余白 0」より強く書く（字が札の左の端にくっつかないように） */
+.myapp-stat { display: inline-flex; gap: 4px; align-items: baseline; padding: 2px 10px !important; border-radius: 999px; background-color: var(--myapp-inset); }
 .myapp-stat-label { font-size: 12px; color: var(--myapp-text2); white-space: nowrap; }
 .myapp-stat-value { font-size: 13px; font-weight: 600; color: var(--myapp-text); }
 .myapp-stat[data-zero] { display: none; }
-.myapp-stat.myapp-stat-main { margin-left: auto; background: transparent; padding: 0; }
+.myapp-stat.myapp-stat-main { margin-left: auto; background: transparent; padding: 0 !important; }
 .myapp-stat.myapp-stat-main .myapp-stat-label { display: none; }
 .myapp-stat.myapp-stat-main .myapp-stat-value { font-size: 20px; font-weight: 700; color: var(--myapp-text); }
 .myapp-stats-break { flex-basis: 100%; height: 0; }
 /* 「総〜」のないもの: 勤務表のまとめ（出勤・有休・…）と同じ、見出しの下に大きな数字の列 */
 .myapp-stats.myapp-stats-grid { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px 12px; padding: 14px 16px !important; }
-.myapp-stats-grid .myapp-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0; border-radius: 0; background: transparent; }
+.myapp-stats-grid .myapp-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0 !important; border-radius: 0; background: transparent; }
 .myapp-stats-grid .myapp-stat-label { font-size: 13px; }
 .myapp-stats-grid .myapp-stat-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .myapp-stats.myapp-stats-table { display: block !important; padding: 8px 12px !important; }
@@ -3748,6 +3809,17 @@ const SCRIPT = `
   // 勤務表: 上のヘッダーの名前を、開いているタブの名前にする（アプリに知らせる。EzcraftWebView の title）
   var lastHeading = null;
   function tabHeading(list, pane) {
+    // 勤怠申請: 新規申請のタブはアプリの名前（勤怠申請）のまま。ほかのタブは、そのタブの名前（承認待ちなど）
+    if (document.getElementById('frmApply')) {
+      var applyPane = document.querySelector('#frmApply_tabApply > .tcc-tab-content > .tcc-tab-pane.active');
+      var applyIdx = applyPane ? Array.prototype.indexOf.call(applyPane.parentElement.children, applyPane) : 0;
+      var applyHead = document.querySelectorAll('#frmApply_tabApply > ul.tcc-tab-head > li')[applyIdx];
+      var applyName = applyIdx > 0 && applyHead ? (applyHead.textContent || '').trim() : '';
+      if (applyName === lastHeading) return;
+      lastHeading = applyName;
+      try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'title', text: applyName })); } catch (e) {}
+      return;
+    }
     if (!document.getElementById('frmAttendance')) return;
     var name = '勤務表';
     if (!list && pane) {
@@ -3982,6 +4054,14 @@ export const TIMS_SKIN: AppSkin = {
       { match: '出力', label: '日別', icon: 'M9 6h11 M9 12h11 M9 18h11 M4.5 6h.01 M4.5 12h.01 M4.5 18h.01' },
       { match: '工数', label: '工数', icon: 'M5 8h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 20H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 8z M9 8V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V8 M3.5 13h17' },
       { match: '勤務表', label: '勤務表', icon: 'M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4' },
+    ],
+    // 勤怠申請: 新規申請・承認待ち・申請検索・休暇照会（承認する人でなければ、承認待ちは出ない）
+    [AP('tabApply')]: [
+      { match: '新規申請', label: '新規申請', icon: 'M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M12 8v8 M8 12h8' },
+      { match: '承認待ち', label: '承認待ち', icon: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z M12 7v5l3 2' },
+      { match: '申請検索', label: '申請検索', icon: 'M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0z M20 20l-4-4' },
+      // 休暇の残りの日数（有給休暇申請の近道と同じ、太陽の絵）
+      { match: '休暇照会', label: '休暇照会', icon: 'M12 3v2 M12 19v2 M3 12h2 M19 12h2 M5.6 5.6l1.4 1.4 M17 17l1.4 1.4 M5.6 18.4L7 17 M17 7l1.4-1.4 M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z' },
     ],
   },
   bottomBars: {

@@ -7,6 +7,9 @@
 //   3. サーバーに渡す          GET  /auth/cognito?identifier=<IDトークン> … サーバーのセッション（Cookie）ができる
 //   4. ログイン後のページを開く GET  /main/              … Cookie が効いていて、/login に戻されないか
 //
+// Face ID でログインし直すとき（src/auth/faceId.ts）は、2 をパスワードの代わりに「更新用の鍵」（リフレッシュトークン）で行う。
+// 1・3・4 は同じ。
+//
 // 「ログインできたか」は 4 で決める。fetch はリダイレクトを自動でたどり、最後のページの
 // HTTP ステータスしか返さないので、ログイン画面に戻されても HTTP 200 になる。見るべきは行き先のパス。
 //
@@ -20,6 +23,7 @@
 // パスワードとトークンは、画面にもログにも出さない。
 import {
   AuthenticationDetails,
+  CognitoRefreshToken,
   CognitoUser,
   CognitoUserPool,
   type CognitoUserSession,
@@ -28,6 +32,7 @@ import { fetch } from 'expo/fetch';
 
 import { pathOf } from '../api/http';
 import { SERVER_URL } from '../config';
+import { cognitoStorage, loadCognitoStorage } from './cognitoStorage';
 
 /** ログインしていないと開けないページ。ログイン後の行き先にも、ログインできたかの確認にも使う */
 const HOME_URL = `${SERVER_URL}/main/`;
@@ -39,10 +44,42 @@ export type Session = {
 /** 利用者に伝えるべき失敗（パスワード違いなど）。message をそのまま画面に出す */
 export class LoginError extends Error {}
 
-export async function login(username: string, password: string, remember: boolean): Promise<Session> {
-  const done = (label: string, detail: string) => console.log(`[login] OK ${label}: ${detail}`);
+/** Face ID の「更新用の鍵」が使えなくなった（期限切れ・取り消し）。パスワードでログインし直してもらう */
+export class RefreshExpiredError extends LoginError {}
 
-  // 1. ログイン画面を開く（Web 版と同じく、ログイン後の行き先 r を付ける）
+/**
+ * ログインの結果。refreshToken は Cognito の「更新用の鍵」で、Face ID でログインし直すときに使う
+ * （Face ID を使うときだけ、Face ID 付きで端末に保存する。画面やログには出さない）
+ */
+export type LoginResult = { session: Session; refreshToken: string };
+
+const done = (label: string, detail: string) => console.log(`[login] OK ${label}: ${detail}`);
+
+/** パスワードでログインする */
+export async function login(username: string, password: string, remember: boolean): Promise<LoginResult> {
+  const pool = await openLoginPage();
+  await loadCognitoStorage(); // この端末の登録（Cognito が端末を覚えているとき）
+  const tokens = await authenticateWithCognito(pool.userPoolId, pool.clientId, username, password);
+  done('Cognito で本人確認できた', 'ID トークンを受け取った');
+  await startServerSession(tokens.idToken, remember);
+  return { session: { username }, refreshToken: tokens.refreshToken };
+}
+
+/**
+ * Face ID のあとに、保存しておいた「更新用の鍵」でログインし直す（パスワードは使わない）。
+ * 鍵が新しくなったら、新しいほうを返す（呼んだ側が保存し直す）
+ */
+export async function loginWithRefreshToken(username: string, refreshToken: string, remember: boolean): Promise<LoginResult> {
+  const pool = await openLoginPage();
+  await loadCognitoStorage(); // 鍵と一緒に、この端末の登録（deviceKey）を Cognito に渡す
+  const tokens = await refreshWithCognito(pool.userPoolId, pool.clientId, username, refreshToken);
+  done('Cognito で鍵を使って本人確認できた', 'ID トークンを受け取った');
+  await startServerSession(tokens.idToken, remember);
+  return { session: { username }, refreshToken: tokens.refreshToken };
+}
+
+/** 1. ログイン画面を開く（Web 版と同じく、ログイン後の行き先 r を付ける）。Cognito の設定値を読む */
+async function openLoginPage(): Promise<{ userPoolId: string; clientId: string }> {
   const loginPage = await fetch(`${SERVER_URL}/login?r=${encodeURIComponent(HOME_URL)}`, {
     credentials: 'include',
   });
@@ -56,11 +93,11 @@ export async function login(username: string, password: string, remember: boolea
     throw new Error('ログイン画面から Cognito の設定を読めませんでした。サイトの作りが変わった可能性があります。');
   }
   done('サーバーに届いた', `GET /login → HTTP ${loginPage.status}`);
+  return { userPoolId, clientId };
+}
 
-  // 2. Cognito で本人確認
-  const idToken = await authenticateWithCognito(userPoolId, clientId, username, password);
-  done('Cognito で本人確認できた', 'ID トークンを受け取った');
-
+/** 3・4. ID トークンをサーバーに渡してセッションを作り、ログインが要るページを開けるか確かめる */
+async function startServerSession(idToken: string, remember: boolean): Promise<void> {
   // 3. ID トークンをサーバーに渡して、セッションを作ってもらう。
   //    サーバーは 302（/main/ へ移動）の応答の中で、新しいセッション Cookie を発行する。
   //    iOS にリダイレクトを自動でたどらせると、次のページへ古い Cookie のまま進んでしまい、ログインが消えた。
@@ -91,8 +128,6 @@ export async function login(username: string, password: string, remember: boolea
     );
   }
   done('ログインしたままページを開けた', `GET /main/ → ${homePath}`);
-
-  return { username };
 }
 
 /** サーバー側のログインを終わらせる（Web 版のログアウトと同じ GET /logout）。失敗しても止めない */
@@ -110,9 +145,10 @@ function authenticateWithCognito(
   clientId: string,
   username: string,
   password: string,
-): Promise<string> {
-  const pool = new CognitoUserPool({ UserPoolId: userPoolId, ClientId: clientId });
-  const user = new CognitoUser({ Username: username, Pool: pool });
+): Promise<{ idToken: string; refreshToken: string }> {
+  // トークンはメモリの中だけに置く（部品のふつうの保存場所は、暗号化せずに端末に書く。src/auth/cognitoStorage.ts）
+  const pool = new CognitoUserPool({ UserPoolId: userPoolId, ClientId: clientId, Storage: cognitoStorage });
+  const user = new CognitoUser({ Username: username, Pool: pool, Storage: cognitoStorage });
   const details = new AuthenticationDetails({ Username: username, Password: password });
 
   const needsWeb = () =>
@@ -122,7 +158,7 @@ function authenticateWithCognito(
 
   return new Promise((resolve, reject) => {
     user.authenticateUser(details, {
-      onSuccess: (session: CognitoUserSession) => resolve(session.getIdToken().getJwtToken()),
+      onSuccess: (session: CognitoUserSession) => resolve(tokensOf(session)),
       onFailure: (err: { code?: string; message?: string }) => {
         console.log(`[login] NG Cognito: ${err?.code ?? 'unknown'} ${err?.message ?? ''}`);
         if (err?.message === 'Password attempts exceeded') {
@@ -143,6 +179,37 @@ function authenticateWithCognito(
       customChallenge: () => reject(needsWeb()),
     });
   });
+}
+
+/** 「更新用の鍵」で、新しい ID トークンをもらう（Cognito の REFRESH_TOKEN_AUTH） */
+function refreshWithCognito(
+  userPoolId: string,
+  clientId: string,
+  username: string,
+  refreshToken: string,
+): Promise<{ idToken: string; refreshToken: string }> {
+  // トークンはメモリの中だけに置く（部品のふつうの保存場所は、暗号化せずに端末に書く。src/auth/cognitoStorage.ts）
+  const pool = new CognitoUserPool({ UserPoolId: userPoolId, ClientId: clientId, Storage: cognitoStorage });
+  const user = new CognitoUser({ Username: username, Pool: pool, Storage: cognitoStorage });
+  return new Promise((resolve, reject) => {
+    user.refreshSession(new CognitoRefreshToken({ RefreshToken: refreshToken }), (err: { code?: string; message?: string } | null, session: CognitoUserSession | null) => {
+      if (err || !session) {
+        console.log(`[login] NG Cognito (鍵): ${err?.code ?? 'unknown'} ${err?.message ?? ''}`);
+        // 鍵の期限が切れた・取り消された（パスワードを変えた、管理者がログアウトさせた など）
+        if (err?.code === 'NotAuthorizedException') {
+          reject(new RefreshExpiredError('Face ID でのログインの期限が切れました。パスワードでログインしてください。'));
+        } else {
+          reject(new Error(`Cognito: ${err?.code ?? ''} ${err?.message ?? ''}`.trim()));
+        }
+        return;
+      }
+      resolve(tokensOf(session));
+    });
+  });
+}
+
+function tokensOf(session: CognitoUserSession): { idToken: string; refreshToken: string } {
+  return { idToken: session.getIdToken().getJwtToken(), refreshToken: session.getRefreshToken().getToken() };
 }
 
 function readMeta(html: string, name: string): string | null {

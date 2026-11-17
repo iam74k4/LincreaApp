@@ -1,7 +1,8 @@
 // 「ログインしたまま」にするための控え。
 //
 // ログインの実体はサーバーのセッション Cookie で、端末の通信の仕組みが覚えている（期限はサーバーが決める）。
-// アプリが覚えるのは「誰でログインしたか」（ユーザー名）だけ。パスワードやトークンは保存しない。
+// アプリがここで覚えるのは「誰でログインしたか」（ユーザー名）だけ。パスワードは保存しない。
+// トークンも端末には残さない（Cognito の部品の保存場所は src/auth/cognitoStorage.ts。Face ID の鍵だけは src/auth/faceId.ts が Face ID 付きで持つ）。
 // 次の起動では、サーバーのログインがまだ有効か確かめてから、この控えで画面を戻す。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetch } from 'expo/fetch';

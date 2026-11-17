@@ -7,7 +7,15 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.iam74k4.LincreaApp",
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": []
+      },
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Walk the Talk に登録する歩数を、ヘルスケアから読み取ります。"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +31,19 @@
     },
     "plugins": [
       "expo-router",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Face ID でログインするために使います。"
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Face ID でログインするために使います。"
+        }
+      ]
     ],
     "scheme": "logindemo",
     "extra": {

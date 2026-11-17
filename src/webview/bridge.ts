@@ -53,6 +53,8 @@ export type BridgeMessage =
   | { type: 'applyQueue'; form: string; items: Record<string, string>[] }
   | { type: 'modal'; open: boolean }
   | { type: 'tick' }
+  | { type: 'skinMissing'; form: string; ids: string[] }
+  | { type: 'steps'; id: string; day: string }
   | { type: 'ready' };
 
 /** 入れておく値: 短い文字だけ（ページから来たものなので、長いものや文字でないものは捨てる） */
@@ -80,6 +82,15 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
       return { type: 'file', base64: message.base64, name: text(message.name, ''), mime: text(message.mime, 'application/octet-stream') };
     }
     if (message.type === 'ready') return { type: 'ready' };
+    // ヘルスケアの歩数をください（Walk the Talk の歩数の登録。アプリは stepsReplyJs で答える）
+    if (message.type === 'steps' && typeof message.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(message.id) && typeof message.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(message.day)) {
+      return { type: 'steps', id: message.id, day: message.day };
+    }
+    // 開発中だけ: 見た目の直しが名前で指している部品が、画面に見つからない（ezcraftSkin.ts の CHECK_JS）
+    if (message.type === 'skinMissing' && typeof message.form === 'string' && Array.isArray(message.ids)) {
+      const ids = message.ids.filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9_]{1,120}$/.test(id));
+      return { type: 'skinMissing', form: message.form.slice(0, 80), ids: ids.slice(0, 200) };
+    }
     // 時刻のダイヤル（timsSkin.ts の openDial）を1目もり回した
     if (message.type === 'tick') return { type: 'tick' };
     if (message.type === 'modal') return { type: 'modal', open: message.open === true };
@@ -486,4 +497,16 @@ export function childClosedJs(label: string): string {
 })();
 true;
 `;
+}
+
+/**
+ * ヘルスケアが使えることを、ページが動き出す前に知らせる（使えるときだけ、歩数の登録に「ヘルスケアから入れる」を出す）
+ */
+export function healthFlagJs(available: boolean): string {
+  return available ? 'window.__myappHealth = true;\n' : '';
+}
+
+/** ページが頼んだ歩数を返す（steps が null なら、読めなかった） */
+export function stepsReplyJs(id: string, steps: number | null): string {
+  return `window.__myappStepsReply && window.__myappStepsReply(${JSON.stringify(id)}, ${steps === null ? 'null' : Math.max(0, Math.round(steps))}); true;`;
 }

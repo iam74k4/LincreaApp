@@ -59,8 +59,12 @@ export function AppDataPrefetch({ app, form, ready, onDone }: Props) {
             finish(false);
           }
         }}
-        onError={() => finish(false)}
+        onError={(e) => {
+          e.preventDefault(); // 見えない WebView なので、WebView の失敗の表示は要らない
+          finish(false);
+        }}
         onHttpError={() => finish(false)}
+        onContentProcessDidTerminate={() => finish(false)} // iOS がページの中身を捨てた
         onNavigationStateChange={(nav) => {
           // ログインが切れていた（ログイン画面に飛ばされた）。見える画面のほうで気づいて知らせるので、ここではやめるだけ
           if (pathOf(nav.url).startsWith('/login')) finish(false);

@@ -2,10 +2,15 @@
 // 画面はここを見て表示を切り替える（どの画面を出すかは src/app/_layout.tsx の守り役が決める）。
 //
 // 起動したときは、サーバーのログインがまだ有効か確かめて、有効ならログイン画面を飛ばす。
+// 切れていても、Face ID でログインできるようにしてあれば、Face ID で入り直す（src/auth/faceId.ts）。
 // 確かめている間は restoring が true（その間は画面を出さずに待つ）。
-import { createContext, use, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+//
+// 使っているあいだにログインが切れたときも、Face ID で入り直せれば、その場で続けられる（reauthenticate）。
+import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import type { Session } from '../auth/api';
+import { forgetCognitoTokens, loadCognitoStorage } from '../auth/cognitoStorage';
+import { loginWithFaceId } from '../auth/faceId';
 import { clearSavedSession, restoreSession, saveSession } from '../auth/savedSession';
 import { discardOld } from '../files';
 import { forgetAllAppData } from '../webview/appDataCache';
@@ -16,6 +21,11 @@ type SessionContextValue = {
   restoring: boolean;
   signIn: (session: Session) => void;
   signOut: () => void;
+  /**
+   * ログインが切れたときに、Face ID で入り直す。入り直せたら true（Face ID を使っていない・やめたなら false）。
+   * いくつもの画面が同時に気づいても、Face ID は1回だけ出す
+   */
+  reauthenticate: () => Promise<boolean>;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -26,11 +36,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    restoreSession().then((restored) => {
+    (async () => {
+      // 前の版が端末に残したトークンを消す（src/auth/cognitoStorage.ts）
+      await loadCognitoStorage();
+      let restored = await restoreSession();
+      // サーバーのログインが切れていたら、Face ID で入り直す（使っていなければ、何も出さずにログイン画面へ）
+      if (!restored && active) {
+        const faceId = await loginWithFaceId();
+        if (faceId.ok) {
+          forgetAllAppData();
+          forgetInitAppTexts();
+          restored = faceId.session;
+          saveSession(faceId.session);
+        }
+      }
       if (!active) return;
       setSession((current) => current ?? restored); // 確かめている間にログインしていたら、そちらを優先
       setRestoring(false);
-    });
+    })();
     return () => {
       active = false;
     };
@@ -44,6 +67,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
+    forgetCognitoTokens(); // メモリに置いていたトークンも消す
     forgetAllAppData();
     forgetAllInitApps(); // 画面の定義の控えと、裏で読む画面の覚え書き
     discardOld(true); // 受け取った明細などのファイルも残さない
@@ -51,8 +75,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     clearSavedSession();
   }, []);
 
+  const reauthenticating = useRef<Promise<boolean> | null>(null);
+  const reauthenticate = useCallback(() => {
+    if (!reauthenticating.current) {
+      reauthenticating.current = loginWithFaceId()
+        .then((result) => {
+          if (!result.ok) return false;
+          // 同じ人でも、画面の定義の控えには前のログインの記録が入っているので、読み直してもらう
+          forgetAllAppData();
+          forgetInitAppTexts();
+          return true;
+        })
+        .finally(() => {
+          reauthenticating.current = null;
+        });
+    }
+    return reauthenticating.current;
+  }, []);
+
   // 中身が変わらない限り同じ値を渡す（使う側の再描画や useEffect の空回りを防ぐ）
-  const value = useMemo(() => ({ session, restoring, signIn, signOut }), [session, restoring, signIn, signOut]);
+  const value = useMemo(
+    () => ({ session, restoring, signIn, signOut, reauthenticate }),
+    [session, restoring, signIn, signOut, reauthenticate],
+  );
   return <SessionContext value={value}>{children}</SessionContext>;
 }
 

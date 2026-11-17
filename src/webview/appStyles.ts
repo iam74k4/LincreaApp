@@ -149,7 +149,9 @@ ${
   const sections = (skin.sections ?? [])
     .map(
       (id) => `
-#${id} .tcc-label { justify-content: flex-start; padding: 0 !important; }
+#${id} .tcc-label { justify-content: flex-start; padding: 0 !important; border-left-width: 0 !important; }
+/* 小見出しの字は、画面の左から 20pt（置き場所 16px + 4px）。マイアプリ・勤務表の小見出しと同じ位置 */
+#${id} .tcc-label-text { padding-left: 4px !important; }
 #${id} .tcc-label-text,
 #${id} i {
   color: var(--myapp-text2) !important;
@@ -358,6 +360,110 @@ ${place(H('rdo12'), '104px', 972, 'calc(100% - 120px)', HEALTH_FIELD)}
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// Walk the Talk の「歩数入力」（週ごとのダイアログ。weeklyStepCount_id_2026Walk）に、iPhone のヘルスケアの歩数を入れる。
+//   - 開発ビルドで、ヘルスケアが使えるときだけ（アプリが、ページが動き出す前に window.__myappHealth を決める。src/webview/bridge.ts）
+//   - ダイアログが開いて、登録してある歩数を読み終わってから、今日までの日について、アプリにその日の歩数を聞く（bridge の steps）
+//   - ヘルスケアの歩数が、欄の数より多い日だけ入れる（手で多めに入れた日や、まだ歩数のない日はそのまま）
+//   - 入れるのは人が打ったのと同じやり方で（EZCraft が「入力が変わった」印を付け、合計も出し直す）。「保存」は、人が押す
+const WEEKLY = 'weeklyStepCount_id_2026Walk';
+const WEEK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const HEALTH_STEPS_JS = `
+  var healthAsks = {};
+  var healthTimer = null;
+  // アプリからの返事（stepsReplyJs）
+  window.__myappStepsReply = function (id, steps) {
+    var done = healthAsks[id];
+    delete healthAsks[id];
+    if (done) done(steps);
+  };
+  function askSteps(day, done) {
+    var id = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    healthAsks[id] = done;
+    try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'steps', id: id, day: day })); }
+    catch (e) { delete healthAsks[id]; done(null); }
+  }
+  function healthText(id) {
+    var el = document.querySelector('#' + id + ' .tcc-label-text');
+    return el ? (el.textContent || '').trim() : '';
+  }
+  // 「11/17」→ その日（年は、今日にいちばん近い年。年をまたぐ週のため）
+  function healthDate(label) {
+    var m = /(\\d{1,2})\\/(\\d{1,2})/.exec(label);
+    if (!m) return null;
+    var now = new Date();
+    var best = null;
+    [-1, 0, 1].forEach(function (k) {
+      var d = new Date(now.getFullYear() + k, +m[1] - 1, +m[2]);
+      if (!best || Math.abs(d - now) < Math.abs(best - now)) best = d;
+    });
+    return best;
+  }
+  function isoDay(d) {
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  // EZCraft の入力欄に、人が打ったのと同じように値を入れる（入れて、欄を離れたことにする）
+  function healthType(input, value) {
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    input.dispatchEvent(new FocusEvent('blur'));
+  }
+  function healthNote(text) {
+    var old = document.querySelector('body > .myapp-health-note');
+    if (old) old.remove();
+    var note = document.createElement('div');
+    note.className = 'myapp-health-note';
+    note.setAttribute('role', 'status');
+    note.setAttribute('data-myapp-nodark', '');
+    note.textContent = text;
+    document.body.appendChild(note);
+    setTimeout(function () { note.classList.add('myapp-hide'); }, 4500);
+    setTimeout(function () { note.remove(); }, 5000);
+  }
+  function healthSteps() {
+    if (!window.__myappHealth) return;
+    var form = document.getElementById('${WEEKLY}');
+    if (!form) return;
+    var week = healthText('${WEEKLY}_lbl_date_monday');
+    if (!week || form.__myappHealthWeek === week) return;
+    // 開いたばかりのあいだと、登録してある歩数を読んでいるあいだは待つ（読み終わる前に入れると、上書きされる）
+    if (form.__myappHealthSeen !== week) { form.__myappHealthSeen = week; form.__myappHealthAt = Date.now(); }
+    var busy = window.__myappXhr && (window.__myappXhr() > 0 || Date.now() - (window.__myappXhrAt || 0) < 300);
+    if (busy || Date.now() - form.__myappHealthAt < 700) {
+      clearTimeout(healthTimer);
+      healthTimer = setTimeout(healthSteps, 300);
+      return;
+    }
+    form.__myappHealthWeek = week;
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var waiting = 0;
+    var filled = [];
+    var found = false;
+    ${JSON.stringify(WEEK_DAYS)}.forEach(function (day) {
+      var label = healthText('${WEEKLY}_lbl_date_' + day);
+      var date = healthDate(label);
+      var input = document.querySelector('#${WEEKLY}_num_steps_' + day + ' input');
+      if (!date || !input || date > today) return;
+      waiting++;
+      askSteps(isoDay(date), function (steps) {
+        waiting--;
+        if (steps > 0) found = true;
+        var current = parseInt((input.value || '').replace(/[^0-9]/g, ''), 10) || 0;
+        if (steps > current && document.activeElement !== input && input.isConnected) {
+          healthType(input, String(steps));
+          filled.push(label);
+        }
+        if (waiting > 0) return;
+        if (filled.length) healthNote('ヘルスケアの歩数を入れました（' + filled.join('・') + '）。「保存」で登録します');
+        else if (!found) healthNote('ヘルスケアに、この週の歩数がありませんでした');
+      });
+    });
+  }
+`;
+
 // Walk the Talk の「目標歩数を設定」（stepGoalSet_id_2026Walk）。パソコン向けのページを、2枚のカードに並べ直す:
 //   1枚目 … 基準の目標歩数と、目標歩数ごとの係数（表の線はやめて、左に歩数・右に係数の行）
 //   2枚目 … 週ごとの「あなたの1日の目標歩数」（週・入力欄・歩、その下に変更の期限）
@@ -399,6 +505,9 @@ function goalCard(row: string, height: number): string {
 }
 const WTT_GOAL_CSS = `
 ${fullWidth('stepGoalSet_id_2026Walk')}
+/* カードの中の字は、カードの端から 16px（ほかの画面のカードと同じ）。EZCraft の字の左右の余白と縁の線はなくす */
+:is(#${G('R3')}, #${G('R4')}) .tcc-component.lbl .tcc-label { padding-left: 0 !important; padding-right: 0 !important; border-left-width: 0 !important; }
+:is(#${G('R3')}, #${G('R4')}) .tcc-component.lbl .tcc-label-text { padding-left: 0 !important; padding-right: 0 !important; }
 #stepGoalSet_id_2026Walk { height: auto !important; }
 #stepGoalSet_id_2026Walk .tcc-tile.col { float: none !important; }
 #${G('R2')} { display: none !important; }
@@ -430,12 +539,12 @@ ${GOAL_WEEKS.map(
   ([week, input, unit, until], i) => `${place(G(week), '16px', 52 + i * GOAL_WEEK, '130px', 40)}
 ${text(G(week), 15)}
 #${G(week)}, #${G(week)} * { border: none !important; background: transparent !important; font-weight: 600 !important; }
-#${G(input)} { left: auto !important; right: 48px !important; top: ${52 + i * GOAL_WEEK}px !important; width: 120px !important; height: 40px !important; }
+#${G(input)} { left: auto !important; right: 40px !important; top: ${52 + i * GOAL_WEEK}px !important; width: 120px !important; height: 40px !important; }
 ${fillInput(G(input))}
 /* カードの中の入力欄は、カードと見分けがつく灰色の面（ほかの画面のカードと同じ） */
 #${G(input)} input { text-align: right !important; font-variant-numeric: tabular-nums; background-color: var(--myapp-inset) !important; border-color: transparent !important; }
-#${G(unit)} { left: auto !important; right: 16px !important; top: ${52 + i * GOAL_WEEK}px !important; width: 28px !important; height: 40px !important; }
-${text(G(unit), 15, { muted: true })}
+#${G(unit)} { left: auto !important; right: 16px !important; top: ${52 + i * GOAL_WEEK}px !important; width: 16px !important; height: 40px !important; }
+${text(G(unit), 15, { muted: true, align: 'right' })}
 ${place(G(until), '16px', 94 + i * GOAL_WEEK, 'calc(100% - 32px)', 20)}
 ${text(G(until), 13, { muted: true, align: 'right' })}`,
 ).join('\n')}
@@ -680,6 +789,8 @@ ${fillButton('LIT_main_btn_Execel')}
 /* 一覧は、画面の下の端まで（下に灰色の帯を残さない）。最後のカードの下は、ホームに戻るバーのぶん空ける */
 #LIT_main:not(:has(#LIT_main_btn_Execel:not([style*="visibility: hidden"]))) #LIT_main_grd_exa_list { height: max(380px, calc(100vh - 272px)) !important; }
 #LIT_main_grd_exa_list .TccGridBodyScroll { padding-bottom: calc(16px + var(--myapp-safe-bottom, 0px)) !important; box-sizing: border-box !important; }
+/* 一覧が空のときの文は、ボタンのすぐ下に（一覧の面は画面の下まであるので、真ん中だと画面のなかほどに離れて出る。承認待ちと同じくらいの位置） */
+#LIT_main_grd_exa_list.myapp-empty::after { top: 24px; transform: none; }
 `,
   },
 
@@ -925,13 +1036,17 @@ ${HEALTH_RESULT_CSS}
     // 平均歩数の見出しの「１日」（全角の数字）を、ほかと同じ半角に
     relabel: { mainMenu_id_2026Walk_lbl_word_average: 'リンクレア社員の1日の平均歩数' },
     primary: ['stepGoalSet_id_2026Walk_btn2'],
+    // 週の歩数の入力（weeklyStepCount）: 数字のキーボードにする
+    numeric: WEEK_DAYS.map((d) => `${WEEKLY}_num_steps_${d}`),
     emptyGrids: {
       ranking_id_2026Walk_ranking_grd_kojin: 'まだランキングはありません',
       ranking_id_2026Walk_ranking_grd_dantai: 'まだランキングはありません',
     },
     // ランキング: 更新日の曜日が合っていないことがある（2026/11/13(日) など）。日付から曜日を出し直し、「時点分」は「時点」に
     script: `
+      ${HEALTH_STEPS_JS}
       window.__myappAppUpdate = function () {
+        healthSteps();
         // 歩数のカード: 単位の「歩」を、カードの右の端ではなく、数字のすぐ後ろに置く（数字の長さは毎日変わるので、測って置く）
         [['lbl_varia_day_step_goal_number', 'lbl_word_walk_big_1'], ['lbl_variable_sum_step_number', 'lbl_word_walk_big_2']].forEach(function (pair) {
           var num = document.getElementById('mainMenu_id_2026Walk_' + pair[0]);
@@ -1006,11 +1121,15 @@ ${fullWidth('mainMenu_id_2026Walk')}
 /* 「現在のWTTポイント」「0」「Pt」の3つは、文字の下の線（ベースライン）をそろえる（数字の下の線は、上から 58px ほど） */
 ${place('mainMenu_id_2026Walk_lbl_word_now_wtt_point', '16px', 29, '200px', 36)}
 ${text('mainMenu_id_2026Walk_lbl_word_now_wtt_point', 15, { muted: true })}
-#mainMenu_id_2026Walk_lbl_wtt_point { left: auto !important; right: 48px !important; top: 8px !important; width: 140px !important; height: 48px !important; }
+/* 「現在のWTTポイント」と右の「Pt」は、どちらも画面の端から 20pt（ほかの画面の小見出しと同じ位置） */
+#mainMenu_id_2026Walk_lbl_word_now_wtt_point .tcc-label { padding-left: 0 !important; border-left-width: 0 !important; }
+#mainMenu_id_2026Walk_lbl_word_now_wtt_point .tcc-label-text { padding-left: 4px !important; }
+/* 数字と単位のすきまは、歩数のカード（10,000 歩）と同じ 6pt ほどに。単位の箱は字の幅だけにして、右端を画面の端から 16px に */
+#mainMenu_id_2026Walk_lbl_wtt_point { left: auto !important; right: 39px !important; top: 8px !important; width: 140px !important; height: 48px !important; }
 #mainMenu_id_2026Walk_lbl_wtt_point,
 #mainMenu_id_2026Walk_lbl_wtt_point * { overflow: visible !important; line-height: 48px !important; }
 ${text('mainMenu_id_2026Walk_lbl_wtt_point', 30, { bold: true, align: 'right' })}
-#mainMenu_id_2026Walk_lbl_word_Pt { left: auto !important; right: 16px !important; top: 8px !important; width: 28px !important; height: 48px !important; }
+#mainMenu_id_2026Walk_lbl_word_Pt { left: auto !important; right: 20px !important; top: 8px !important; width: 16px !important; height: 48px !important; }
 #mainMenu_id_2026Walk_lbl_word_Pt,
 #mainMenu_id_2026Walk_lbl_word_Pt * { line-height: 72px !important; overflow: visible !important; }
 ${text('mainMenu_id_2026Walk_lbl_word_Pt', 15, { muted: true, align: 'right' })}
@@ -1044,10 +1163,12 @@ ${text('mainMenu_id_2026Walk_lbl_word_walk_big_2', 13, { muted: true })}
 
 ${place('mainMenu_id_2026Walk_lbl_word_average', '28px', 390, 'calc(100% - 180px)', 52)}
 ${text('mainMenu_id_2026Walk_lbl_word_average', 13, { muted: true })}
-#mainMenu_id_2026Walk_lbl_variable_avg_all_step { left: auto !important; right: 56px !important; top: 390px !important; width: 110px !important; height: 52px !important; }
+#mainMenu_id_2026Walk_lbl_variable_avg_all_step { left: auto !important; right: 48px !important; top: 390px !important; width: 110px !important; height: 52px !important; }
 ${text('mainMenu_id_2026Walk_lbl_variable_avg_all_step', 20, { bold: true, align: 'right' })}
-#mainMenu_id_2026Walk_lbl_word_walk_small_2 { left: auto !important; right: 28px !important; top: 390px !important; width: 24px !important; height: 52px !important; }
-${text('mainMenu_id_2026Walk_lbl_word_walk_small_2', 13, { muted: true })}
+#mainMenu_id_2026Walk_lbl_word_walk_small_2 { left: auto !important; right: 32px !important; top: 390px !important; width: 13px !important; height: 52px !important; }
+${text('mainMenu_id_2026Walk_lbl_word_walk_small_2', 13, { muted: true, align: 'right' })}
+/* 右寄せの数字と単位は、EZCraft の字の左右の余白（5px）をなくして、置いた位置どおりに並べる */
+:is(#mainMenu_id_2026Walk_lbl_wtt_point, #mainMenu_id_2026Walk_lbl_word_Pt, #mainMenu_id_2026Walk_lbl_variable_avg_all_step, #mainMenu_id_2026Walk_lbl_word_walk_small_2) :is(.tcc-label, .tcc-label-text) { padding-left: 0 !important; padding-right: 0 !important; overflow: visible !important; }
 
 /* 操作 */
 ${place('mainMenu_id_2026Walk_button_button_ranking_menu', '16px', 8, 'calc(50% - 22px)', 48)}
@@ -1063,6 +1184,9 @@ ${fullWidth('ranking_id_2026Walk')}
 #ranking_id_2026Walk_R2_C1, #ranking_id_2026Walk_blank4 { height: 28px !important; }
 ${place('ranking_id_2026Walk_lbl4', '16px', 4, 'calc(100% - 32px)', 22)}
 ${text('ranking_id_2026Walk_lbl4', 13, { muted: true })}
+/* いつの集計か（小見出しと同じく、画面の左から 20pt） */
+#ranking_id_2026Walk_lbl4 .tcc-label { padding-left: 0 !important; border-left-width: 0 !important; }
+#ranking_id_2026Walk_lbl4 .tcc-label-text { padding-left: 4px !important; }
 #ranking_id_2026Walk_R3_C1, #ranking_id_2026Walk_blank3 { height: 52px !important; }
 ${place('ranking_id_2026Walk_search_box_kojin', '16px', 4, 'calc(50% - 22px)', 40)}
 ${place('ranking_id_2026Walk_search_box_dantai', 'calc(50% + 6px)', 4, 'calc(50% - 22px)', 40)}

@@ -8,7 +8,7 @@
 //
 // 色の考え方: 設計者がわざわざ付けた色（緑のボタン、青い見出しなど）は残す。
 // 白い地・黒い文字・灰色の線のような「無彩色」だけを、テーマの色に置き換える。
-import { APP_SKINS, roleCss } from './appStyles';
+import { APP_SKINS, roleCss, type AppSkin } from './appStyles';
 import { SEARCH_ICON } from './layout';
 
 /** WebView に読み込ませる JavaScript を作る（appId はアプリケーション ID。アプリごとの調整に使う） */
@@ -38,6 +38,7 @@ export function buildSkinScript(appId: string): string {
   var MOBILE_FORMS = ${JSON.stringify(mobileForms)};
   var MOBILE_WHEN = ${JSON.stringify(mobileWhen)};
   var CONFIG = ${JSON.stringify(config)};
+  var CHECK_IDS = ${JSON.stringify(DEV && skin ? skinIds(skin, css) : null)};
 
   // ---- スタイルを差し込む ----
   var style = document.createElement('style');
@@ -53,10 +54,96 @@ export function buildSkinScript(appId: string): string {
   ${FIT_JS}
   ${DARK_JS}
   ${REVEAL_JS}
+  ${CHECK_JS}
 })();
 true;
 `;
 }
+
+/** 開発中か（アプリの外、npm run check:pages などで読み込んだときは false） */
+const DEV = typeof __DEV__ !== 'undefined' && __DEV__;
+
+/** EZCraft の部品 ID の形（フォーム ID_部品名。最後が _ で終わるものは、途中まで書いて足す名前なので除く） */
+const PART_ID = /^[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*[A-Za-z0-9]$/;
+
+/**
+ * このアプリの見た目の直しが、名前で指している EZCraft の部品 ID（CSS の #ID、設定に書いた部品、スクリプトの getElementById）。
+ * 開発中だけ、画面にあるかを確かめる（CHECK_JS）
+ */
+function skinIds(skin: AppSkin, css: string): string[] {
+  const ids = new Set<string>();
+  const add = (id: string | undefined) => {
+    if (id && PART_ID.test(id)) ids.add(id);
+  };
+  for (const m of css.matchAll(/#([A-Za-z][A-Za-z0-9_]*)/g)) add(m[1]);
+  for (const m of (skin.script ?? '').matchAll(/getElementById\(\s*['"]([A-Za-z0-9_]+)['"]\s*\)|['"]#([A-Za-z][A-Za-z0-9_]*)[\s'"]/g)) add(m[1] ?? m[2]);
+  [skin.hidden, skin.panels, skin.sections, skin.notes, skin.chips, skin.primary, skin.danger, skin.numeric, skin.mobileForms].forEach((list) => list?.forEach(add));
+  (skin.cards ?? []).forEach((card) => {
+    add(card.button);
+    add(card.subtitle);
+  });
+  Object.values(skin.bottomBars ?? {}).forEach((list) => list.forEach(add));
+  (skin.pickers ?? []).forEach((p) => add(p.ok));
+  (skin.liveSearch ?? []).forEach((l) => {
+    add(l.input);
+    add(l.button);
+  });
+  (skin.rowOpens ?? []).forEach((r) => {
+    add(r.grid);
+    add(r.button);
+  });
+  [skin.emptyGrids, skin.relabel, skin.placeholders, skin.tabBars].forEach((map) => Object.keys(map ?? {}).forEach(add));
+  return [...ids].sort();
+}
+
+// ---------------------------------------------------------------------------
+// 開発中だけ: 見た目の直しが名前で指している部品が、開いている画面にあるか確かめる。
+// EZCraft の画面が作り直されて部品の名前が変わると、その部品の直しが黙って効かなくなる（パソコン向けの見た目に戻る）。
+// 見つからない部品があれば、アプリに知らせる（アプリは Metro と画面の下に黄色い知らせを出す）。
+//   - 確かめるのは、開いている画面（.tcc-form）の名前で始まる部品だけ（ほかの画面の部品は、その画面を開いたときに）
+//   - 「frmApply_yukyu_R1」のように、途中までの名前（frmApply_yukyu）が、中に部品を持たない部品
+//     （別の画面を開くボタン）なら、それは別の画面の部品なので数えない
+//   - 画面ができて 2.5 秒たってから、1つの部品は1回だけ知らせる
+// ---------------------------------------------------------------------------
+const CHECK_JS = `
+  (function () {
+    if (!CHECK_IDS || !CHECK_IDS.length) return;
+    var reported = {};
+    var lastForms = '';
+    var timer = null;
+    function openForms() {
+      return Array.prototype.map.call(document.querySelectorAll('.tcc-form[id]'), function (f) { return f.id; });
+    }
+    function check() {
+      var forms = openForms();
+      if (!forms.length) return;
+      var missing = {};
+      CHECK_IDS.forEach(function (id) {
+        if (reported[id] || document.getElementById(id)) return;
+        var owner = '';
+        forms.forEach(function (f) { if (id.indexOf(f + '_') === 0 && f.length > owner.length) owner = f; });
+        if (!owner) return;
+        var parts = id.slice(owner.length + 1).split('_');
+        for (var i = 1; i < parts.length; i++) {
+          var part = owner + '_' + parts.slice(0, i).join('_');
+          if (document.getElementById(part) && !document.querySelector('[id^="' + part + '_"]')) return;
+        }
+        (missing[owner] = missing[owner] || []).push(id);
+      });
+      Object.keys(missing).forEach(function (form) {
+        missing[form].forEach(function (id) { reported[id] = true; });
+        try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'skinMissing', form: form, ids: missing[form] })); } catch (e) {}
+      });
+    }
+    new MutationObserver(function () {
+      var forms = openForms().join(',');
+      if (forms === lastForms) return;
+      lastForms = forms;
+      clearTimeout(timer);
+      timer = setTimeout(check, 2500);
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  })();
+`;
 
 /**
  * ページが動き出す前に入れる。整える前の EZCraft の見た目（白い地・パソコン向けの並び）が一瞬見えないように、
@@ -230,11 +317,23 @@ const GENERIC_JS = `
     });
   }
 
-  // 中身のない一覧に、文を出す
+  // 中身のない一覧に、文を出す。
+  // ただし、一覧が見えてすぐのあいだと、データを読んでいるあいだは、新しくは出さない
+  // （タブを開いてデータが届くまでに「データはありません」が一瞬出て、すぐ消えないように）。
+  // 出ている文は、また中身が入るまでそのまま（ほかの通信のたびに消えたり出たりしないように）
+  var EMPTY_GRACE_MS = 700;
+  var emptyRecheck = null;
   function emptyGrids() {
+    var now = Date.now();
+    var busy = (window.__myappXhr ? window.__myappXhr() : 0) > 0 || now - (window.__myappXhrAt || 0) < 150;
+    var wait = 0;
     Object.keys(CONFIG.emptyGrids).forEach(function (id) {
       var grid = byId(id);
       if (!grid) return;
+      var seen = grid.getClientRects().length > 0;
+      if (!seen) grid.__myappSeenAt = 0;
+      else if (!grid.__myappSeenAt) grid.__myappSeenAt = now;
+      var age = seen ? now - grid.__myappSeenAt : 0;
       // 行番号の列（rowHead・tdCol0）は数えない。空の一覧にも、行番号だけの行が残ることがある
       var rows = grid.querySelectorAll('.TccGridBodyScroll tbody tr');
       var empty = !Array.prototype.some.call(rows, function (tr) {
@@ -243,8 +342,18 @@ const GENERIC_JS = `
         });
       });
       if (grid.getAttribute('data-myapp-empty-msg') !== CONFIG.emptyGrids[id]) grid.setAttribute('data-myapp-empty-msg', CONFIG.emptyGrids[id]);
+      // 並び（空の一覧の高さなど）は、今までどおりすぐ変える。待たせるのは文だけ（myapp-empty-wait のあいだは文を隠す）
       grid.classList.toggle('myapp-empty', empty);
+      if (!empty || !seen) grid.__myappMsgShown = false;
+      else if (!busy && age >= EMPTY_GRACE_MS) grid.__myappMsgShown = true;
+      // 隠れている一覧（ほかのタブ）にも、先に印を付けておく（タブを開いた瞬間に文が出ないように）
+      var hold = empty && !grid.__myappMsgShown;
+      // まだ出さない文は、落ち着くころにもう一度見る（そのあいだにページが何も変わらなくても出るように）
+      if (hold && seen) wait = Math.max(wait, busy ? 200 : EMPTY_GRACE_MS - age);
+      if (grid.classList.contains('myapp-empty-wait') !== hold) grid.classList.toggle('myapp-empty-wait', hold);
     });
+    clearTimeout(emptyRecheck);
+    if (wait > 0) emptyRecheck = setTimeout(emptyGrids, wait + 20);
   }
 
   // 見出しやボタンの文字を置き換える（中の文字だけ。アイコンは残す）
@@ -1182,6 +1291,8 @@ div.tcc-component.chkbox input[type="checkbox"]:checked + label::after { border-
    ダークでは地に溶けて読めないので、テーマの色に */
 div.tcc-component.chkbox label, div.tcc-component.radioBtn label { color: var(--myapp-text) !important; }
 div.tcc-component div.icon-rt, div.tcc-component div.icon-rt i { color: var(--myapp-text2) !important; }
+/* カレンダーの印（Font Awesome）は、字の形が上寄りに描かれる（欄の真ん中より 2.5pt ほど上に見える）。少し下げる */
+div.tcc-component div.icon-rt i.fa-calendar, div.tcc-component div.icon-rt i.fa-calendar-o { transform: translateY(2px); }
 /* ラジオボタンの組（.tcc-component.radio）: パソコン向けの細い四角い枠をやめて、入力欄と同じ角の丸い面にする（どの画面でも同じ見た目に） */
 div.tcc-component.radio {
   border: none !important;
@@ -1189,6 +1300,9 @@ div.tcc-component.radio {
   background-color: var(--myapp-inset) !important; /* field だと、ダークではシートの地と同じ色になって面が消える */
   box-sizing: border-box !important;
 }
+/* 画面の地（灰色）にじかに置いた組は、ほかの入力欄と同じ白い面に（灰色の inset だと、地と同じ色で面が見えない）。
+   ダイアログ・シートの中と、白いカードの中は、上の inset のまま */
+div.tcc-component.radio:not(.tcc-modal *):not(.myapp-card *) { background-color: var(--myapp-field) !important; }
 /* 必須の印（EZCraft が欄の右の外に ::after で付ける「＊」）: 画面の端にはみ出し、欄の印とも重なるので、欄の見出しの後ろに移す
    （JS の requiredMarks が見出しに .myapp-required を付ける。見出しが見つからない欄は、そのまま） */
 div.tcc-component.text.myapp-req-moved::after { display: none !important; }
@@ -1240,6 +1354,26 @@ body > .myapp-bottom-bar {
 }
 .myapp-bottom-bar.in-modal { flex: none; padding: 10px 16px 14px; background-color: var(--myapp-surface); }
 .myapp-bottom-bar.myapp-empty-bar { display: none !important; }
+/* 小さな知らせ（ヘルスケアの歩数を入れた など）: 画面の下に浮かぶ、濃い色のカプセル。ダイアログより上に出す */
+body > .myapp-health-note {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(24px + var(--myapp-safe-bottom, 0px));
+  z-index: 2147483000;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(30, 30, 32, 0.92);
+  color: #FFFFFF;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: center;
+  text-wrap: balance;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  transition: opacity 0.4s;
+}
+body > .myapp-health-note.myapp-hide { opacity: 0; }
 :root.myapp-has-bar body { padding-bottom: calc(84px + var(--myapp-safe-bottom, 0px)) !important; }
 .myapp-bottom-bar .tcc-btn-group,
 .myapp-bottom-bar .tcc-btn {
@@ -1462,6 +1596,8 @@ body > .myapp-bottom-bar {
   text-wrap: balance; /* 2行になるときは、行の長さをそろえる（2行目が1語だけにならない） */
   color: var(--myapp-text2);
 }
+/* 一覧が見えてすぐのあいだと、データを読んでいるあいだは、文を出さない（emptyGrids） */
+[data-myapp-empty-msg].myapp-empty.myapp-empty-wait::after { visibility: hidden; }
 [data-myapp-empty-msg].myapp-empty .TccGridHeadScroll,
 [data-myapp-empty-msg].myapp-empty .TccGridHeadFixed { visibility: hidden !important; }
 

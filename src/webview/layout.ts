@@ -135,6 +135,27 @@ export function scrollGrid(gridId: string): string {
 }
 
 
+/**
+ * セレクターの並び（a, b, c）を、1つずつに分ける。( ) や [ ] の中の , では分けない
+ * （:is(.a, .b) を「:is(.a」と「.b)」に分けると、条件が ( ) の中にまで入り、ルールが強くなりすぎるため）
+ */
+function splitSelectors(list: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < list.length; i += 1) {
+    const ch = list[i];
+    if (ch === '(' || ch === '[') depth += 1;
+    else if (ch === ')' || ch === ']') depth -= 1;
+    else if (ch === ',' && depth === 0) {
+      parts.push(list.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(list.slice(start));
+  return parts;
+}
+
 /** CSS の各ルールの前に条件（祖先のセレクター）を付けて、条件に合うときだけ効くようにする */
 export function scoped(scope: string, css: string): string {
   return css
@@ -143,9 +164,7 @@ export function scoped(scope: string, css: string): string {
     .map((chunk) => {
       const open = chunk.indexOf('{');
       if (open < 0) return '';
-      const selectors = chunk
-        .slice(0, open)
-        .split(',')
+      const selectors = splitSelectors(chunk.slice(0, open))
         .map((selector) => selector.trim())
         .filter(Boolean)
         .map((selector) => `${scope} ${selector}`)
