@@ -13,7 +13,8 @@ import type { ICognitoStorage } from 'amazon-cognito-identity-js';
 /** 端末に残すもの（キーの終わりで見分ける。ほかはトークンなので残さない） */
 const KEEP = /\.(LastAuthUser|deviceKey|deviceGroupKey|randomPasswordKey)$/;
 const STORE_KEY = 'cognitoDevice';
-const STORE = { keychainService: 'myapp.cognito' };
+// この端末だけ（バックアップや機種変更で、ほかの端末に移らない）
+const STORE = { keychainService: 'myapp.cognito', keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
 /** 前の版で、部品のふつうの保存場所が AsyncStorage に書いたものの頭 */
 const LEGACY_PREFIX = '@MemoryStorage:';
 

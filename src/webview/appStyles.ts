@@ -168,7 +168,9 @@ ${
 #${id} .tcc-label { width: 100% !important; }
 #${id} * {
   white-space: normal !important;
-  word-break: break-all;
+  /* 日本語は字ごとに折り返し、英語の言葉（Spendia など）は途中で切らない。収まらない長い英数字だけ途中で折る */
+  word-break: normal;
+  overflow-wrap: anywhere;
   text-align: left !important;
   font-size: 13px !important;
   font-weight: 400 !important;
@@ -366,9 +368,11 @@ ${place(H('rdo12'), '104px', 972, 'calc(100% - 120px)', HEALTH_FIELD)}
 //   - ダイアログが開いて、登録してある歩数を読み終わってから、今日までの日について、アプリにその日の歩数を聞く（bridge の steps）
 //   - ヘルスケアの歩数が、欄の数より多い日だけ入れる（手で多めに入れた日や、まだ歩数のない日はそのまま）
 //   - 入れるのは人が打ったのと同じやり方で（EZCraft が「入力が変わった」印を付け、合計も出し直す）。「保存」は、人が押す
-const WEEKLY = 'weeklyStepCount_id_2026Walk';
+/** 歩数入力のダイアログ（テストからも使う） */
+export const WEEKLY = 'weeklyStepCount_id_2026Walk';
 const WEEK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-const HEALTH_STEPS_JS = `
+/** ヘルスケアの歩数を入れるページのスクリプト（テストからも使う。src/__tests__/healthSteps-test.ts） */
+export const HEALTH_STEPS_JS = `
   var healthAsks = {};
   var healthTimer = null;
   // アプリからの返事（stepsReplyJs）
@@ -940,6 +944,10 @@ ${place('LP_main_lbl18', '61px', 16, '20px', 40)}
 #LP_main_lbl18 .tcc-label-text { padding: 0 !important; font-size: 16px !important; color: var(--myapp-text) !important; text-align: left !important; }
 ${place('LP_main_lbl_name', '16px', 72, 'calc(100% - 32px)', 24)}
 ${place('LP_main_lbl_yaku', '16px', 98, 'calc(100% - 32px)', 18)}
+/* 部署と名前・役職: EZCraft は字の箱を 400px で決めているので、狭い画面（390pt など）では右にはみ出す。置き場所の幅に収める
+   （長い部署名は、右の端で「…」になる） */
+:is(#LP_main_lbl_name, #LP_main_lbl_yaku) { display: block !important; }
+:is(#LP_main_lbl_name, #LP_main_lbl_yaku) :is(.tcc-label, .tcc-label-text) { width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
 /* 等級の記号（AW3 など）は、見ても意味が分からないので出さない */
 #LP_main_lbl_rank { display: none !important; }
 /* 明細の一覧: 1件1枚のカード（明細の名前が上、支給日と種別が下）。押すと明細が開く（「明細を見る」のボタンはなくした） */
@@ -1166,6 +1174,9 @@ ${fillLabel('LPJZ_Main_lbl_nend_main')}
 ${fillButton('LPJZ_Main_btnDownLoad')}
 ${row('LPJZ_Main_lbl_kome', 90, 32)}
 #LPJZ_Main_lbl_kome .tcc-label, #LPJZ_Main_lbl_kome .tcc-label-text, #LPJZ_Main_lbl_name .tcc-label, #LPJZ_Main_lbl_name .tcc-label-text { padding-left: 0 !important; }
+/* 部署と名前: EZCraft は字の箱を 400px で決めているので、狭い画面では右にはみ出す。置き場所の幅に収める（給与明細と同じ） */
+#LPJZ_Main_lbl_name { display: block !important; }
+#LPJZ_Main_lbl_name :is(.tcc-label, .tcc-label-text) { width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
 /* 添付ファイルの欄（上の枠のすぐ下に置かれる） */
 #LPJZ_Main_att_file { left: 16px !important; top: 8px !important; width: calc(100% - 32px) !important; }
 #LPJZ_Main_att_file,

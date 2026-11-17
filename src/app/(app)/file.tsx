@@ -9,14 +9,14 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { WebView } from 'react-native-webview';
 
-import { shareFile } from '../../files';
+import { isReceivedFile, shareFile } from '../../files';
 import { useColors } from '../../theme';
 
 export default function FileScreen() {
   const { uri, title, mime } = useLocalSearchParams<{ uri: string; title?: string; mime?: string }>();
   const c = useColors();
-  // アプリの一時的な場所のファイルだけを開く
-  const local = typeof uri === 'string' && uri.startsWith('file://');
+  // ページから受け取って置いたファイルだけを開く（アプリの中のほかのファイルは開かない）
+  const local = isReceivedFile(uri);
   const type = mime || 'application/pdf';
   return (
     <>

@@ -27,6 +27,23 @@ export function fileName(name: string, mime: string, fallback: string): string {
   return base;
 }
 
+/** 受け取ったファイルを置く場所の中のファイルか（PDF を見る画面は、ここのファイルしか開かない。src/app/(app)/file.tsx） */
+export function isReceivedFile(uri: string | undefined): boolean {
+  if (typeof uri !== 'string') return false;
+  try {
+    return isInside(uri, new Directory(Paths.cache, FOLDER).uri);
+  } catch {
+    return false;
+  }
+}
+
+/** uri が、folder（file:// の場所）の中にあるか。「..」で外に出るものは入れない */
+export function isInside(uri: string, folder: string): boolean {
+  if (!uri.startsWith('file://') || /(^|\/)\.\.(\/|$)/.test(decodeURIComponent(uri))) return false;
+  const base = folder.endsWith('/') ? folder : `${folder}/`;
+  return uri.startsWith(base);
+}
+
 /** 受け取った中身（base64）を、一時的な場所にファイルとして置く。置いたファイルを返す */
 export async function saveIncoming(base64: string, name: string): Promise<File> {
   discardOld();

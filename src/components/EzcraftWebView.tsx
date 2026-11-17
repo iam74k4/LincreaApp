@@ -18,6 +18,7 @@ import { WebView } from 'react-native-webview';
 import { pathOf } from '../api/http';
 import { SERVER_URL } from '../config';
 import { fileName, openFile, saveIncoming } from '../files';
+import { depositLaunch } from '../launch';
 import { advanceApplyQueue, applyQueueActive, openApplication, startApplyQueue } from '../openShortcut';
 import { useSession } from '../session/SessionContext';
 import { useColors } from '../theme';
@@ -28,6 +29,7 @@ import { bootJs, buildSkinScript, SHOW_PAGE_JS } from '../webview/ezcraftSkin';
 import { appDataKeyOfUrl, rememberAppData } from '../webview/appDataCache';
 import { depositHandoff, type Handoff } from '../webview/handoff';
 import { initAppJs } from '../webview/initApp';
+import { isServerUrl, mayNavigate, mayOpenOutside } from '../webview/origin';
 import { initAppFormOfUrl, recallInitApp, rememberInitApp } from '../webview/initAppCache';
 import { noteClosedByPage, noteWrite, takeChildResult, writeCount } from '../webview/writes';
 
@@ -234,7 +236,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     const next = resolveTarget(targetUrl);
     if (!next) return;
     if (next.kind === 'external') {
-      Linking.openURL(next.url);
+      // ほかのサイトは、アプリの外（Safari）で開く。https のページだけ（電話・ほかのアプリなどのリンクは開かない）
+      if (mayOpenOutside(next.url)) Linking.openURL(next.url).catch(() => {});
       return;
     }
     // この画面の App.data を控えておく（次から近道が、この画面を開かずに行き先を直接開けるように）
@@ -248,15 +251,17 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       openedChild.current = true;
       othersWritesAtOpen.current = writeCount() - ownWrites.current;
     }
-    // 近道の途中なら、残りの段を次の画面に引き継ぐ
+    // 近道の途中なら、残りの段と入れておく値を、次の画面に引き継ぐ（引数には書かずに預けて番号だけ渡す。src/launch.ts）。
+    // シートの中なら、シートのまま入れ替える
     const rest = replace && autoClick ? autoClick.steps.slice(1) : [];
-    const chain = rest.length > 0 && autoClick ? { auto: rest.join(','), ready: '', label: autoClick.label } : {};
-    // 近道で進んだ先の画面にも、入れておく値を引き継ぐ。シートの中なら、シートのまま入れ替える
-    const carry = replace && prefill ? { prefill: JSON.stringify(prefill) } : {};
+    const carried = replace && (rest.length > 0 || prefill);
+    const orders = carried
+      ? { launch: depositLaunch({ steps: rest, ready: '', label: autoClick?.label ?? '', prefill: prefill ?? undefined }) }
+      : {};
     const runPath = replace && sheet ? ('/sheet/[app]/[form]' as const) : ('/run/[app]/[form]' as const);
     const href =
       next.kind === 'runapp'
-        ? { pathname: runPath, params: { app: next.app, form: next.form, q: next.query, data, ...chain, ...carry } }
+        ? { pathname: runPath, params: { app: next.app, form: next.form, q: next.query, data, ...orders } }
         : { pathname: '/page' as const, params: { path: next.path, app: appId, data } };
     if (replace) router.replace(href);
     else router.push(href);
@@ -290,7 +295,16 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         injectedJavaScriptBeforeContentLoaded={bootJs(c.background) + openerStubJs(handoff) + prefillJs(prefill) + initAppJs(initApp) + healthFlagJs(HEALTH)}
         injectedJavaScript={safeAreaJs(insets.bottom) + BRIDGE_JS + buildSkinScript(appId) + (autoClick && autoClick.steps.length > 0 ? autoClickJs(autoClick.steps[0], autoClick.ready) : '') + restoreScrollJs(restoreTo)}
         // iOS では onMessage を渡さないと injectedJavaScript が実行されない（react-native-webview の既知の動き）
+        // 画面全体は、会社のサイトのページだけを出す。ほかのサイトへのリンクは、アプリの外（Safari）で開く
+        // （アプリが入れる仕組みとデータが、ほかのサイトに渡らないように。src/webview/origin.ts）
+        onShouldStartLoadWithRequest={(req) => {
+          if (mayNavigate(req.url, req.isTopFrame)) return true;
+          if (mayOpenOutside(req.url)) Linking.openURL(req.url).catch(() => {});
+          return false;
+        }}
         onMessage={(e) => {
+          // 知らせは、会社のサイトのページから来たものだけを受け付ける
+          if (!isServerUrl(e.nativeEvent.url)) return;
           const message = parseBridgeMessage(e.nativeEvent.data);
           if (message?.type === 'scroll') scroll.current = { y: message.y, target: message.target };
           if (message?.type === 'ready') setShown(true);

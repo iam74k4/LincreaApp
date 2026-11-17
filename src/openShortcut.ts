@@ -9,6 +9,7 @@
 // ほかの申請や近道を開いたり、しばらく（10 分）置いたりしたら、残りはやめる。
 import { router } from 'expo-router';
 
+import { depositLaunch } from './launch';
 import { SHORTCUTS, type Shortcut } from './shortcuts';
 import { appDataKey, recallAppData } from './webview/appDataCache';
 import { depositHandoff } from './webview/handoff';
@@ -71,13 +72,13 @@ function newWindowName(): string {
   return Date.now().toString(16);
 }
 
-function extra(opts: OpenOptions): { prefill?: string } {
+function stopQueueUnlessContinuing(opts: OpenOptions): void {
   if (!opts.fromQueue) stopApplyQueue(); // ほかの画面を開いたら、まとめて申請の残りはやめる
-  return opts.prefill ? { prefill: JSON.stringify(opts.prefill) } : {};
 }
 
 /** 行き先の画面を直接開く。メニューが渡すのと同じもの（App.data・画面の名前・引数）を持たせる */
 export function openShortcutDirect(shortcut: Shortcut, appData: string, opts: OpenOptions = {}): void {
+  stopQueueUnlessContinuing(opts);
   router.push({
     pathname: opts.sheet ? '/sheet/[app]/[form]' : '/run/[app]/[form]',
     params: {
@@ -85,23 +86,23 @@ export function openShortcutDirect(shortcut: Shortcut, appData: string, opts: Op
       form: shortcut.direct.form,
       title: opts.title ?? shortcut.title,
       data: depositHandoff({ appData, name: newWindowName(), params: JSON.stringify(shortcut.direct.params) }),
-      ...extra(opts),
+      // 入れておく値は、引数（URL）に書かずに預けて番号だけ渡す（src/launch.ts）
+      ...(opts.prefill ? { launch: depositLaunch({ prefill: opts.prefill }) } : {}),
     },
   });
 }
 
 /** 控えがないとき: メニューを裏で開いて、ボタンを順に押す（このときに控えもできる） */
 export function openShortcutThroughMenu(shortcut: Shortcut, opts: OpenOptions = {}): void {
+  stopQueueUnlessContinuing(opts);
   router.push({
     pathname: opts.sheet ? '/sheet/[app]/[form]' : '/run/[app]/[form]',
     params: {
       app: shortcut.app,
       form: shortcut.form,
       title: opts.title ?? shortcut.title,
-      auto: shortcut.steps.join(','),
-      ready: shortcut.ready,
-      label: shortcut.title,
-      ...extra(opts),
+      // 順に押すボタンと入れておく値は、引数（URL）に書かずに預けて番号だけ渡す（src/launch.ts）
+      launch: depositLaunch({ steps: shortcut.steps, ready: shortcut.ready, label: shortcut.title, prefill: opts.prefill }),
     },
   });
 }

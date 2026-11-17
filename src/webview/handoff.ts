@@ -3,6 +3,8 @@
 // 新しいものから決まった数だけ持っておき、古いものから消す。アプリを閉じれば消える（保存はしない）。
 // 取り出しても消さないのは、画面が作り直されたとき（開発中の再読み込みなど）にもう一度取り出せるようにするため。
 // 消してしまうと、作り直された画面がログインした人などを受け取れず、EZCraft がエラーを出す。
+// 番号は推測できないもの（UUID）にする。外からのリンクで、預かったもの（ログインした人の情報）を指せないように。
+import { randomUUID } from 'expo-crypto';
 
 /** 開いた元から、開いた先へ渡すもの（どれも JSON の文字列か名前） */
 export type Handoff = {
@@ -16,11 +18,8 @@ export type Handoff = {
 
 const store = new Map<string, Handoff>();
 const KEEP = 8; // 持っておく数（画面を重ねる深さより多く。1つが数百 KB になることがあるので、多くは持たない）
-let counter = 0;
-
 export function depositHandoff(handoff: Handoff): string {
-  counter += 1;
-  const id = String(counter);
+  const id = randomUUID();
   store.set(id, handoff);
   // Map は入れた順に並ぶので、先頭がいちばん古い
   while (store.size > KEEP) store.delete(store.keys().next().value as string);

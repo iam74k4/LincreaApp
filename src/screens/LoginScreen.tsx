@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Pressable,
@@ -10,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  useColorScheme,
   type TextInputInstance,
   type TextInputProps,
 } from 'react-native';
@@ -32,8 +34,13 @@ type Props = {
   onLoginHelp: () => void;
 };
 
+/** ログイン画面の上の、会社のロゴ（表示は 220×40pt。@2x・@3x の画像もある） */
+const LOGO = require('../../assets/logo.png');
+const LOGO_DARK = require('../../assets/logo-dark.png');
+
 export function LoginScreen({ workspaceName, onLoggedIn, onForgotPassword, onLoginHelp }: Props) {
   const c = useColors();
+  const scheme = useColorScheme();
   const styles = useMemo(() => createStyles(c), [c]); // ライト / ダークが切り替わったら作り直す
 
   // ① 画面が覚えておくこと（state）
@@ -136,7 +143,7 @@ export function LoginScreen({ workspaceName, onLoggedIn, onForgotPassword, onLog
     }
   }
 
-  // ④ 見た目。上から順に、見出し → 入力欄2つ → 保持スイッチ → エラー → ボタン → ヘルプ → 版
+  // ④ 見た目。上から順に、会社のロゴ → 入力欄2つ → 保持スイッチ → エラー → ボタン → ヘルプ → 版
   return (
     <SafeAreaView style={styles.page}>
       <KeyboardAvoidingView behavior="padding" style={styles.flex}>
@@ -146,16 +153,14 @@ export function LoginScreen({ workspaceName, onLoggedIn, onForgotPassword, onLog
         >
           <View style={styles.form}>
             <View style={styles.heading}>
-              <View style={styles.mark}>
-                <SymbolView
-                  name={{ ios: 'square.stack.3d.up.fill', android: 'stacks', web: 'stacks' }}
-                  size={28}
-                  tintColor={c.onAccent}
-                />
-              </View>
-              <Text style={styles.title} accessibilityRole="header">
-                MyApp
-              </Text>
+              {/* 会社のロゴ（暗い表示では、紺と黒の字を白にしたもの。assets/brand-logo.svg から作った画像） */}
+              <Image
+                source={scheme === 'dark' ? LOGO_DARK : LOGO}
+                style={styles.logo}
+                resizeMode="contain"
+                accessibilityRole="header"
+                accessibilityLabel="LINCREA"
+              />
               <Text style={styles.subtitle}>{workspaceName}</Text>
             </View>
 
@@ -344,19 +349,10 @@ function createStyles(c: Colors) {
       gap: 4,
       marginBottom: 16,
     },
-    mark: {
-      width: 56,
-      height: 56,
-      borderRadius: 16,
-      backgroundColor: c.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
+    logo: {
+      width: 220,
+      height: 40,
       marginBottom: 12,
-    },
-    title: {
-      fontSize: 28,
-      fontWeight: '700',
-      color: c.text,
     },
     subtitle: {
       fontSize: 15,

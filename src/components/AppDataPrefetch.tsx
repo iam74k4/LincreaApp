@@ -9,6 +9,7 @@ import { WebView } from 'react-native-webview';
 
 import { pathOf } from '../api/http';
 import { SERVER_URL } from '../config';
+import { isServerUrl, mayNavigate } from '../webview/origin';
 import { appDataKey, rememberAppData } from '../webview/appDataCache';
 
 type Props = {
@@ -45,7 +46,10 @@ export function AppDataPrefetch({ app, form, ready, onDone }: Props) {
         source={{ uri: `${SERVER_URL}/runapp/${encodeURIComponent(app)}/${encodeURIComponent(form)}/` }}
         sharedCookiesEnabled
         injectedJavaScript={prefetchJs(ready)}
+        // 会社のサイトのページだけを開き、そこからの知らせだけを受け付ける（src/webview/origin.ts）
+        onShouldStartLoadWithRequest={(req) => mayNavigate(req.url, req.isTopFrame)}
         onMessage={(e) => {
+          if (!isServerUrl(e.nativeEvent.url)) return;
           try {
             const message = JSON.parse(e.nativeEvent.data) as { type?: string; data?: unknown };
             if (message.type !== 'appData') return;

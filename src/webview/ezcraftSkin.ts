@@ -76,7 +76,8 @@ function skinIds(skin: AppSkin, css: string): string[] {
     if (id && PART_ID.test(id)) ids.add(id);
   };
   for (const m of css.matchAll(/#([A-Za-z][A-Za-z0-9_]*)/g)) add(m[1]);
-  for (const m of (skin.script ?? '').matchAll(/getElementById\(\s*['"]([A-Za-z0-9_]+)['"]\s*\)|['"]#([A-Za-z][A-Za-z0-9_]*)[\s'"]/g)) add(m[1] ?? m[2]);
+  // 「'#frmX_txtPrj' + n」のように、後ろに番号を足して使う名前は、部品の名前そのものではないので数えない
+  for (const m of (skin.script ?? '').matchAll(/getElementById\(\s*['"]([A-Za-z0-9_]+)['"]\s*\)|['"]#([A-Za-z][A-Za-z0-9_]*)(?=[\s'"])(?!['"]\s*\+)/g)) add(m[1] ?? m[2]);
   [skin.hidden, skin.panels, skin.sections, skin.notes, skin.chips, skin.primary, skin.danger, skin.numeric, skin.mobileForms].forEach((list) => list?.forEach(add));
   (skin.cards ?? []).forEach((card) => {
     add(card.button);
@@ -1236,7 +1237,8 @@ const BASE_CSS = `
   width: auto !important;
   max-width: 100% !important;
   white-space: normal !important;
-  word-break: break-all;
+  word-break: normal;
+  overflow-wrap: anywhere; /* 英語の言葉は途中で切らない（収まらない長い英数字だけ折る） */
   font-size: 15px !important;
   line-height: 1.5 !important;
 }

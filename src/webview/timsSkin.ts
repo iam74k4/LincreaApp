@@ -399,20 +399,25 @@ ${DAY.status} .tcc-label-text { width: auto !important; font-size: 15px !importa
   color: var(--myapp-accent-text) !important;
 }
 #${A('rptWork')} .tcc-rpt-row[data-myapp-dupbadge] .ribon { display: none !important; }
+/* L-SMART Holiday の札は、行の右上の肩に（左上の申請の札と同じ形）。
+   行の真ん中に置くと、狭い画面（390pt 以下）で右の「残業 0:30」などとくっつくため */
 #${A('rptWork')} .lsmartHl {
-  left: 144px !important;
-  top: 50% !important;
-  transform: translateY(-50%);
+  left: auto !important;
+  right: 0 !important;
+  top: 0 !important;
+  transform: none !important;
   width: auto !important;
-  height: 20px !important;
+  height: 16px !important;
   padding: 0 8px !important;
-  border-radius: 10px !important;
+  border-radius: 0 18px 0 10px !important;
   font-size: 11px !important;
-  line-height: 20px !important;
+  line-height: 16px !important;
   background-color: var(--myapp-success-bg) !important;
   color: var(--myapp-success) !important;
 }
 #${A('rptWork')} .teleWk { left: auto !important; right: 36px !important; top: 2px !important; }
+/* 札がある日は、テレワークのしるしを下の端に（右上の札と重ならないように） */
+#${A('rptWork')} .tcc-rpt-row:has(.lsmartHl) .teleWk { top: auto !important; bottom: 2px !important; }
 
 /* 押した日: 次の画面（勤怠実績登録）が開くまで、行を少し沈め、右の › を読み込み中の印にする（JS が myapp-opening を付ける） */
 .tcc-rpt-row.myapp-opening ${DAY.button} .tcc-btn { background-color: var(--myapp-pressed-bg) !important; }
