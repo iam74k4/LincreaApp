@@ -3020,6 +3020,7 @@ const SCRIPT = `
     var cb = cf && cf.closedCb;
     // 何もしない処理（画面が用意していない）なら、丸ごと読み直してもらう
     if (typeof cb !== 'function' || /^function\\s*\\w*\\s*\\([^)]*\\)\\s*\\{\\s*\\}$/.test(String(cb))) return false;
+    // 読み込み中の印・ページの高さ・見ていた位置は、アプリが呼ぶときに保つ（src/webview/bridge.ts の childClosedJs）
     cb(name);
     // ほかのタブ（工数・出力・集計など）で読んであった一覧も、裏で読み直す（古いまま見えないように）
     setTimeout(refreshLoadedTabs, 3500);

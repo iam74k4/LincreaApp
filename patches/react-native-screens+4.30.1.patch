@@ -1,0 +1,18 @@
+diff --git a/node_modules/react-native-screens/ios/RNSScreenStack.mm b/node_modules/react-native-screens/ios/RNSScreenStack.mm
+index 5da1196..f0212ba 100644
+--- a/node_modules/react-native-screens/ios/RNSScreenStack.mm
++++ b/node_modules/react-native-screens/ios/RNSScreenStack.mm
+@@ -750,9 +750,10 @@ RNS_IGNORE_SUPER_CALL_END
+       [_controller setViewControllers:newControllers animated:NO];
+       [_controller pushViewController:top animated:YES];
+     } else {
+-      // don't really know what this case could be, but may need to handle it
+-      // somehow
+-      [_controller setViewControllers:controllers animated:NO];
++      // The previous top is still on the stack but no longer on top, and the new top was already on the stack
++      // (for example, the previous top was moved to the bottom to keep it alive). UIKit treats this as a pop when
++      // animated, so animate it while the previous top is visible instead of switching abruptly.
++      [_controller setViewControllers:controllers animated:previousTop.view.window != nil];
+     }
+   } else {
+     // change wasn't on the top of the stack. We don't need animation.

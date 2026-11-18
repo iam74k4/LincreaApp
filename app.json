@@ -48,7 +48,8 @@
         {
           "faceIDPermission": "Face ID でログインするために使います。"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "scheme": "logindemo",
     "extra": {

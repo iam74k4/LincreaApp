@@ -3,12 +3,13 @@
 // EZCraft の保存は、通信を1つずつ順に送るので、長いと 10 秒ほどかかる。そのあいだ、くるくるだけだと
 // 止まっているのか進んでいるのか分からないので、段の数と棒で進み具合を見せる（src/webview/bridge.ts の SAVE_WATCH_JS）。
 //   - 5 秒を超えたら、待ってよいことを伝える
-//   - ‹ で戻ろうとしたら、すぐには戻らず、終わってから戻る（途中で戻ると保存が切れるため）
-//   - 保存を裏で続けられるとき（canLeave。いまは使っていない）は、‹ で戻っても保存は続くことを伝える
+//   - 保存を裏で続けられないとき、‹ で戻ろうとしたら、すぐには戻らず、終わってから戻る（途中で戻ると保存が切れるため）
+//   - 保存を裏で続けられるとき（onLeave。ページを置き場へ移せるアプリだけ。src/webview/savePark.tsx）は、‹ で戻っても保存は続くことを伝える。
+//     右へなぞっても戻れる（保存のあいだは iOS の戻るスワイプを止めているため）
 //   - ほかの画面が保存しているあいだに「登録」などを押したら、前の保存が終わるのを待っていることを伝える
 // ページは押せないようにしておく（2回押して、2回保存しないように）。上のヘッダー（‹）は押せる。
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, PanResponder, StyleSheet, Text, View } from 'react-native';
 
 import { useColors } from '../theme';
 import { saveProgress, savingText, type SaveSize } from '../webview/saveSizes';
@@ -25,14 +26,30 @@ type Props = {
   size: SaveSize | null;
   /** 保存のあいだに戻ろうとした（終わったら戻る。シートの画面だけ） */
   backAfter: boolean;
-  /** ‹ で戻っても、保存を裏で続けられる */
-  canLeave: boolean;
   /** ほかの画面の保存が終わるのを待っている（まだこの画面の保存は始まっていない） */
   waiting?: boolean;
+  /** 保存を裏で続けて戻る（あれば、戻れることを伝え、右へなぞったら呼ぶ。保存のあいだは iOS の戻るスワイプを止めているため） */
+  onLeave?: () => void;
 };
 
-export function SaveProgress({ startedAt, writes, steps, size, backAfter, canLeave, waiting = false }: Props) {
+/** これだけ右へなぞるか、速く払ったら、戻る */
+const SWIPE_BACK_DISTANCE = 60;
+const SWIPE_BACK_VELOCITY = 0.5;
+
+export function SaveProgress({ startedAt, writes, steps, size, backAfter, waiting = false, onLeave }: Props) {
   const c = useColors();
+  // 横へのなぞりだけを受ける（縦や斜めは受けない。押しただけでも受けない）。
+  // onLeave は変わらない関数を渡してもらう（なぞっている途中で作り直すと、なぞった長さが分からなくなる）
+  const swipe = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, g) => onLeave !== undefined && g.dx > 12 && Math.abs(g.dy) < g.dx * 0.6,
+        onPanResponderRelease: (_, g) => {
+          if (onLeave && (g.dx > SWIPE_BACK_DISTANCE || g.vx > SWIPE_BACK_VELOCITY)) onLeave();
+        },
+      }),
+    [onLeave],
+  );
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 250);
@@ -44,7 +61,7 @@ export function SaveProgress({ startedAt, writes, steps, size, backAfter, canLea
 
   return (
     // 押せないようにする面は、出す前から置いておく
-    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
+    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal {...swipe.panHandlers}>
       {shown && (
         // 後ろを少し暗くして、待つあいだはページを押せないことを見せる
         <View style={[styles.center, styles.dim]} pointerEvents="none">
@@ -61,7 +78,7 @@ export function SaveProgress({ startedAt, writes, steps, size, backAfter, canLea
               <Text style={[styles.note, { color: c.textSecondary }]}>{'通信に時間がかかっています。\nこのままお待ちください'}</Text>
             )}
             {backAfter && <Text style={[styles.note, { color: c.textSecondary }]}>{'保存が終わったら、\n前の画面に戻ります'}</Text>}
-            {!waiting && canLeave && !backAfter && (
+            {!waiting && onLeave && !backAfter && (
               <Text style={[styles.hint, { color: c.textSecondary }]}>{'‹ で戻っても、保存は続きます'}</Text>
             )}
           </View>

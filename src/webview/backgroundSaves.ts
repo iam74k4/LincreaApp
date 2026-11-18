@@ -1,12 +1,9 @@
 // 保存（登録・削除など）を、アプリ全体で1つずつにする。保存の途中で ‹ で戻ったら、その保存を裏で続ける。
 //
-// ※ 裏で続ける仕組みは、いまは使っていない（src/components/EzcraftWebView.tsx の KEEP_SAVING_IN_BACKGROUND）。
-//   iPhone の実機では、見えなくなった WebView のページを iOS が止めてしまい、裏に回した保存が最後まで進まなかった。
-//   保存を1つずつにする仕組み（ほかの画面の「登録」を待たせる）は、そのまま使う。
-//
 // EZCraft の保存は、通信を1つずつ順に送るので 10 秒ほどかかる（src/webview/bridge.ts の SAVE_WATCH_JS）。
-// 待たずにほかの画面へ移れるように、保存の途中で戻ったら、その画面を見えないところ（重ねた画面の一番下）に残して、
-// 保存を最後まで続けさせる（src/components/EzcraftWebView.tsx）。上には小さな知らせを出す（BackgroundSaveBanner）。
+// 待たずにほかの画面へ移れるように、保存の途中で戻ったら、その画面を重ねた画面の一番下に残し、
+// ページは画面の後ろの置き場へ移して、保存を最後まで続けさせる（src/components/EzcraftWebView.tsx。
+// なぜ置き場が要るか・使えないときは src/webview/savePark.tsx）。上には小さな知らせを出す（BackgroundSaveBanner）。
 //   - 終わったら: その画面を片づけ、戻った先の画面（勤務表など）のデータを新しくする
 //   - 失敗したら: その画面を片づけて（保存は取り消されている）、知らせに理由と「開き直す」を出す。
 //     見えないところに置いた画面を前に戻すことはしない（重ねる順を入れ替えると、画面が止まった絵のままになった。2026-11-18）
@@ -27,6 +24,8 @@ export type SaveStatus = {
   id: string;
   /** 知らせに出す名前（画面の名前） */
   title: string;
+  /** 押したボタン（「登録」「削除」など）。戻った先の画面が、Web 版と同じ「閉じたあとの処理」を呼ぶのに使う */
+  label: string;
   /** 裏で続けているか */
   background: boolean;
   /** 裏に回したときに戻った先の画面（保存が終わったら、ここのデータを新しくする） */
@@ -92,8 +91,8 @@ export function backgroundSavePendingFor(parentKey: string): boolean {
   return current !== null && current.background && current.parentKey === parentKey;
 }
 
-export function beginSave(id: string, title: string, text: string): void {
-  set({ current: { id, title, background: false, parentKey: null, state: 'saving', text, apply: null, error: null, reopen: null } });
+export function beginSave(id: string, title: string, text: string, label: string): void {
+  set({ current: { id, title, label, background: false, parentKey: null, state: 'saving', text, apply: null, error: null, reopen: null } });
 }
 
 export function updateSave(id: string, text: string): void {

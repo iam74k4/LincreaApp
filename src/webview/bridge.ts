@@ -660,14 +660,51 @@ true;
 /**
  * 重ねて開いた画面が「登録」などで閉じて戻ってきたときに、元の画面で走らせる。
  * ページを丸ごと読み直す代わりに、Web 版と同じく、その画面が用意した「閉じたあとの処理」（データだけ読み直す）を呼ぶ。
- * できる画面だけ（アプリごとの調整が window.__myappChildClosed を用意したもの）。できたかどうかを childRefreshed で返す
+ * できる画面だけ（アプリごとの調整が window.__myappChildClosed を用意したもの）。できたかどうかを childRefreshed で返す。
+ *
+ * 読み直しのあいだは、一覧はそのまま見えていて、変わった行だけが新しくなるようにする:
+ *  - 読み込み中の印（画面をおおう、くるくる）を出さない（myapp-quiet-refresh。src/webview/ezcraftSkin.ts の CSS）。
+ *    保存できたことは、アプリが上の知らせで伝えている
+ *  - ページの高さを今のままに保つ。EZCraft は一覧をいったん空にしてから描き直すので、そのあいだページが画面1枚ぶんまで
+ *    縮み、見ていた位置が先頭へ押し戻されていた（2026-11-18、シミュレーターで 422px → 0）
+ *  - 中の箱（#main など）がスクロールしていた画面では、高さを保っても箱の位置は戻されるので、見ていた位置に戻す
+ * 読み直しの通信が終わって描き直しも済んだら（通信がなくなって 0.8 秒）、すぐ元に戻す。長くても 10 秒
  */
-export function childClosedJs(label: string): string {
+export function childClosedJs(label: string, position: { y: number; target: string }): string {
   return `
 (function () {
+  var root = document.documentElement;
+  var body = document.body;
+  var page = document.scrollingElement || root;
+  var y = ${Math.round(position.y)};
+  var target = ${JSON.stringify(position.target)};
+  if (window.__myappChildRefreshEnd) window.__myappChildRefreshEnd();
+  var keepHeight = body.style.minHeight;
+  root.classList.add('myapp-quiet-refresh');
+  body.style.minHeight = page.scrollHeight + 'px';
+  var timer = null;
+  var end = function () {
+    clearInterval(timer);
+    root.classList.remove('myapp-quiet-refresh');
+    body.style.minHeight = keepHeight;
+    window.__myappChildRefreshEnd = null;
+  };
+  window.__myappChildRefreshEnd = end;
   var ok = false;
   try { ok = !!(window.__myappChildClosed && window.__myappChildClosed(${JSON.stringify(label)})); } catch (e) {}
   try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'childRefreshed', ok: ok })); } catch (e) {}
+  if (!ok) { end(); return; }
+  // 指で触ったら、それ以上は位置を動かさない（使う人のスクロールを邪魔しない）
+  var touched = false;
+  document.addEventListener('touchstart', function () { touched = true; }, { capture: true, once: true });
+  var start = Date.now();
+  timer = setInterval(function () {
+    var box = target ? document.querySelector(target) : null;
+    if (box && y > 0 && !touched && Math.abs(box.scrollTop - y) >= 4 && box.scrollHeight >= y + box.clientHeight * 0.5) box.scrollTop = y;
+    var waited = Date.now() - start;
+    if (waited < 10000 && (waited < 500 || (window.__myappXhrIdle && !window.__myappXhrIdle(800)))) return;
+    end();
+  }, 150);
 })();
 true;
 `;

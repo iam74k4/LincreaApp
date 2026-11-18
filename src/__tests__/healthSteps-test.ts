@@ -12,6 +12,7 @@ type Win = JSDOM['window'] & {
   __myappHealth?: boolean;
   __myappXhr?: () => number;
   __myappXhrAt?: number;
+  __myappXhrIdle?: (ms: number) => boolean;
   __myappStepsReply?: (id: string, steps: number | null) => void;
   ReactNativeWebView?: { postMessage: jest.Mock };
 };
@@ -48,6 +49,8 @@ beforeEach(() => {
   win.__myappHealth = true;
   win.__myappXhr = () => 0;
   win.__myappXhrAt = 0;
+  // ページの読み込み前に入れる bootJs（src/webview/ezcraftSkin.ts）と同じ判定
+  win.__myappXhrIdle = (ms) => (win.__myappXhr?.() ?? 0) === 0 && Date.now() - (win.__myappXhrAt ?? 0) >= ms;
   win.ReactNativeWebView = { postMessage: jest.fn() };
   // ページに入れるのと同じ文を、そのページ（window・document・Event）で動かし、中の関数を取り出す
   healthSteps = new Function('window', 'document', 'Event', 'FocusEvent', `${HEALTH_STEPS_JS}; return healthSteps;`)(

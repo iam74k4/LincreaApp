@@ -435,7 +435,7 @@ export const HEALTH_STEPS_JS = `
     if (!week || form.__myappHealthWeek === week) return;
     // 開いたばかりのあいだと、登録してある歩数を読んでいるあいだは待つ（読み終わる前に入れると、上書きされる）
     if (form.__myappHealthSeen !== week) { form.__myappHealthSeen = week; form.__myappHealthAt = Date.now(); }
-    var busy = window.__myappXhr && (window.__myappXhr() > 0 || Date.now() - (window.__myappXhrAt || 0) < 300);
+    var busy = window.__myappXhrIdle && !window.__myappXhrIdle(300);
     if (busy || Date.now() - form.__myappHealthAt < 700) {
       clearTimeout(healthTimer);
       healthTimer = setTimeout(healthSteps, 300);

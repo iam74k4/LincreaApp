@@ -162,6 +162,8 @@ export function bootJs(background: string): string {
   // 読み込み中の通信の数（REVEAL_JS が見る。データを読み終わってから見せ、あとから並びが動かないように）
   var pending = 0;
   window.__myappXhr = function () { return pending; };
+  // 通信がなく、最後の通信が終わってから ms ミリ秒以上たったか（データを読み終わって、描き直しも済んだころか）
+  window.__myappXhrIdle = function (ms) { return pending === 0 && Date.now() - (window.__myappXhrAt || 0) >= ms; };
   var send = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function () {
     var done = false;
@@ -211,9 +213,8 @@ const REVEAL_JS = `
       // 続けてデータを読んでいるあいだは待つ（読み終わってから見せる。あとから中身が増えて並びが下にずれないように）。
       // 待つのは長くても 0.8 秒（それ以上かかるときは、先に見せる）
       if (!readyAt) readyAt = Date.now();
-      var busy = window.__myappXhr ? window.__myappXhr() : 0;
-      var quiet = Date.now() - (window.__myappXhrAt || 0);
-      if ((busy > 0 || quiet < 120) && Date.now() - readyAt < 800) return;
+      var idle = !window.__myappXhrIdle || window.__myappXhrIdle(120);
+      if (!idle && Date.now() - readyAt < 800) return;
       if (waited++ < 1) return; // 整え直したあと、もう 0.05 秒だけ待つ（色や並びが行き渡るまで）
       reveal();
     }, 50);
@@ -330,7 +331,7 @@ const GENERIC_JS = `
   var emptyRecheck = null;
   function emptyGrids() {
     var now = Date.now();
-    var busy = (window.__myappXhr ? window.__myappXhr() : 0) > 0 || now - (window.__myappXhrAt || 0) < 150;
+    var busy = window.__myappXhrIdle && !window.__myappXhrIdle(150);
     var wait = 0;
     Object.keys(CONFIG.emptyGrids).forEach(function (id) {
       var grid = byId(id);
@@ -1609,6 +1610,8 @@ body > .myapp-health-note.myapp-hide { opacity: 0; }
 #loadingIcon .loading-msg { display: none !important; }
 /* 保存のあいだは、アプリが「保存しています（n/m）」を出すので、くるくるは隠す（押せないようにする面は残す。bridge.ts の SAVE_WATCH_JS） */
 html.myapp-saving #loadingIcon .loading-icon { opacity: 0 !important; }
+/* 重ねた画面で登録・削除して戻ったときの、データだけの読み直しのあいだは出さない（bridge.ts の childClosedJs） */
+html.myapp-quiet-refresh #loadingIcon { display: none !important; }
 @keyframes myapp-spin { to { transform: rotate(360deg); } }
 
 /* 中身のない一覧に出す文 */
