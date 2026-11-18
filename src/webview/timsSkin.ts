@@ -3701,17 +3701,21 @@ const SCRIPT = `
     for (var k = 0; k < 60; k++) minutes.push({ label: pad2(k), value: k });
     var dial = document.createElement('div');
     dial.className = 'myapp-dial' + (duration ? ' myapp-dial-duration' : '');
+    // 時の列はシートの左半分、分の列は右半分を、まるごと回せる範囲にする（数字は真ん中寄りに並べる。CSS）。
+    // 列を数字の幅だけにすると、左右の広い所を触っても回らず、回しづらかった
     var hw = dialWheel(hours, h, duration ? '時間' : '時', function (v) { h = v; });
     var mw = dialWheel(minutes, m, '分', function (v) { m = v; });
+    hw.classList.add('myapp-dial-hours');
+    mw.classList.add('myapp-dial-minutes');
     dial.appendChild(hw);
     var sep = document.createElement('span');
-    sep.className = duration ? 'myapp-dial-unit' : 'myapp-dial-sep';
+    sep.className = duration ? 'myapp-dial-unit myapp-dial-unit-h' : 'myapp-dial-sep';
     sep.textContent = duration ? '時間' : ':';
     dial.appendChild(sep);
     dial.appendChild(mw);
     if (duration) {
       var unit = document.createElement('span');
-      unit.className = 'myapp-dial-unit';
+      unit.className = 'myapp-dial-unit myapp-dial-unit-m';
       unit.textContent = '分';
       dial.appendChild(unit);
     }
@@ -3993,14 +3997,15 @@ html.myapp-quiet-prj #frmSelProj, html.myapp-quiet-prj .tcc-modal-back { visibil
 /* 左右は、ほかの画面のボタンと同じ 16px 空ける */
 .myapp-pick button.myapp-pick-all { width: calc(100% - 16px); margin: 10px 8px 2px; }
 
-/* 時刻を選ぶダイヤル（JS の openDial）: 時と分の列を回す。真ん中の帯に来たものが選ばれる。上下は薄く消えていく */
+/* 時刻を選ぶダイヤル（JS の openDial）: 時と分の列を回す。真ん中の帯に来たものが選ばれる。上下は薄く消えていく。
+   時の列はシートの左半分、分の列は右半分をまるごと使い、どこを触っても回せる。数字は真ん中の「:」の近くに寄せる */
 .myapp-dial { position: relative; display: flex; justify-content: center; align-items: center; height: 200px; margin: 6px 0 2px; }
 .myapp-dial::before {
   content: ''; position: absolute; left: 8px; right: 8px; top: 80px; height: 40px;
   border-radius: 12px; background: var(--myapp-segment); pointer-events: none;
 }
 .myapp-dial-wheel {
-  position: relative; z-index: 1; flex: none; width: 88px; height: 200px;
+  position: relative; z-index: 1; flex: 1 1 0; min-width: 0; height: 200px;
   overflow-y: scroll; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   scroll-snap-type: y mandatory; scrollbar-width: none;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 38%, #000 62%, transparent 100%);
@@ -4014,10 +4019,18 @@ html.myapp-quiet-prj #frmSelProj, html.myapp-quiet-prj .tcc-modal-back { visibil
 }
 .myapp-dial-item > span { display: block; }
 .myapp-dial-item.myapp-dial-on { color: var(--myapp-text); font-weight: 600; }
-.myapp-dial-sep { position: relative; z-index: 1; width: 16px; text-align: center; font-size: 22px; font-weight: 600; color: var(--myapp-text); }
-.myapp-dial-unit { position: relative; z-index: 1; width: 44px; font-size: 17px; color: var(--myapp-text); }
-.myapp-dial-duration .myapp-dial-wheel { width: 64px; }
-.myapp-dial-duration .myapp-dial-item { text-align: right; padding-right: 8px; }
+.myapp-dial-hours .myapp-dial-item { text-align: right; padding-right: 30px; }
+.myapp-dial-minutes .myapp-dial-item { text-align: left; padding-left: 30px; }
+.myapp-dial-sep { position: relative; z-index: 1; flex: none; width: 16px; text-align: center; font-size: 22px; font-weight: 600; color: var(--myapp-text); }
+/* 作業の時間（「8 時間 30 分」）: 単位は真ん中の帯に重ねて置く（触っても下の列が回るように、押せないものにする） */
+.myapp-dial-unit {
+  position: absolute; z-index: 2; top: 80px; height: 40px; line-height: 40px; width: 44px;
+  font-size: 17px; color: var(--myapp-text); pointer-events: none;
+}
+.myapp-dial-unit-h { right: 50%; text-align: center; }
+.myapp-dial-unit-m { left: calc(50% + 64px); }
+.myapp-dial-duration .myapp-dial-hours .myapp-dial-item { padding-right: 52px; }
+.myapp-dial-duration .myapp-dial-minutes .myapp-dial-item { padding-left: 28px; }
 /* 消す（入っているときだけ出す） */
 .myapp-dial-more { display: flex; gap: 10px; }
 .myapp-dial-more button.myapp-pick-manual { flex: 1 1 0; width: auto; }
