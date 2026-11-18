@@ -25,7 +25,7 @@ Apple の開発者登録やビルドは要らない。Mac で開発用のサー�
 
 3. 1〜2分ほど読み込んで、ログイン画面が出たら準備完了
 
-一度開いたあとは、Expo Go のホームの一覧（MyApp）から開き直せる。サーバー（手順1）は動かしたままにしておく。
+一度開いたあとは、Expo Go のホームの一覧（LINCREA）から開き直せる。サーバー（手順1）は動かしたままにしておく。
 
 ## つながらないとき
 
@@ -137,7 +137,7 @@ Expo のトンネル（ngrok）を通すので、iPhone がモバイル回線で
 
 ### 開発ビルドだけで試せること（Expo Go にはない）
 
-Face ID とヘルスケアは、Expo Go では使えない。Mac で `npx expo run:ios` を実行して作る開発ビルド（アプリ名は MyApp）で試す。
+Face ID とヘルスケアは、Expo Go では使えない。Mac で `npx expo run:ios` を実行して作る開発ビルド（アプリ名は LINCREA）で試す。
 シミュレーターでは、Face ID はメニューの Features → Face ID → Enrolled にしてから、顔を合わせるときに Matching Face を選ぶ。
 
 - [ ] ログイン画面に「次から Face ID でログイン」のスイッチがある（指紋の端末では Touch ID）。オンにしてログインすると、Face ID を1回求められる
