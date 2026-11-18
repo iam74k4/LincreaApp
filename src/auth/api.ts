@@ -29,6 +29,7 @@ import {
   type CognitoUserSession,
 } from 'amazon-cognito-identity-js';
 import { fetch } from 'expo/fetch';
+import { NativeModules } from 'react-native';
 
 import { pathOf } from '../api/http';
 import { SERVER_URL } from '../config';
@@ -53,10 +54,13 @@ export class RefreshExpiredError extends LoginError {}
  */
 export type LoginResult = { session: Session; refreshToken: string };
 
-const done = (label: string, detail: string) => console.log(`[login] OK ${label}: ${detail}`);
+// ログインを始めてからの時間（どの段に時間がかかっているかを、開発中に Metro で見るため）
+let startedAt = 0;
+const done = (label: string, detail: string) => console.log(`[login] OK ${label}: ${detail}（${Date.now() - startedAt}ms）`);
 
 /** パスワードでログインする */
 export async function login(username: string, password: string, remember: boolean): Promise<LoginResult> {
+  startedAt = Date.now();
   const pool = await openLoginPage();
   await loadCognitoStorage(); // この端末の登録（Cognito が端末を覚えているとき）
   const tokens = await authenticateWithCognito(pool.userPoolId, pool.clientId, username, password);
@@ -70,6 +74,7 @@ export async function login(username: string, password: string, remember: boolea
  * 鍵が新しくなったら、新しいほうを返す（呼んだ側が保存し直す）
  */
 export async function loginWithRefreshToken(username: string, refreshToken: string, remember: boolean): Promise<LoginResult> {
+  startedAt = Date.now();
   const pool = await openLoginPage();
   await loadCognitoStorage(); // 鍵と一緒に、この端末の登録（deviceKey）を Cognito に渡す
   const tokens = await refreshWithCognito(pool.userPoolId, pool.clientId, username, refreshToken);
@@ -146,6 +151,12 @@ function authenticateWithCognito(
   username: string,
   password: string,
 ): Promise<{ idToken: string; refreshToken: string }> {
+  // パスワードの確かめ（SRP）は、大きな数の計算をする。部品のネイティブの計算（RNAWSCognito）が入っていないアプリ
+  // （Expo Go など）では JavaScript で計算するので、何秒もかかる。開発中は、どちらで計算しているかを出す
+  if (__DEV__) {
+    const native = typeof (NativeModules.RNAWSCognito as { computeModPow?: unknown } | undefined)?.computeModPow === 'function';
+    console.log(`[login] Cognito の計算: ${native ? 'ネイティブ（速い）' : 'JavaScript（遅い。Expo Go など）'}`);
+  }
   // トークンはメモリの中だけに置く（部品のふつうの保存場所は、暗号化せずに端末に書く。src/auth/cognitoStorage.ts）
   const pool = new CognitoUserPool({ UserPoolId: userPoolId, ClientId: clientId, Storage: cognitoStorage });
   const user = new CognitoUser({ Username: username, Pool: pool, Storage: cognitoStorage });
