@@ -1475,70 +1475,84 @@ ${WTT_GOAL_CSS}
 ${STEP_CAL_CSS}
 ${WEEKLY_CSS}
 ${fullWidth('mainMenu_id_2026Walk')}
+/* 上から: 操作（ランキング・目標歩数を設定）→ ポイント → いまいる所の写真 → いまいる所・次の目的地 → 歩数の数字（灰色の面）。
+   登録ボタンは画面の下に浮かせる。EZCraft が操作のボタンをポイントと同じ段（R2）に移し、「現在は〇〇です。」と
+   ポイントの説明（ⓘ）を足したので、R2 の中で並べる（2026-11-18） */
 #mainMenu_id_2026Walk,
-#mainMenu_id_2026Walk_R2,
-#mainMenu_id_2026Walk_R3 { height: auto !important; }
-#mainMenu_id_2026Walk_R2_C1, #mainMenu_id_2026Walk_blank4 { height: 452px !important; }
-#mainMenu_id_2026Walk_R3_C1, #mainMenu_id_2026Walk_blank2 { height: 128px !important; }
+#mainMenu_id_2026Walk_R2 { height: auto !important; }
+#mainMenu_id_2026Walk_R2_C1, #mainMenu_id_2026Walk_blank4 { height: 534px !important; }
+/* 管理する人だけに出るボタン（admin）が出ているときは、その分だけ下を空ける */
+#mainMenu_id_2026Walk:has(#mainMenu_id_2026Walk_btn_admin:not([style*="visibility: hidden"])) :is(#mainMenu_id_2026Walk_R2_C1, #mainMenu_id_2026Walk_blank4) { height: 590px !important; }
+
+/* 操作 */
+${place('mainMenu_id_2026Walk_button_button_ranking_menu', '16px', 8, 'calc(50% - 22px)', 48)}
+${place('mainMenu_id_2026Walk_button_set_step_goal', 'calc(50% + 6px)', 8, 'calc(50% - 22px)', 48)}
+${row('mainMenu_id_2026Walk_btn_admin', 534, 44)}
+${['mainMenu_id_2026Walk_btn_walk', 'mainMenu_id_2026Walk_button_button_ranking_menu', 'mainMenu_id_2026Walk_button_set_step_goal', 'mainMenu_id_2026Walk_btn_admin'].map(fillButton).join('')}
 
 /* ポイント */
-/* 「現在のWTTポイント」「0」「Pt」の3つは、文字の下の線（ベースライン）をそろえる（数字の下の線は、上から 58px ほど） */
-${place('mainMenu_id_2026Walk_lbl_word_now_wtt_point', '16px', 29, '200px', 36)}
+/* 「現在のWTTポイント」「0」「Pt」の3つは、文字の下の線（ベースライン）をそろえる（数字の下の線は、上から 118px ほど） */
+${place('mainMenu_id_2026Walk_lbl_word_now_wtt_point', '16px', 89, '150px', 36)}
 ${text('mainMenu_id_2026Walk_lbl_word_now_wtt_point', 15, { muted: true })}
 /* 「現在のWTTポイント」と右の「Pt」は、どちらも画面の端から 20pt（ほかの画面の小見出しと同じ位置） */
 #mainMenu_id_2026Walk_lbl_word_now_wtt_point .tcc-label { padding-left: 0 !important; border-left-width: 0 !important; }
 #mainMenu_id_2026Walk_lbl_word_now_wtt_point .tcc-label-text { padding-left: 4px !important; }
 /* 数字と単位のすきまは、歩数のカード（10,000 歩）と同じ 6pt ほどに。単位の箱は字の幅だけにして、右端を画面の端から 16px に */
-#mainMenu_id_2026Walk_lbl_wtt_point { left: auto !important; right: 39px !important; top: 8px !important; width: 140px !important; height: 48px !important; }
+#mainMenu_id_2026Walk_lbl_wtt_point { left: auto !important; right: 39px !important; top: 68px !important; width: 140px !important; height: 48px !important; }
 #mainMenu_id_2026Walk_lbl_wtt_point,
 #mainMenu_id_2026Walk_lbl_wtt_point * { overflow: visible !important; line-height: 48px !important; }
 ${text('mainMenu_id_2026Walk_lbl_wtt_point', 30, { bold: true, align: 'right' })}
-#mainMenu_id_2026Walk_lbl_word_Pt { left: auto !important; right: 20px !important; top: 8px !important; width: 16px !important; height: 48px !important; }
+#mainMenu_id_2026Walk_lbl_word_Pt { left: auto !important; right: 20px !important; top: 68px !important; width: 16px !important; height: 48px !important; }
 #mainMenu_id_2026Walk_lbl_word_Pt,
 #mainMenu_id_2026Walk_lbl_word_Pt * { line-height: 72px !important; overflow: visible !important; }
 ${text('mainMenu_id_2026Walk_lbl_word_Pt', 15, { muted: true, align: 'right' })}
+/* ポイントの説明（ⓘ）: 「現在のWTTポイント」のすぐ右に小さく。押すと、EZCraft が説明の吹き出しを出す */
+${place('mainMenu_id_2026Walk_lbl19', '152px', 95, '24px', 24)}
+#mainMenu_id_2026Walk_lbl19 { overflow: visible !important; z-index: 40 !important; }
+#mainMenu_id_2026Walk_lbl19 :is(.tcc-label, .tcc-label-text) {
+  width: 24px !important; height: 24px !important; padding: 0 !important; overflow: visible !important;
+  border: none !important; background: transparent !important; line-height: 24px !important;
+}
+#mainMenu_id_2026Walk_lbl19 .tcc-label-text,
+#mainMenu_id_2026Walk_lbl19 i { font-size: 17px !important; color: var(--myapp-text2) !important; }
 
-/* 次の目的地 */
-${row('mainMenu_id_2026Walk_img_next_point_image', 64, 182)}
+/* いまいる所（写真と「現在は〇〇です。」）と、次の目的地 */
+${row('mainMenu_id_2026Walk_img_next_point_image', 124, 182)}
 #mainMenu_id_2026Walk_img_next_point_image,
 #mainMenu_id_2026Walk_img_next_point_image * { border-radius: 22px; overflow: hidden; }
 #mainMenu_id_2026Walk_img_next_point_image img { width: 100% !important; height: 100% !important; object-fit: cover; }
-${row('mainMenu_id_2026Walk_lbl_variable_next_point', 254, 24)}
-${text('mainMenu_id_2026Walk_lbl_variable_next_point', 15, { bold: true, align: 'center' })}
+${row('mainMenu_id_2026Walk_lbl_arrival_point', 314, 26)}
+${text('mainMenu_id_2026Walk_lbl_arrival_point', 17, { bold: true, align: 'center' })}
+${row('mainMenu_id_2026Walk_lbl_variable_next_point', 342, 22)}
+${text('mainMenu_id_2026Walk_lbl_variable_next_point', 13, { muted: true, align: 'center' })}
 
 /* 歩数（2つ並び + 横長1つ） */
-${place('mainMenu_id_2026Walk_lbl_background_1', '16px', 294, 'calc(50% - 22px)', 84)}
-${place('mainMenu_id_2026Walk_lbl_background_2', 'calc(50% + 6px)', 294, 'calc(50% - 22px)', 84)}
-${row('mainMenu_id_2026Walk_lbl_background_3', 390, 52)}
+${place('mainMenu_id_2026Walk_lbl_background_1', '16px', 374, 'calc(50% - 22px)', 84)}
+${place('mainMenu_id_2026Walk_lbl_background_2', 'calc(50% + 6px)', 374, 'calc(50% - 22px)', 84)}
+${row('mainMenu_id_2026Walk_lbl_background_3', 470, 52)}
 
-${place('mainMenu_id_2026Walk_lbl_word_day_step_goal', '28px', 304, 'calc(50% - 46px)', 20)}
+${place('mainMenu_id_2026Walk_lbl_word_day_step_goal', '28px', 384, 'calc(50% - 46px)', 20)}
 ${text('mainMenu_id_2026Walk_lbl_word_day_step_goal', 13, { muted: true })}
-${place('mainMenu_id_2026Walk_lbl_varia_day_step_goal_number', '28px', 330, 'calc(50% - 76px)', 36)}
+${place('mainMenu_id_2026Walk_lbl_varia_day_step_goal_number', '28px', 410, 'calc(50% - 76px)', 36)}
 ${text('mainMenu_id_2026Walk_lbl_varia_day_step_goal_number', 26, { bold: true })}
-${place('mainMenu_id_2026Walk_lbl_word_walk_big_1', 'calc(50% - 46px)', 336, '24px', 28)}
+${place('mainMenu_id_2026Walk_lbl_word_walk_big_1', 'calc(50% - 46px)', 416, '24px', 28)}
 ${text('mainMenu_id_2026Walk_lbl_word_walk_big_1', 13, { muted: true })}
 
-${place('mainMenu_id_2026Walk_lbl_word_sum_step', 'calc(50% + 18px)', 304, 'calc(50% - 46px)', 20)}
+${place('mainMenu_id_2026Walk_lbl_word_sum_step', 'calc(50% + 18px)', 384, 'calc(50% - 46px)', 20)}
 ${text('mainMenu_id_2026Walk_lbl_word_sum_step', 13, { muted: true })}
-${place('mainMenu_id_2026Walk_lbl_variable_sum_step_number', 'calc(50% + 18px)', 330, 'calc(50% - 76px)', 36)}
+${place('mainMenu_id_2026Walk_lbl_variable_sum_step_number', 'calc(50% + 18px)', 410, 'calc(50% - 76px)', 36)}
 ${text('mainMenu_id_2026Walk_lbl_variable_sum_step_number', 26, { bold: true })}
-${place('mainMenu_id_2026Walk_lbl_word_walk_big_2', 'calc(100% - 52px)', 336, '24px', 28)}
+${place('mainMenu_id_2026Walk_lbl_word_walk_big_2', 'calc(100% - 52px)', 416, '24px', 28)}
 ${text('mainMenu_id_2026Walk_lbl_word_walk_big_2', 13, { muted: true })}
 
-${place('mainMenu_id_2026Walk_lbl_word_average', '28px', 390, 'calc(100% - 180px)', 52)}
+${place('mainMenu_id_2026Walk_lbl_word_average', '28px', 470, 'calc(100% - 180px)', 52)}
 ${text('mainMenu_id_2026Walk_lbl_word_average', 13, { muted: true })}
-#mainMenu_id_2026Walk_lbl_variable_avg_all_step { left: auto !important; right: 48px !important; top: 390px !important; width: 110px !important; height: 52px !important; }
+#mainMenu_id_2026Walk_lbl_variable_avg_all_step { left: auto !important; right: 48px !important; top: 470px !important; width: 110px !important; height: 52px !important; }
 ${text('mainMenu_id_2026Walk_lbl_variable_avg_all_step', 20, { bold: true, align: 'right' })}
-#mainMenu_id_2026Walk_lbl_word_walk_small_2 { left: auto !important; right: 32px !important; top: 390px !important; width: 13px !important; height: 52px !important; }
+#mainMenu_id_2026Walk_lbl_word_walk_small_2 { left: auto !important; right: 32px !important; top: 470px !important; width: 13px !important; height: 52px !important; }
 ${text('mainMenu_id_2026Walk_lbl_word_walk_small_2', 13, { muted: true, align: 'right' })}
 /* 右寄せの数字と単位は、EZCraft の字の左右の余白（5px）をなくして、置いた位置どおりに並べる */
 :is(#mainMenu_id_2026Walk_lbl_wtt_point, #mainMenu_id_2026Walk_lbl_word_Pt, #mainMenu_id_2026Walk_lbl_variable_avg_all_step, #mainMenu_id_2026Walk_lbl_word_walk_small_2) :is(.tcc-label, .tcc-label-text) { padding-left: 0 !important; padding-right: 0 !important; overflow: visible !important; }
-
-/* 操作 */
-${place('mainMenu_id_2026Walk_button_button_ranking_menu', '16px', 8, 'calc(50% - 22px)', 48)}
-${place('mainMenu_id_2026Walk_button_set_step_goal', 'calc(50% + 6px)', 8, 'calc(50% - 22px)', 48)}
-${row('mainMenu_id_2026Walk_btn_admin', 68, 44)}
-${['mainMenu_id_2026Walk_btn_walk', 'mainMenu_id_2026Walk_button_button_ranking_menu', 'mainMenu_id_2026Walk_button_set_step_goal', 'mainMenu_id_2026Walk_btn_admin'].map(fillButton).join('')}
 
 /* ---- ランキング: 題名・探す欄 / 個人・団体の切り替え / 1人（1チーム）1枚のカード / 更新日 ---- */
 ${fullWidth('ranking_id_2026Walk')}
