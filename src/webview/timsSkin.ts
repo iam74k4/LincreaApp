@@ -782,6 +782,33 @@ ${cardGrid(A('grdTotal'), [[2], [3, 4], [6, 12, 16, 17], [24, 23, 18]], { 4: '�
 ${cardGrid(A('grdApplyStat'), [[2], [3, 9, 10], [4, 5], [6, 7, 8]], { 3: '申請', 9: '給与処理', 4: '承認', 6: '第二承認', 8: 'コメント' }, { pager: true })}
 ${cardGrid(A('grdAttd'), [[1], [10, 11, 28], [20, 29, 21], [7, 9]], { 10: '出勤', 11: '退勤', 28: '勤務', 20: '休憩', 29: '残業', 21: '休暇' }, { pager: true })}
 ${ATT_TAB_GRIDS.map((id) => flowGrid(A(id))).join('\n')}
+
+/* 工数: 「日ごと｜プロジェクトごと」の切り替え（JS の kosuView）と、プロジェクトごとのカード */
+.myapp-kosu-seg {
+  display: flex; gap: 2px; margin: 0 16px; padding: 3px;
+  border-radius: 999px; background: var(--myapp-segment);
+}
+.myapp-kosu-seg button {
+  flex: 1 1 0; height: 34px; margin: 0; padding: 0; border: 0; border-radius: 999px;
+  background: transparent; color: var(--myapp-text2); font: inherit; font-size: 14px; font-weight: 600;
+}
+.myapp-kosu-seg button[aria-selected="true"] { background: var(--myapp-segment-on); color: var(--myapp-text); box-shadow: var(--myapp-segment-on-shadow); }
+.myapp-kosu-sum { display: none; }
+.myapp-kosu-project .myapp-kosu-sum { display: flex; flex-direction: column; gap: 8px; padding-bottom: 24px; }
+.myapp-kosu-project #${A('grdPrj')} { display: none !important; }
+.myapp-kosu-all { margin: 2px 16px 0; font-size: 13px; color: var(--myapp-text2); font-variant-numeric: tabular-nums; }
+.myapp-kosu-card { margin: 0 16px; padding: 12px 16px; border-radius: 20px; background: var(--myapp-fill); }
+.myapp-kosu-head { display: flex; align-items: baseline; gap: 12px; }
+.myapp-kosu-name { flex: 1 1 auto; min-width: 0; font-size: 16px; font-weight: 600; line-height: 1.35; color: var(--myapp-text); }
+.myapp-kosu-total { flex: none; font-size: 20px; font-weight: 700; color: var(--myapp-text); font-variant-numeric: tabular-nums; }
+.myapp-kosu-meta, .myapp-kosu-kinds {
+  display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 4px;
+  font-size: 13px; line-height: 1.4; color: var(--myapp-text2); font-variant-numeric: tabular-nums;
+}
+.myapp-kosu-kinds { margin-top: 6px; }
+.myapp-kosu-kind b { margin-left: 4px; font-weight: 600; color: var(--myapp-text); }
+.myapp-kosu-empty { margin: 0 16px; padding: 24px 0; text-align: center; font-size: 15px; color: var(--myapp-text2); }
+.myapp-kosu-note { margin: 0 16px; font-size: 13px; line-height: 1.45; color: var(--myapp-text2); }
 `;
 
 // ---------------------------------------------------------------------------
@@ -2981,6 +3008,114 @@ const SCRIPT = `
     });
     Object.keys(byMonth).forEach(function (m) { addMonthPrj(m, byMonth[m]); });
   }
+  // ---- 勤務表の「工数」タブ: 日ごと（EZCraft の一覧）と、プロジェクトごと（月のまとめ）を切り替える ----
+  // プロジェクトごとは、いま一覧に出ている行（検索の条件で選んだ月）から作る。合計時間の多い順に、
+  // プロジェクト名・No.・合計時間・日数・作業内訳ごとの時間を1枚のカードに並べる。どちらで見るかは、この端末に覚える
+  var KOSU_VIEW = 'myapp.kosuView';
+  function kosuMinutes(text) {
+    var m = /^(\\d{1,3}):(\\d{2})$/.exec((text || '').trim());
+    return m ? +m[1] * 60 + +m[2] : 0;
+  }
+  function kosuHm(min) {
+    var m = min % 60;
+    return Math.floor(min / 60) + ':' + (m < 10 ? '0' : '') + m;
+  }
+  function kosuEl(tag, cls, text) {
+    var el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text != null) el.textContent = text;
+    return el;
+  }
+  function kosuMode() {
+    try { return localStorage.getItem(KOSU_VIEW) === 'project' ? 'project' : 'day'; } catch (e) { return 'day'; }
+  }
+  // 一覧の行を、プロジェクトごとにまとめる（合計時間の多い順。同じなら No. の順）
+  function kosuProjects(grid) {
+    var byNo = {};
+    var list = [];
+    Array.prototype.forEach.call(grid.querySelectorAll('.TccGridBodyScroll tbody tr'), function (tr) {
+      var no = cellText(tr, 4);
+      var min = kosuMinutes(cellText(tr, 9));
+      if (!no) return;
+      var p = byNo[no];
+      if (!p) { p = byNo[no] = { no: no, name: cellText(tr, 5), total: 0, days: {}, kinds: {}, kindOrder: [] }; list.push(p); }
+      p.total += min;
+      var date = cellText(tr, 3);
+      if (date) p.days[date] = true;
+      var kind = cellText(tr, 8) || 'その他';
+      if (!(kind in p.kinds)) { p.kinds[kind] = 0; p.kindOrder.push(kind); }
+      p.kinds[kind] += min;
+    });
+    return list.sort(function (a, b) { return b.total - a.total || (a.no < b.no ? -1 : 1); });
+  }
+  function kosuView(pane) {
+    var grid = document.getElementById('frmAttendance_grdPrj');
+    if (!grid || !pane.contains(grid)) return;
+    var mode = kosuMode();
+    var seg = pane.querySelector('.myapp-kosu-seg');
+    var sum = pane.querySelector('.myapp-kosu-sum');
+    if (!seg) {
+      seg = kosuEl('div', 'myapp-kosu-seg');
+      seg.setAttribute('role', 'tablist');
+      seg.setAttribute('data-myapp-nodark', '');
+      [['day', '日ごと'], ['project', 'プロジェクトごと']].forEach(function (it) {
+        var b = kosuEl('button', '', it[1]);
+        b.type = 'button';
+        b.setAttribute('role', 'tab');
+        b.setAttribute('data-mode', it[0]);
+        b.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          try { localStorage.setItem(KOSU_VIEW, it[0]); } catch (err) {}
+          kosuView(pane);
+        });
+        seg.appendChild(b);
+      });
+      sum = kosuEl('div', 'myapp-kosu-sum');
+      sum.setAttribute('data-myapp-nodark', '');
+      grid.parentNode.insertBefore(seg, grid);
+      grid.parentNode.insertBefore(sum, grid);
+    }
+    Array.prototype.forEach.call(seg.children, function (b) {
+      var on = b.getAttribute('data-mode') === mode ? 'true' : 'false';
+      if (b.getAttribute('aria-selected') !== on) b.setAttribute('aria-selected', on);
+    });
+    if (pane.classList.contains('myapp-kosu-project') !== (mode === 'project')) pane.classList.toggle('myapp-kosu-project', mode === 'project');
+    if (mode !== 'project') return;
+    // 一覧が変わったときだけ作り直す（一覧の行の数と中身の長さで見分ける）
+    var body = grid.querySelector('.TccGridBodyScroll tbody');
+    var key = (body ? body.children.length + ':' + (body.textContent || '').length : '0');
+    if (sum.__myappKey === key) return;
+    sum.__myappKey = key;
+    var projects = kosuProjects(grid);
+    sum.textContent = '';
+    if (!projects.length) { sum.appendChild(kosuEl('div', 'myapp-kosu-empty', 'データはありません')); return; }
+    var all = projects.reduce(function (t, p) { return t + p.total; }, 0);
+    sum.appendChild(kosuEl('div', 'myapp-kosu-all', projects.length + '件のプロジェクト　合計 ' + kosuHm(all)));
+    projects.forEach(function (p) {
+      var card = kosuEl('div', 'myapp-kosu-card');
+      var head = kosuEl('div', 'myapp-kosu-head');
+      head.appendChild(kosuEl('div', 'myapp-kosu-name', p.name || '（名前なし）'));
+      head.appendChild(kosuEl('div', 'myapp-kosu-total', kosuHm(p.total)));
+      card.appendChild(head);
+      var meta = kosuEl('div', 'myapp-kosu-meta');
+      meta.appendChild(kosuEl('span', '', 'No. ' + p.no));
+      meta.appendChild(kosuEl('span', '', Object.keys(p.days).length + '日'));
+      card.appendChild(meta);
+      var kinds = kosuEl('div', 'myapp-kosu-kinds');
+      p.kindOrder.sort(function (a, b) { return p.kinds[b] - p.kinds[a]; }).forEach(function (k) {
+        var item = kosuEl('span', 'myapp-kosu-kind');
+        item.appendChild(kosuEl('span', '', k));
+        item.appendChild(kosuEl('b', '', kosuHm(p.kinds[k])));
+        kinds.appendChild(item);
+      });
+      card.appendChild(kinds);
+      sum.appendChild(card);
+    });
+    // 一覧が2ページ以上に分かれているときは、このページの分だけのまとめであることを伝える（1ページは 100 件）
+    var tcc = window.jQuery && window.jQuery(grid).data('tcc');
+    if (tcc && tcc.lastPage > 1) sum.appendChild(kosuEl('div', 'myapp-kosu-note', '日ごとの一覧の、いま開いているページ（' + tcc.currPage + '/' + tcc.lastPage + '）の分だけのまとめです'));
+  }
   // 勤務表のほかのタブ（工数・出力）の一覧を、タブを開かずに裏で読む（読み込み中の印は出さない。見ている勤務表の邪魔をしない）。
   // 読めたら done(true)。そのタブを開いたときに、もう一度は検索しない
   function quietSearch(gridId, done) {
@@ -3859,6 +3994,7 @@ const SCRIPT = `
       // 時刻の書き方を、勤務表のタブ（残業 0:30）にそろえる（00:30 → 0:30）。出力の日付は「11/01(日)」に
       otherTab.querySelectorAll('.tcc-component.grid .TccGridBodyScroll').forEach(fixTimes);
       outputDates();
+      kosuView(otherTab);
     }
     else lastPane = null;
     tabHeading(list, otherTab);

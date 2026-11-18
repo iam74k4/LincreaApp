@@ -1042,19 +1042,24 @@ const DARK_JS = `
   }
 
   var timer = null;
+  function restyle() {
+    clearTimeout(timer);
+    applyConfig();
+    if (window.__myappAppUpdate) window.__myappAppUpdate();
+    markSingleTabs();
+    markWideModals();
+    fit();
+    noSideScroll();
+    if (media.matches) darken();
+    window.__myappUpdates = (window.__myappUpdates || 0) + 1; // 整え直した回数（REVEAL_JS が見る）
+  }
+  // 中身が変わるたびに、少し（0.06 秒）まとめてから整え直す（続けて描き直されるあいだに、何度も整え直さないように）
   function update() {
     clearTimeout(timer);
-    timer = setTimeout(function () {
-      applyConfig();
-      if (window.__myappAppUpdate) window.__myappAppUpdate();
-      markSingleTabs();
-      markWideModals();
-      fit();
-      noSideScroll();
-      if (media.matches) darken();
-      window.__myappUpdates = (window.__myappUpdates || 0) + 1; // 整え直した回数（REVEAL_JS が見る）
-    }, 60);
+    timer = setTimeout(restyle, 60);
   }
+  // すぐに整え直す。描き直した一覧を、整える前の見た目で一度も見せたくないときに使う（bridge.ts の childClosedJs）
+  window.__myappRestyleNow = restyle;
   function applyTheme() {
     root.setAttribute('data-myapp-theme', media.matches ? 'dark' : 'light');
     if (media.matches) update();

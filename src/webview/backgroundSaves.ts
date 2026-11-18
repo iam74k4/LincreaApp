@@ -26,6 +26,8 @@ export type SaveStatus = {
   title: string;
   /** 押したボタン（「登録」「削除」など）。戻った先の画面が、Web 版と同じ「閉じたあとの処理」を呼ぶのに使う */
   label: string;
+  /** どのページの保存か（画面の URL と、開いた元が渡した引数。勤怠実績登録なら、どの日か）。分からなければ null */
+  pageKey: string | null;
   /** 裏で続けているか */
   background: boolean;
   /** 裏に回したときに戻った先の画面（保存が終わったら、ここのデータを新しくする） */
@@ -91,8 +93,19 @@ export function backgroundSavePendingFor(parentKey: string): boolean {
   return current !== null && current.background && current.parentKey === parentKey;
 }
 
-export function beginSave(id: string, title: string, text: string, label: string): void {
-  set({ current: { id, title, label, background: false, parentKey: null, state: 'saving', text, apply: null, error: null, reopen: null } });
+export function beginSave(id: string, title: string, text: string, label: string, pageKey: string | null): void {
+  set({
+    current: { id, title, label, pageKey, background: false, parentKey: null, state: 'saving', text, apply: null, error: null, reopen: null },
+  });
+}
+
+/**
+ * 同じページ（同じ日の勤怠実績登録など）を、ほかの画面が裏で保存しているか（id の画面のは数えない）。
+ * そのあいだに開いた画面は、保存する前の中身を見せているので、終わってから開き直す（src/components/EzcraftWebView.tsx）
+ */
+export function savingSamePage(pageKey: string | null, id: string): boolean {
+  const current = snapshot.current;
+  return pageKey !== null && current !== null && current.background && current.pageKey === pageKey && current.id !== id;
 }
 
 export function updateSave(id: string, text: string): void {

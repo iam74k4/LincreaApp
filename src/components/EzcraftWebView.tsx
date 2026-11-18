@@ -7,7 +7,7 @@
 //   - 画面の移り: 新しいウインドウで開く画面は、アプリの画面として上に重ねる（戻るボタンで戻れる）。
 //                開いた元の App.data と、画面に渡す引数も渡す（src/webview/bridge.ts の 2）
 //   - その場で申請: ページが知らせた申請の画面を、シートで重ねる（src/webview/bridge.ts の 7・src/openShortcut.ts）
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentRef } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, Stack, useFocusEffect, useNavigation, usePreventRemove, useRoute } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -42,6 +42,7 @@ import {
   moveSaveToBackground,
   onBackgroundSaveDone,
   savingElsewhere,
+  savingSamePage,
   subscribeSaves,
   updateSave,
   type PendingApply,
@@ -80,6 +81,9 @@ const BACK_AFTER_SAVE_MS = 800;
 // EZCraft は保存（commit）のあとも、閉じるまでにサーバーとやりとりすることがある。途中でページを消すと、
 // サーバーに書きかけのやりとりが残り、次の保存が「Lock wait timeout」で待ちきれなくなるおそれがあるので、長めに待つ
 const BACKGROUND_CLOSE_WAIT_MS = 10_000;
+// 前の保存を待っているあいだに戻ろうとしたとき、待たせていた「登録」を押し直してから、保存が始まるのを待つ長さ
+// （始まらなければ、押し直しで確かめの知らせなどが出たので、戻らずにこの画面のままにする）
+const LEAVE_AFTER_START_WAIT_MS = 3000;
 // 保存の通信がこれだけ止まったら、見張りをやめる（ページの側で何かが止まった。戻れないままにしない）
 const SAVE_STALL_MS = 60_000;
 // 裏の保存に失敗したとき、ページが出すエラーの文（saveError）を待つ長さ
@@ -187,15 +191,36 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // 保存の途中で戻る。ページを置き場へ移せるなら、すぐに戻る（保存は裏で続く。なぜ置き場が要るかは src/webview/savePark.tsx）。
   // 置き場を使えないとき（Expo Go・Android）とシートの画面では、保存が終わってから戻る
   const canLeave = CAN_PARK && !sheet;
+  // 前の保存を待っているあいだに戻ろうとした（待たせていた「登録」が始まったら戻る）。
+  // 待っているあいだに画面を消すと、待たせていた「登録」は押されないまま消えるため（2026-11-18 のレビュー）
+  const [leaveAfterStart, setLeaveAfterStart] = useState(false);
+  const leaveAfterStartRef = useRef(false);
+  const leaveAfterStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestLeaveAfterStart = useCallback((on: boolean) => {
+    leaveAfterStartRef.current = on;
+    setLeaveAfterStart(on);
+    if (leaveAfterStartTimer.current) clearTimeout(leaveAfterStartTimer.current);
+    leaveAfterStartTimer.current = null;
+  }, []);
   const leaveDuringSave = useCallback(() => {
-    if (canLeave && moveToBackground()) return;
-    updateSaving((run) => ({ ...run, backAfter: true }));
-  }, [canLeave, moveToBackground, updateSaving]);
-  // 保存のあいだは、iOS の戻る動き（‹ とスワイプ）を止める（途中で画面が消えると、保存が切れる）。
+    if (savingRef.current) {
+      if (canLeave && moveToBackground()) return;
+      updateSaving((run) => ({ ...run, backAfter: true }));
+      return;
+    }
+    if (waitingSave) {
+      requestLeaveAfterStart(true);
+      return;
+    }
+    // 保存も待ちもない（保存が終わった直後に、まだ出ていた ‹ を押した）: ふつうに戻る
+    if (navigation.canGoBack()) navigation.goBack();
+  }, [canLeave, moveToBackground, navigation, requestLeaveAfterStart, updateSaving, waitingSave]);
+  // 保存のあいだと、前の保存を待っているあいだは、iOS の戻る動き（‹ とスワイプ）を止める（途中で画面が消えると、保存が切れる）。
   // 裏で続けられるときは、‹ を同じ見た目のボタンに替え、スワイプは保存の知らせの上で受けて、アプリが自分で戻る
   // （iOS の戻る動きを止めると、iOS がいったん動きを取り消すので、画面が一瞬戻ってから去って見える。2026-11-18、実機）。
   // ここで止めるのは、それ以外の戻り方（ページの中から閉じるなど）
-  const allowSaveRemove = usePreventRemove(saving !== null, leaveDuringSave);
+  const busy = saving !== null || waitingSave;
+  const allowSaveRemove = usePreventRemove(busy, leaveDuringSave);
   const lastWriteLabel = useRef(''); // 最後に押した書き込みのボタン（「登録」など）
   const saveLog = useRef<{ cmd: string; ms: number }[]>([]); // いまの保存の、通信ごとの時間（開発中に Metro へ出す）
   const backAfterSave = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -205,6 +230,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     return () => {
       if (backAfterSave.current) clearTimeout(backAfterSave.current);
       if (backgroundWait.current) clearTimeout(backgroundWait.current);
+      if (leaveAfterStartTimer.current) clearTimeout(leaveAfterStartTimer.current);
       cancelParkWait.current?.();
       // 保存の途中で画面が消えた（ログアウトなど）。ほかの画面の保存を待たせたままにしない
       endSave(routeKey, false);
@@ -458,11 +484,29 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       webRef.current?.injectJavaScript(
         next ? 'window.__myappSaveBusy = true; true;' : 'window.__myappSaveBusy = false; window.__myappSaveFree && window.__myappSaveFree(); true;',
       );
-      if (!next) setWaitingSave(false);
+      if (next) return;
+      setWaitingSave(false);
+      // 戻ろうとしていたのに、押し直した「登録」で保存が始まらない（確かめの知らせが出たなど）: 戻るのをやめる
+      if (leaveAfterStartRef.current) leaveAfterStartTimer.current = setTimeout(() => requestLeaveAfterStart(false), LEAVE_AFTER_START_WAIT_MS);
     };
     sync();
     return subscribeSaves(sync);
-  }, [routeKey]);
+  }, [requestLeaveAfterStart, routeKey]);
+
+  // 同じページ（同じ日の勤怠実績登録など）を、ほかの画面が裏で保存しているあいだに開いた。保存する前の中身を見せているので、
+  // 入力できないようにして待ち、終わったら新しい中身で開き直す（古い中身のまま「登録」すると、裏の保存を上書きしてしまう）
+  const savePageKey = handoff?.params ? `${uri}|${handoff.params}` : null;
+  const samePageSaving = useSyncExternalStore(subscribeSaves, () => savingSamePage(savePageKey, routeKey));
+  const waitedSamePage = useRef(false);
+  useEffect(() => {
+    if (samePageSaving) {
+      waitedSamePage.current = true;
+      return;
+    }
+    if (!waitedSamePage.current) return;
+    waitedSamePage.current = false;
+    reloadPage();
+  }, [samePageSaving, reloadPage]);
 
   // ページが作った PDF・CSV・Excel を受け取り、一時的な場所に置いて見せる。PDF はアプリの画面、ほかは iPhone の標準のプレビュー
   // （どちらも共有のボタンから「ファイル」に保存・プリントなどができる。src/files.ts）
@@ -538,7 +582,6 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   };
 
   // ヘッダー。保存の一歩ごとに作り直さないように、変わるものだけで作る（作り直すたびに、ヘッダーが描き直される）
-  const isSaving = saving !== null;
   const screenOptions = useMemo(
     () => ({
       // ページが名前を知らせてきたら（勤務表の「集計」タブなど）、それを出す
@@ -549,11 +592,11 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       headerTitleStyle: { color: modalOpen ? dimmed(c.text) : c.text },
       // 保存のあいだは、iOS の横へのスワイプでは戻らない（上の usePreventRemove）。
       // 裏で続けられるときは、保存の知らせの上で右へなぞると戻る（SaveProgress の onLeave）
-      gestureEnabled: !isSaving,
+      gestureEnabled: !busy,
       // 裏で続けられるときは、保存のあいだの ‹ を、同じ見た目のボタンに替える（押したら、アプリが自分で戻る）。
       // 保存が終わったら、いつもの ‹ に戻す（options は前の値に重ねられるので、undefined で消す）
       headerLeft:
-        isSaving && canLeave
+        busy && canLeave
           ? () => (
               <Pressable onPress={leaveDuringSave} accessibilityRole="button" accessibilityLabel="戻る" hitSlop={8}>
                 <SymbolView name={{ ios: 'chevron.backward', android: 'arrow_back', web: 'arrow_back' }} size={20} weight="semibold" tintColor={c.text} />
@@ -561,7 +604,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             )
           : undefined,
     }),
-    [heading, title, pageTitle, modalOpen, c, isSaving, canLeave, leaveDuringSave],
+    [heading, title, pageTitle, modalOpen, c, busy, canLeave, leaveDuringSave],
   );
 
   return (
@@ -634,8 +677,12 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
               const size = saveSizeOf(key);
               saveLog.current = [];
               setWaitingSave(false);
-              updateSaving({ key, startedAt: at, writes: 0, steps: 0, size, backAfter: false, lastAt: at });
-              beginSave(routeKey, heading || title || pageTitle || '保存', savingText(0, size), lastWriteLabel.current);
+              // 前の保存を待っているあいだに戻ろうとしていた: 始まったら戻る（裏で続けられなければ、終わってから戻る）
+              const leave = leaveAfterStartRef.current;
+              if (leave) requestLeaveAfterStart(false);
+              updateSaving({ key, startedAt: at, writes: 0, steps: 0, size, backAfter: leave && !canLeave, lastAt: at });
+              beginSave(routeKey, heading || title || pageTitle || '保存', savingText(0, size), lastWriteLabel.current, savePageKey);
+              if (leave && canLeave) moveToBackground();
             }
             if (message?.type === 'saveStep') {
               const { cmd, ms, writes, steps } = message;
@@ -728,8 +775,18 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             onLeave={canLeave ? leaveDuringSave : undefined}
           />
         )
+      ) : waitingSave ? (
+        <SaveProgress
+          startedAt={0}
+          writes={0}
+          steps={0}
+          size={null}
+          backAfter={leaveAfterStart}
+          waiting="turn"
+          onLeave={canLeave ? leaveDuringSave : undefined}
+        />
       ) : (
-        waitingSave && <SaveProgress startedAt={0} writes={0} steps={0} size={null} backAfter={false} waiting />
+        samePageSaving && <SaveProgress startedAt={0} writes={0} steps={0} size={null} backAfter={false} waiting="samePage" />
       )}
       {/* ページが整うまで（近道でメニューを開いているあいだは、下の「〜を開いています」を出す） */}
       {!shown && !launching && (

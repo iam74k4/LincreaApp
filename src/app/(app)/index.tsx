@@ -23,6 +23,7 @@ import { appOrder, displayName } from '../../knownApps';
 import { useSession } from '../../session/SessionContext';
 import { SHORTCUTS, type Shortcut } from '../../shortcuts';
 import { appDataKey, recallAppData, useAppDataVersion } from '../../webview/appDataCache';
+import { savesSnapshot } from '../../webview/backgroundSaves';
 import { prefetchInitApps } from '../../webview/initAppCache';
 import { openShortcutDirect, openShortcutThroughMenu } from '../../openShortcut';
 import { sizes, useColors, type Colors } from '../../theme';
@@ -205,6 +206,13 @@ export default function MyAppsScreen() {
   };
 
   const confirmLogout = () => {
+    // 保存（登録・削除など）を裏で続けているあいだは、ログアウトしない。画面ごとページが消えて保存が途中で切れ、
+    // 書きかけがサーバーに残って、次の保存が待たされるため（src/webview/backgroundSaves.ts）
+    const running = savesSnapshot().current;
+    if (running) {
+      Alert.alert('保存しています', `${running.title}の保存が終わってから、ログアウトしてください。`);
+      return;
+    }
     const who = session?.username ? `${session.username} から` : '';
     Alert.alert('ログアウト', `${who}ログアウトしますか？`, [
       { text: 'キャンセル', style: 'cancel' },

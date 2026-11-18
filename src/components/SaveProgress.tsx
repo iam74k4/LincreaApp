@@ -6,7 +6,9 @@
 //   - 保存を裏で続けられないとき、‹ で戻ろうとしたら、すぐには戻らず、終わってから戻る（途中で戻ると保存が切れるため）
 //   - 保存を裏で続けられるとき（onLeave。ページを置き場へ移せるアプリだけ。src/webview/savePark.tsx）は、‹ で戻っても保存は続くことを伝える。
 //     右へなぞっても戻れる（保存のあいだは iOS の戻るスワイプを止めているため）
-//   - ほかの画面が保存しているあいだに「登録」などを押したら、前の保存が終わるのを待っていることを伝える
+//   - ほかの画面が保存しているあいだに「登録」などを押したら、前の保存が終わるのを待っていることを伝える（waiting="turn"）。
+//     待っているあいだに戻ろうとしたら、この画面の保存が始まってから戻る
+//   - 同じ日のページを、ほかの画面が裏で保存しているあいだに開いたら、終わってから開き直すことを伝える（waiting="samePage"）
 // ページは押せないようにしておく（2回押して、2回保存しないように）。上のヘッダー（‹）は押せる。
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, PanResponder, StyleSheet, Text, View } from 'react-native';
@@ -26,8 +28,11 @@ type Props = {
   size: SaveSize | null;
   /** 保存のあいだに戻ろうとした（終わったら戻る。シートの画面だけ） */
   backAfter: boolean;
-  /** ほかの画面の保存が終わるのを待っている（まだこの画面の保存は始まっていない） */
-  waiting?: boolean;
+  /**
+   * まだこの画面の保存は始まっていない。
+   * turn: ほかの画面の保存が終わるのを待っている。samePage: 同じページの裏の保存が終わったら、開き直す
+   */
+  waiting?: 'turn' | 'samePage';
   /** 保存を裏で続けて戻る（あれば、戻れることを伝え、右へなぞったら呼ぶ。保存のあいだは iOS の戻るスワイプを止めているため） */
   onLeave?: () => void;
 };
@@ -36,7 +41,12 @@ type Props = {
 const SWIPE_BACK_DISTANCE = 60;
 const SWIPE_BACK_VELOCITY = 0.5;
 
-export function SaveProgress({ startedAt, writes, steps, size, backAfter, waiting = false, onLeave }: Props) {
+const WAITING_TEXT = {
+  turn: { title: '前の保存を待っています', note: '前の保存が終わったら、\nこの画面の保存を始めます' },
+  samePage: { title: 'この日を保存しています', note: '保存が終わったら、\n新しい内容で開き直します' },
+};
+
+export function SaveProgress({ startedAt, writes, steps, size, backAfter, waiting, onLeave }: Props) {
   const c = useColors();
   // 横へのなぞりだけを受ける（縦や斜めは受けない。押しただけでも受けない）。
   // onLeave は変わらない関数を渡してもらう（なぞっている途中で作り直すと、なぞった長さが分からなくなる）
@@ -58,6 +68,7 @@ export function SaveProgress({ startedAt, writes, steps, size, backAfter, waitin
   const elapsed = now - startedAt;
   const progress = saveProgress(steps, size);
   const shown = elapsed >= SHOW_AFTER_MS || backAfter;
+  const wait = waiting ? WAITING_TEXT[waiting] : null;
 
   return (
     // 押せないようにする面は、出す前から置いておく
@@ -67,19 +78,22 @@ export function SaveProgress({ startedAt, writes, steps, size, backAfter, waitin
         <View style={[styles.center, styles.dim]} pointerEvents="none">
           <View style={[styles.card, { backgroundColor: c.card }]} accessibilityRole="progressbar" accessibilityLiveRegion="polite">
             <ActivityIndicator color={c.textSecondary} />
-            <Text style={[styles.title, { color: c.text }]}>{waiting ? '前の保存を待っています' : savingText(writes, size)}</Text>
-            {!waiting && progress !== null && (
+            <Text style={[styles.title, { color: c.text }]}>{wait ? wait.title : savingText(writes, size)}</Text>
+            {!wait && progress !== null && (
               <View style={[styles.track, { backgroundColor: c.separator }]}>
                 <View style={[styles.bar, { backgroundColor: c.accent, width: `${Math.round(progress * 100)}%` }]} />
               </View>
             )}
-            {waiting && <Text style={[styles.note, { color: c.textSecondary }]}>{'前の保存が終わったら、\nこの画面の保存を始めます'}</Text>}
-            {!waiting && elapsed >= SLOW_AFTER_MS && (
-              <Text style={[styles.note, { color: c.textSecondary }]}>{'通信に時間がかかっています。\nこのままお待ちください'}</Text>
+            {wait && <Text style={[styles.note, { color: c.textSecondary }]}>{wait.note}</Text>}
+            {/* 戻っても保存が続くときは「このままお待ちください」とは言わない（下の「戻っても、保存は続きます」と食い違うので） */}
+            {!wait && elapsed >= SLOW_AFTER_MS && (
+              <Text style={[styles.note, { color: c.textSecondary }]}>{onLeave ? '通信に時間がかかっています' : '通信に時間がかかっています。\nこのままお待ちください'}</Text>
             )}
-            {backAfter && <Text style={[styles.note, { color: c.textSecondary }]}>{'保存が終わったら、\n前の画面に戻ります'}</Text>}
-            {!waiting && onLeave && !backAfter && (
-              <Text style={[styles.hint, { color: c.textSecondary }]}>{'‹ で戻っても、保存は続きます'}</Text>
+            {backAfter && (
+              <Text style={[styles.note, { color: c.textSecondary }]}>{wait && onLeave ? '保存が始まったら、\n前の画面に戻ります' : '保存が終わったら、\n前の画面に戻ります'}</Text>
+            )}
+            {onLeave && !backAfter && waiting !== 'samePage' && (
+              <Text style={[styles.hint, { color: c.textSecondary }]}>{wait ? '戻っても、この画面の保存は行われます' : '戻っても、保存は続きます'}</Text>
             )}
           </View>
         </View>

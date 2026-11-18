@@ -668,6 +668,9 @@ true;
  *  - ページの高さを今のままに保つ。EZCraft は一覧をいったん空にしてから描き直すので、そのあいだページが画面1枚ぶんまで
  *    縮み、見ていた位置が先頭へ押し戻されていた（2026-11-18、シミュレーターで 422px → 0）
  *  - 中の箱（#main など）がスクロールしていた画面では、高さを保っても箱の位置は戻されるので、見ていた位置に戻す
+ *  - 描き直した一覧を、アプリの見た目に整える前の姿で見せない。ふだんの整え直しは、描き直しが続くあいだ 0.06 秒ずつ
+ *    先へのびるので、そのあいだ EZCraft のままの一覧（並びも違う）が一瞬見えていた（2026-11-18）。
+ *    読み直しのあいだは、中身が変わったら、次に画面を描く直前（requestAnimationFrame）に整え直す
  * 読み直しの通信が終わって描き直しも済んだら（通信がなくなって 0.8 秒）、すぐ元に戻す。長くても 10 秒
  */
 export function childClosedJs(label: string, position: { y: number; target: string }): string {
@@ -683,8 +686,19 @@ export function childClosedJs(label: string, position: { y: number; target: stri
   root.classList.add('myapp-quiet-refresh');
   body.style.minHeight = page.scrollHeight + 'px';
   var timer = null;
+  var framePending = false;
+  var restyle = new MutationObserver(function () {
+    if (framePending || !window.__myappRestyleNow) return;
+    framePending = true;
+    requestAnimationFrame(function () {
+      framePending = false;
+      window.__myappRestyleNow();
+    });
+  });
+  restyle.observe(body, { childList: true, subtree: true });
   var end = function () {
     clearInterval(timer);
+    restyle.disconnect();
     root.classList.remove('myapp-quiet-refresh');
     body.style.minHeight = keepHeight;
     window.__myappChildRefreshEnd = null;
