@@ -1,0 +1,36 @@
+# 登録した iPhone に配る版を、EAS で作る（docs/distribution.md の 2.）。
+# GitHub の Actions のページ（スマホの GitHub アプリでもよい）から「Run workflow」で始める。Mac は要らない。
+# 新しく登録した iPhone も、自動で入れる（EAS に App Store Connect の API キーを登録してあること）。
+name: iPhone に配る版を作る
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: eas-preview-build
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      # クラウドでの作業を始めたら、ここは終わる（できあがりは expo.dev のビルドの一覧で見る）
+      - run: eas build --platform ios --profile preview --non-interactive --refresh-ad-hoc-provisioning-profile --no-wait
