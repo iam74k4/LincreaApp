@@ -1,5 +1,9 @@
 // 保存（登録・削除など）を、アプリ全体で1つずつにする。保存の途中で ‹ で戻ったら、その保存を裏で続ける。
 //
+// ※ 裏で続ける仕組みは、いまは使っていない（src/components/EzcraftWebView.tsx の KEEP_SAVING_IN_BACKGROUND）。
+//   iPhone の実機では、見えなくなった WebView のページを iOS が止めてしまい、裏に回した保存が最後まで進まなかった。
+//   保存を1つずつにする仕組み（ほかの画面の「登録」を待たせる）は、そのまま使う。
+//
 // EZCraft の保存は、通信を1つずつ順に送るので 10 秒ほどかかる（src/webview/bridge.ts の SAVE_WATCH_JS）。
 // 待たずにほかの画面へ移れるように、保存の途中で戻ったら、その画面を見えないところ（重ねた画面の一番下）に残して、
 // 保存を最後まで続けさせる（src/components/EzcraftWebView.tsx）。上には小さな知らせを出す（BackgroundSaveBanner）。

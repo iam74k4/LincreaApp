@@ -78,6 +78,14 @@ const BACK_AFTER_SAVE_MS = 800;
 const SAVE_STALL_MS = 60_000;
 // 裏の保存に失敗したとき、ページが出すエラーの文（saveError）を待つ長さ（見えないページは、タイマーが 1 秒ごとに遅くなる）
 const ERROR_WAIT_MS = 2000;
+/**
+ * 保存の途中で戻ったとき、その画面を見えないところに残して保存を裏で続けるか（src/webview/backgroundSaves.ts）。
+ * いまは使わない（false）。iPhone の実機では、見えなくなった WebView のページを iOS が止めてしまい、
+ * 裏に回した保存が最後まで進まずに切れた（2026-11-18、Expo Go で確かめた。シミュレーターでは止まらないので気づかなかった）。
+ * 切れた保存の書きかけのトランザクションがサーバーに残り、次の保存も待たされた。
+ * そこで、保存のあいだは戻らず、終わってから戻る（保存のあいだは、横へのスワイプでも戻れないようにする）
+ */
+const KEEP_SAVING_IN_BACKGROUND = false;
 
 /** 保存（登録・削除など）のいま（bridge の 9） */
 type SaveRun = {
@@ -161,7 +169,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     return true;
   };
   const allowSaveRemove = usePreventRemove(saving !== null, () => {
-    if (!sheet && moveToBackground()) return;
+    if (KEEP_SAVING_IN_BACKGROUND && !sheet && moveToBackground()) return;
     updateSaving((run) => ({ ...run, backAfter: true }));
   });
   const lastWriteLabel = useRef(''); // 最後に押した書き込みのボタン（「登録」など）
@@ -484,6 +492,9 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           // （ページの暗い面はヘッダーの下からしか届かないので、ヘッダーだけ明るく浮いて見えないように）
           headerStyle: { backgroundColor: modalOpen ? dimmed(c.background) : c.background },
           headerTitleStyle: { color: modalOpen ? dimmed(c.text) : c.text },
+          // 保存のあいだは、横へのスワイプで戻らない（iOS がいったん画面を外すので、ページが止まって保存が切れるおそれがある）。
+          // ‹ は使える（保存が終わってから戻る）
+          gestureEnabled: saving === null,
         }}
       />
       <WebView
@@ -636,7 +647,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           steps={saving.steps}
           size={saving.size}
           backAfter={saving.backAfter}
-          canLeave={!sheet}
+          canLeave={KEEP_SAVING_IN_BACKGROUND && !sheet}
         />
       ) : (
         waitingSave && <SaveProgress startedAt={0} writes={0} steps={0} size={null} backAfter={false} canLeave={false} waiting />
