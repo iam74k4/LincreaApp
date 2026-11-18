@@ -170,6 +170,10 @@ export function bootJs(background: string): string {
     this.addEventListener('loadend', end);
     try { return send.apply(this, arguments); } catch (e) { end(); throw e; }
   };
+  // EZCraft は、お知らせ（「登録しました」・エラーなど）を出すたびに音を鳴らす。WebView のページの音は、
+  // そのままだと iPhone のマナーモード（消音）でも鳴る。「周りの音」の扱いにして、マナーモードでは鳴らさない
+  // （Audio Session API。マナーモードでないときは今までどおり鳴る。ほかのアプリの音楽も止めない）
+  try { if (navigator.audioSession) navigator.audioSession.type = 'ambient'; } catch (e) {}
 })();
 true;
 `;
@@ -570,6 +574,28 @@ const GENERIC_JS = `
     });
   }
 
+  // 確認のメッセージ（スマホでは EZCraft が「メッセージバー」.tcc-msg-bar で出す。勤怠の「削除確認」など）:
+  // 見た目は CSS で、ほかのダイアログと同じカードにする。ここでは、
+  //   - ダーク用の色の書き換え（DARK_JS）が、ボタンに色を直接書き込まないようにする（色は CSS で決める）
+  //   - 削除の確認なら、決めるボタン（OK）を赤にするしるしを付ける（ボタンの文字は変えない。EZCraft は文字で押されたボタンを見分ける）
+  function msgBars() {
+    document.querySelectorAll('.tcc-msg-bar-back:not([data-myapp-nodark])').forEach(function (back) {
+      back.setAttribute('data-myapp-nodark', '');
+      back.querySelectorAll('[style]').forEach(function (el) {
+        ['background-color', 'border-color', 'color'].forEach(function (prop) { el.style.removeProperty(prop); });
+      });
+      var bar = back.querySelector('.tcc-msg-bar');
+      var title = back.querySelector('.tcc-msg-bar-text > span');
+      if (bar && title && /削除/.test(title.textContent || '')) bar.setAttribute('data-myapp-danger', '');
+      // 題の前の印（？など）と空白は出さない（iOS の確認と同じく、題と文だけを真ん中に）
+      if (title) {
+        title.querySelectorAll('i').forEach(function (i) { i.remove(); });
+        var lead = title.firstChild;
+        if (lead && lead.nodeType === 3) lead.nodeValue = lead.nodeValue.replace(/^[\s\u00a0]+/, '');
+      }
+    });
+  }
+
   // メニューのカード（skin の cards）: 押したら、次の画面が出るまでのあいだ、カードに読み込み中の印を出す。
   // EZCraft はダイアログを読み込んでから出すので、1〜2 秒なにも起きないように見えるため。
   // ダイアログが出たら（または 5 秒たったら）消す
@@ -729,6 +755,7 @@ const GENERIC_JS = `
   function applyConfig() {
     quietDialogs();
     notices();
+    msgBars();
     requiredMarks();
     calendarSheets();
     openingDone();
@@ -902,7 +929,7 @@ const DARK_JS = `
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
       // data-myapp-nodark の中は、アプリごとのスタイルが色まで決めているので触らない
-      if (el.__myappDone || el.closest('[data-myapp-nodark]')) continue;
+      if (el.__myappDone || el.closest('[data-myapp-nodark], .tcc-msg-bar-back')) continue;
       var s = getComputedStyle(el);
       var bg = parse(s.backgroundColor);
       if (bg && bg.a > 0.5 && isNeutral(bg) && lum(bg) > 0.75) set(el, 'background-color', rgb(DARK.surface));
@@ -922,7 +949,7 @@ const DARK_JS = `
     }
     for (var j = 0; j < all.length; j++) {
       var t = all[j];
-      if (t.__myappDone || t.closest('[data-myapp-nodark]')) continue;
+      if (t.__myappDone || t.closest('[data-myapp-nodark], .tcc-msg-bar-back')) continue;
       // 画面の外にあるものは、見えている地の色が分からないので、スクロールして見えてから決める
       if (!inViewport(t.getBoundingClientRect())) continue;
       t.__myappDone = true;
@@ -1580,6 +1607,8 @@ body > .myapp-health-note.myapp-hide { opacity: 0; }
 }
 #loadingIcon .loading-icon::before { content: none !important; }
 #loadingIcon .loading-msg { display: none !important; }
+/* 保存のあいだは、アプリが「保存しています（n/m）」を出すので、くるくるは隠す（押せないようにする面は残す。bridge.ts の SAVE_WATCH_JS） */
+html.myapp-saving #loadingIcon .loading-icon { opacity: 0 !important; }
 @keyframes myapp-spin { to { transform: rotate(360deg); } }
 
 /* 中身のない一覧に出す文 */
@@ -2111,6 +2140,69 @@ body > .myapp-bottom-bar {
   justify-content: center !important;
 }
 .tcc-msg-box .tcc-msg-box-btn { border-radius: 999px !important; }
+/* 確認のメッセージ（スマホでは EZCraft が「メッセージバー」で出す。勤怠の「削除確認」など）: 画面の幅いっぱいの灰色の帯ではなく、
+   iOS の確認と同じ形にする: 幅の狭いガラスのカードを画面の真ん中に置き、題と文を真ん中に寄せ、印（？）は出さない。
+   ボタンは横に2つ並べる（左がキャンセル、右が決める方）。削除の確認なら、決める方を赤に（JS の msgBars が data-myapp-danger を付ける） */
+.tcc-msg-bar-back {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 16px var(--myapp-safe-bottom, 0px) !important;
+  box-sizing: border-box !important;
+  background: rgba(0, 0, 0, 0.28) !important;
+}
+.tcc-msg-bar {
+  top: auto !important; left: auto !important; right: auto !important; bottom: auto !important;
+  width: 100% !important;
+  max-width: 300px !important;
+  padding: 22px 18px 18px !important;
+  box-sizing: border-box !important;
+  border-radius: 32px !important;
+  text-align: center !important;
+  background: var(--myapp-sheet) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28), inset 0 1px 0 var(--myapp-glass-border) !important;
+  color: var(--myapp-text) !important;
+}
+.tcc-msg-bar-text { left: auto !important; width: auto !important; text-align: center !important; }
+.tcc-msg-bar-text > span {
+  display: block !important;
+  padding: 0 !important;
+  font-size: 17px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  color: var(--myapp-text) !important;
+}
+.tcc-msg-bar-text > span > i { display: none !important; }
+.tcc-msg-bar-text p {
+  margin: 6px 0 18px !important;
+  font-size: 15px !important;
+  line-height: 1.5 !important;
+  color: var(--myapp-text) !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere;
+}
+/* EZCraft は文の終わりに改行を付けるので、最後の改行は出さない（下に空いた行ができないように） */
+.tcc-msg-bar-text p > br:last-child { display: none; }
+.tcc-msg-bar-btns { display: flex !important; gap: 10px; }
+.tcc-msg-bar .tcc-msg-bar-btn {
+  float: none !important;
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0 !important;
+  height: 48px !important;
+  padding: 0 8px !important;
+  border: none !important;
+  border-radius: 999px !important;
+  font-size: 17px !important;
+  font-weight: 600 !important;
+  background: var(--myapp-segment) !important;
+  color: var(--myapp-text) !important;
+}
+.tcc-msg-bar .tcc-msg-bar-btn:last-child { background: var(--myapp-accent) !important; color: #FFFFFF !important; }
+.tcc-msg-bar[data-myapp-danger] .tcc-msg-bar-btn:last-child { background: var(--myapp-danger) !important; }
 /* 検索して選ぶダイアログ: ほかのシートと同じ、下から出るシート（上につまみ。下は画面の端まで） */
 .tcc-modal[id$="_mdl"] {
   left: 0 !important;

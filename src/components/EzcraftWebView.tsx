@@ -9,7 +9,7 @@
 //   - その場で申請: ページが知らせた申請の画面を、シートで重ねる（src/webview/bridge.ts の 7・src/openShortcut.ts）
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { ActivityIndicator, Alert, Linking, StyleSheet, Text, View } from 'react-native';
-import { router, Stack, useFocusEffect, usePreventRemove } from 'expo-router';
+import { router, Stack, useFocusEffect, useNavigation, usePreventRemove, useRoute } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,14 +23,28 @@ import { advanceApplyQueue, applyQueueActive, openApplication, startApplyQueue }
 import { useSession } from '../session/SessionContext';
 import { useColors } from '../theme';
 import { GlassButton } from './GlassButton';
+import { SaveProgress } from './SaveProgress';
 import { healthAvailable, stepsOn } from '../health';
-import { autoClickJs, BRIDGE_JS, childClosedJs, healthFlagJs, openerStubJs, parseBridgeMessage, restoreScrollJs, stepsReplyJs } from '../webview/bridge';
+import { autoClickJs, BRIDGE_JS, childClosedJs, healthFlagJs, openerStubJs, parseBridgeMessage, restoreScrollJs, SAVE_WATCH_JS, stepsReplyJs } from '../webview/bridge';
 import { bootJs, buildSkinScript, SHOW_PAGE_JS } from '../webview/ezcraftSkin';
 import { appDataKeyOfUrl, rememberAppData } from '../webview/appDataCache';
 import { depositHandoff, type Handoff } from '../webview/handoff';
 import { initAppJs } from '../webview/initApp';
 import { isServerUrl, mayNavigate, mayOpenOutside } from '../webview/origin';
 import { initAppFormOfUrl, recallInitApp, rememberInitApp } from '../webview/initAppCache';
+import {
+  attachApply,
+  backgroundSavePendingFor,
+  beginSave,
+  endSave,
+  moveSaveToBackground,
+  onBackgroundSaveDone,
+  savingElsewhere,
+  subscribeSaves,
+  updateSave,
+  type PendingApply,
+} from '../webview/backgroundSaves';
+import { describeSave, loadSaveSizes, rememberSaveSize, saveKey, saveSizeOf, savingText, type SaveSize } from '../webview/saveSizes';
 import { noteClosedByPage, noteWrite, takeChildResult, writeCount } from '../webview/writes';
 
 type Props = {
@@ -58,6 +72,26 @@ type Props = {
 const APPLY_DELAY_MS = 700;
 // 戻ってきた画面に、データだけの読み直しを頼んでから、返事を待つ長さ（来なければ、丸ごと読み直す）
 const REFRESH_REPLY_MS = 1500;
+// 保存の途中で戻ろうとしたとき、保存が終わってから、ページが自分で閉じるのを待つ長さ（閉じなければ、アプリが戻る）
+const BACK_AFTER_SAVE_MS = 800;
+// 保存の通信がこれだけ止まったら、見張りをやめる（ページの側で何かが止まった。戻れないままにしない）
+const SAVE_STALL_MS = 60_000;
+// 裏の保存に失敗したとき、ページが出すエラーの文（saveError）を待つ長さ（見えないページは、タイマーが 1 秒ごとに遅くなる）
+const ERROR_WAIT_MS = 2000;
+
+/** 保存（登録・削除など）のいま（bridge の 9） */
+type SaveRun = {
+  /** 画面と押したボタン（src/webview/saveSizes.ts） */
+  key: string;
+  startedAt: number;
+  writes: number;
+  steps: number;
+  /** 前に同じ保存をしたときの数（知らなければ null） */
+  size: SaveSize | null;
+  /** 保存のあいだに戻ろうとした（終わったら戻る） */
+  backAfter: boolean;
+  lastAt: number;
+};
 
 /** ダイアログの後ろの暗さ（ページの .tcc-modal-back などと同じ。src/webview/ezcraftSkin.ts） */
 const DIM = 0.28;
@@ -82,7 +116,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const [reloadKey, setReloadKey] = useState(0); // 変えると WebView を作り直す（= 読み直す）
   // ページの中でダイアログが開いているか（bridge の 8）。開いているあいだは、‹ やスワイプで戻らず、まずダイアログを閉じる
   const [modalOpen, setModalOpen] = useState(false);
-  usePreventRemove(modalOpen, () => {
+  const allowModalRemove = usePreventRemove(modalOpen, () => {
     webRef.current?.injectJavaScript('window.__myappCloseModal && window.__myappCloseModal(); true;');
   });
   // この画面の定義（initApp）の控え。あれば、ページは読まずにこれを使う（src/webview/initAppCache.ts）。
@@ -93,6 +127,138 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // ページを読み込めなかったときに出す文（通信できない・サーバーが答えない）。「もう一度読み込む」で消す
   const [failure, setFailure] = useState<LoadFailure | null>(null);
   const webRef = useRef<ComponentRef<typeof WebView>>(null);
+  // この画面（重ねた画面の1枚）。裏で保存を続けるとき、重ねる順を入れ替えるのに使う（src/webview/backgroundSaves.ts）
+  const navigation = useNavigation();
+  const routeKey = useRoute().key;
+  // 保存（登録・削除など）のあいだ（bridge の 9）。「保存しています（n/m）」を出す。
+  // 途中で ‹ やスワイプで戻ると、ページが消えて確定（commit）が送られず、保存が切れる（2026-11-18 に確かめた）。
+  // そこで、保存のあいだに戻ろうとしたら、この画面を見えないところ（重ねた画面の一番下）に残して、保存を裏で続ける。
+  // シートの画面は入れ替えられないので、終わってから戻る
+  const [saving, setSaving] = useState<SaveRun | null>(null);
+  const savingRef = useRef<SaveRun | null>(null);
+  const updateSaving = useCallback((next: SaveRun | null | ((current: SaveRun) => SaveRun)) => {
+    const value = typeof next === 'function' ? (savingRef.current ? next(savingRef.current) : null) : next;
+    savingRef.current = value;
+    setSaving(value);
+  }, []);
+  const inBackground = useRef(false); // 保存を裏で続けている（この画面は見えない）
+  const backgroundWait = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backgroundApply = useRef<PendingApply | null>(null); // 裏の保存のあとに、ページが開こうとした申請
+  // ほかの画面の保存が終わるのを待っている（「登録」などを押したが、まだ始めていない）
+  const [waitingSave, setWaitingSave] = useState(false);
+  // --- 重ねた画面の順の入れ替え（裏の保存） ---
+  // 保存の途中で戻ろうとした: この画面を一番下に移して、ひとつ前の画面を見せる（ページは消えずに保存を続ける）。
+  // 一番下はマイアプリの下なので、戻る操作で出てくることはない（マイアプリでは戻れない。src/app/(app)/_layout.tsx）
+  const moveToBackground = (): boolean => {
+    const state = navigation.getState();
+    const routes = state?.routes ?? [];
+    const me = routes.findIndex((r) => r.key === routeKey);
+    if (!state || me < 1 || me !== routes.length - 1) return false;
+    const others = routes.filter((r) => r.key !== routeKey);
+    inBackground.current = true;
+    moveSaveToBackground(routeKey, routes[me - 1].key);
+    navigation.dispatch({ type: 'RESET', payload: { ...state, routes: [routes[me], ...others], index: others.length } });
+    return true;
+  };
+  const allowSaveRemove = usePreventRemove(saving !== null, () => {
+    if (!sheet && moveToBackground()) return;
+    updateSaving((run) => ({ ...run, backAfter: true }));
+  });
+  const lastWriteLabel = useRef(''); // 最後に押した書き込みのボタン（「登録」など）
+  const saveLog = useRef<{ cmd: string; ms: number }[]>([]); // いまの保存の、通信ごとの時間（開発中に Metro へ出す）
+  const backAfterSave = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closedByPageRef = useRef(false);
+  useEffect(() => {
+    loadSaveSizes();
+    return () => {
+      if (backAfterSave.current) clearTimeout(backAfterSave.current);
+      if (backgroundWait.current) clearTimeout(backgroundWait.current);
+      // 保存の途中で画面が消えた（ログアウトなど）。ほかの画面の保存を待たせたままにしない
+      endSave(routeKey, false);
+    };
+  }, [routeKey]);
+
+  // 裏の保存が終わった: 見えないところに残していたこの画面を片づける
+  const removeSelf = () => {
+    const state = navigation.getState();
+    const routes = state?.routes ?? [];
+    const me = routes.findIndex((r) => r.key === routeKey);
+    if (!state || me < 0) return;
+    allowSaveRemove();
+    allowModalRemove();
+    const rest = routes.filter((r) => r.key !== routeKey);
+    const index = state.index > me ? state.index - 1 : Math.min(state.index, rest.length - 1);
+    navigation.dispatch({ type: 'RESET', payload: { ...state, routes: rest, index } });
+  };
+  // 裏の保存に失敗した: 保存は取り消されているので、この画面も片づけて、上の知らせに理由と「開き直す」を出す。
+  // （この画面を前に戻すことはしない。重ねる順を入れ替えて戻すと、画面が止まった絵のままになった。2026-11-18）
+  const failedInBackground = useRef(false);
+  const saveErrorText = useRef('');
+  const completeBackground = (ok: boolean) => {
+    if (!inBackground.current) return;
+    inBackground.current = false;
+    failedInBackground.current = false;
+    if (backgroundWait.current) clearTimeout(backgroundWait.current);
+    backgroundWait.current = null;
+    if (!ok) {
+      const me = navigation.getState()?.routes.find((r) => r.key === routeKey);
+      const params = Object.fromEntries(
+        Object.entries((me?.params ?? {}) as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+      );
+      endSave(routeKey, false, { error: saveErrorText.current || null, reopen: me ? { pathname: `/${me.name}`, params } : null });
+      removeSelf();
+      return;
+    }
+    const next = backgroundApply.current;
+    backgroundApply.current = null;
+    if (next) attachApply(routeKey, next);
+    endSave(routeKey, true); // 戻った先の画面が、これを見てデータを新しくする
+    removeSelf();
+  };
+
+  // 保存の通信が長く止まったら、見張りをやめる（戻れるようにする。裏で続けていたなら、前に戻して見てもらう）
+  const savingLastAt = saving?.lastAt ?? null;
+  useEffect(() => {
+    if (savingLastAt === null) return;
+    const timer = setTimeout(() => {
+      updateSaving(null);
+      if (inBackground.current) completeBackground(false);
+      else endSave(routeKey, false);
+    }, SAVE_STALL_MS);
+    return () => clearTimeout(timer);
+    // completeBackground は、そのときの画面の重なりを読むので、最新のものでなくてよい
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savingLastAt, updateSaving, routeKey]);
+  const finishSave = (end: { ok: boolean; steps: number; writes: number; ms: number }) => {
+    const run = savingRef.current;
+    updateSaving(null);
+    if (run) {
+      if (__DEV__) console.log(describeSave(run.key, end, saveLog.current) + (inBackground.current ? '（裏で保存）' : ''));
+      if (end.ok) rememberSaveSize(run.key, { writes: end.writes, steps: end.steps });
+    }
+    if (inBackground.current) {
+      if (!end.ok) {
+        // ページが出すエラーの文（saveError）を少し待ってから片づける
+        failedInBackground.current = true;
+        saveErrorText.current = '';
+        backgroundWait.current = setTimeout(() => completeBackground(false), ERROR_WAIT_MS);
+        return;
+      }
+      // ページは保存が終わると自分で閉じる（EZCraft の form.close → close）。閉じなければ、少し待って片づける
+      backgroundWait.current = setTimeout(() => completeBackground(true), BACK_AFTER_SAVE_MS);
+      return;
+    }
+    endSave(routeKey, end.ok);
+    if (!run) return;
+    // シートの画面で、保存のあいだに戻ろうとしていた。ページは保存が終わると自分で閉じることが多い（EZCraft の form.close）。
+    // 閉じなければ、アプリが戻る。保存に失敗したら戻らない（ページが出す知らせを見てもらう）
+    if (run.backAfter && end.ok) {
+      backAfterSave.current = setTimeout(() => {
+        backAfterSave.current = null;
+        if (!closedByPageRef.current && router.canGoBack()) router.back();
+      }, BACK_AFTER_SAVE_MS);
+    }
+  };
   const scroll = useRef({ y: 0, target: '' }); // いまのスクロール位置（ページが知らせてくる。target は動いた箱）
   const [restoreTo, setRestoreTo] = useState({ y: 0, target: '' }); // 読み直したあとに戻すスクロール位置
   const [launching, setLaunching] = useState(autoClick !== null); // 近道で、ボタンを押して次へ進むのを待っている
@@ -101,6 +267,11 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const pendingApply = useRef<{ form: string; prefill: Record<string, string>; timer: ReturnType<typeof setTimeout> } | null>(null);
 
   const apply = (form: string, values: Record<string, string>, auto: boolean) => {
+    // 裏で保存していた画面: いきなり開かず、上の知らせのボタンで開けるようにする
+    if (auto && inBackground.current) {
+      backgroundApply.current = { form, prefill: values };
+      return;
+    }
     if (!auto) {
       openApplication(form, values);
       return;
@@ -122,8 +293,16 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     }
     const nextInQueue = !waiting && sheet && ownWrites.current > 0 && applyQueueActive();
     noteClosedByPage(); // 元の画面は、これを見て、丸ごと読み直さずにデータだけ読み直す
+    closedByPageRef.current = true;
+    updateSaving(null);
     // ページが自分で閉じるときは、ダイアログが開いていても止めない（止める設定を外してから戻る）
     setModalOpen(false);
+    // 裏で保存していた画面: いま見ている画面は戻さず、この画面だけを片づける
+    if (inBackground.current) {
+      if (waiting) backgroundApply.current = { form: waiting.form, prefill: waiting.prefill };
+      completeBackground(true);
+      return;
+    }
     setTimeout(() => {
       if (router.canGoBack()) router.back();
     }, 0);
@@ -170,29 +349,57 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // その画面が「登録」などを終えて自分で閉じたときは、Web 版と同じく、閉じたあとの処理（データだけ読み直す）を
   // ページで走らせる。一覧はそのまま見えていて、変わった行だけが少しあとで新しくなる（丸ごと読み直すより待たない）。
   // できない画面（処理を用意していない・ページが消えていた）や、閉じ方が違うときは、今までどおり丸ごと読み直す
+  const refreshAfterChild = useCallback(() => {
+    if (openedChild.current) {
+      const wrote = writeCount() - ownWrites.current !== othersWritesAtOpen.current;
+      const child = takeChildResult();
+      // まとめて申請の途中なら、次の1件から戻ってきたときも見る（src/openShortcut.ts）
+      openedChild.current = applyQueueActive();
+      othersWritesAtOpen.current = writeCount() - ownWrites.current;
+      // 重ねて開いた画面（とその先）で書き込みがなければ、そのまま見せる（読み直すと数秒かかる）
+      if (!wrote) return;
+      if (!child.closedByPage || !child.label || !webRef.current) {
+        reloadPage();
+        return;
+      }
+      if (refreshWait.current) clearTimeout(refreshWait.current);
+      refreshWait.current = setTimeout(() => {
+        refreshWait.current = null;
+        reloadPage();
+      }, REFRESH_REPLY_MS);
+      webRef.current.injectJavaScript(childClosedJs(child.label));
+    }
+  }, [reloadPage]);
+  // 重ねた画面が保存を裏で続けているあいだは、まだ新しくしない（保存が終わってから。下の onBackgroundSaveDone）
   useFocusEffect(
     useCallback(() => {
-      if (openedChild.current) {
-        const wrote = writeCount() - ownWrites.current !== othersWritesAtOpen.current;
-        const child = takeChildResult();
-        // まとめて申請の途中なら、次の1件から戻ってきたときも見る（src/openShortcut.ts）
-        openedChild.current = applyQueueActive();
-        othersWritesAtOpen.current = writeCount() - ownWrites.current;
-        // 重ねて開いた画面（とその先）で書き込みがなければ、そのまま見せる（読み直すと数秒かかる）
-        if (!wrote) return;
-        if (!child.closedByPage || !child.label || !webRef.current) {
-          reloadPage();
-          return;
-        }
-        if (refreshWait.current) clearTimeout(refreshWait.current);
-        refreshWait.current = setTimeout(() => {
-          refreshWait.current = null;
-          reloadPage();
-        }, REFRESH_REPLY_MS);
-        webRef.current.injectJavaScript(childClosedJs(child.label));
-      }
-    }, [reloadPage]),
+      if (backgroundSavePendingFor(routeKey)) return;
+      refreshAfterChild();
+    }, [refreshAfterChild, routeKey]),
   );
+  useEffect(
+    () =>
+      onBackgroundSaveDone((save, ok) => {
+        if (ok && save.parentKey === routeKey && navigation.isFocused()) refreshAfterChild();
+      }),
+    [navigation, refreshAfterChild, routeKey],
+  );
+
+  // ほかの画面が保存しているあいだは、この画面の「登録」などを待たせる（SAVE_WATCH_JS）。終わったら、待たせていたボタンを押す
+  useEffect(() => {
+    let busy = false;
+    const sync = () => {
+      const next = savingElsewhere(routeKey);
+      if (next === busy) return;
+      busy = next;
+      webRef.current?.injectJavaScript(
+        next ? 'window.__myappSaveBusy = true; true;' : 'window.__myappSaveBusy = false; window.__myappSaveFree && window.__myappSaveFree(); true;',
+      );
+      if (!next) setWaitingSave(false);
+    };
+    sync();
+    return subscribeSaves(sync);
+  }, [routeKey]);
 
   // ページが作った PDF・CSV・Excel を受け取り、一時的な場所に置いて見せる。PDF はアプリの画面、ほかは iPhone の標準のプレビュー
   // （どちらも共有のボタンから「ファイル」に保存・プリントなどができる。src/files.ts）
@@ -293,7 +500,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         bounces={false}
         overScrollMode="never"
         injectedJavaScriptBeforeContentLoaded={bootJs(c.background) + openerStubJs(handoff) + prefillJs(prefill) + initAppJs(initApp) + healthFlagJs(HEALTH)}
-        injectedJavaScript={safeAreaJs(insets.bottom) + BRIDGE_JS + buildSkinScript(appId) + (autoClick && autoClick.steps.length > 0 ? autoClickJs(autoClick.steps[0], autoClick.ready) : '') + restoreScrollJs(restoreTo)}
+        injectedJavaScript={safeAreaJs(insets.bottom) + BRIDGE_JS + SAVE_WATCH_JS + buildSkinScript(appId) + (autoClick && autoClick.steps.length > 0 ? autoClickJs(autoClick.steps[0], autoClick.ready) : '') + restoreScrollJs(restoreTo)}
         // iOS では onMessage を渡さないと injectedJavaScript が実行されない（react-native-webview の既知の動き）
         // 画面全体は、会社のサイトのページだけを出す。ほかのサイトへのリンクは、アプリの外（Safari）で開く
         // （アプリが入れる仕組みとデータが、ほかのサイトに渡らないように。src/webview/origin.ts）
@@ -332,7 +539,30 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           if (message?.type === 'write') {
             noteWrite(message.label);
             ownWrites.current += 1;
+            if (message.label) lastWriteLabel.current = message.label;
           }
+          // 保存の進み具合（bridge の 9）
+          if (message?.type === 'saveStart') {
+            const key = saveKey(uri, lastWriteLabel.current);
+            const at = Date.now();
+            const size = saveSizeOf(key);
+            saveLog.current = [];
+            setWaitingSave(false);
+            updateSaving({ key, startedAt: at, writes: 0, steps: 0, size, backAfter: false, lastAt: at });
+            beginSave(routeKey, heading || title || pageTitle || '保存', savingText(0, size));
+          }
+          if (message?.type === 'saveStep') {
+            const { cmd, ms, writes, steps } = message;
+            saveLog.current.push({ cmd, ms });
+            updateSaving((run) => ({ ...run, writes, steps, lastAt: Date.now() }));
+            updateSave(routeKey, savingText(writes, savingRef.current?.size ?? null));
+          }
+          if (message?.type === 'saveWait') setWaitingSave(true);
+          if (message?.type === 'saveError') {
+            saveErrorText.current = message.text;
+            if (failedInBackground.current) completeBackground(false);
+          }
+          if (message?.type === 'saveEnd') finishSave(message);
           if (message?.type === 'close') close();
           if (message?.type === 'open') openWindow(message.url, message.handoff);
           if (message?.type === 'apply') apply(message.form, message.prefill, message.auto);
@@ -343,7 +573,20 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             othersWritesAtOpen.current = writeCount() - ownWrites.current;
           }
         }}
-        onLoadStart={() => setModalOpen(false)} // 読み直したら、ダイアログは閉じている
+        onLoadStart={() => {
+          // 読み直したら、ダイアログは閉じていて、保存も終わっている（保存の途中なら、切れている）
+          setModalOpen(false);
+          setWaitingSave(false);
+          if (savingRef.current) {
+            updateSaving(null);
+            if (inBackground.current) completeBackground(false);
+            else endSave(routeKey, false);
+          }
+        }}
+        // 読み直したページにも、ほかの画面が保存しているかを伝えておく
+        onLoadEnd={() => {
+          if (savingElsewhere(routeKey)) webRef.current?.injectJavaScript('window.__myappSaveBusy = true; true;');
+        }}
         // 読み込めなかった（電波がない・サーバーにつながらない）。WebView が出す英語の開発者向けの文の代わりに、
         // 分かる言葉と「もう一度読み込む」を出す。取り消された読み込み（次のページへ移ったなど）は失敗ではない
         onError={(e) => {
@@ -386,6 +629,18 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           if (name && name !== 'EZCraft' && !name.startsWith('http')) setPageTitle(name);
         }}
       />
+      {saving ? (
+        <SaveProgress
+          startedAt={saving.startedAt}
+          writes={saving.writes}
+          steps={saving.steps}
+          size={saving.size}
+          backAfter={saving.backAfter}
+          canLeave={!sheet}
+        />
+      ) : (
+        waitingSave && <SaveProgress startedAt={0} writes={0} steps={0} size={null} backAfter={false} canLeave={false} waiting />
+      )}
       {/* ページが整うまで（近道でメニューを開いているあいだは、下の「〜を開いています」を出す） */}
       {!shown && !launching && (
         <View style={[StyleSheet.absoluteFill, styles.booting, { backgroundColor: c.background }]} pointerEvents="none">

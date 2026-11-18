@@ -37,6 +37,7 @@
 //    （window.__myappCloseModal。src/components/EzcraftWebView.tsx）
 // 7. 別の申請をその場で作る（apply）
 //    ページ（勤怠実績登録の残業など）が、申請の画面と、そこに入れておく値を知らせる。アプリは申請の画面をシートで重ねる。
+// 9. 保存の進み具合を知らせる（saveStart・saveStep・saveEnd。SAVE_WATCH_JS）
 import type { Handoff } from './handoff';
 
 /** ページからアプリへの知らせ */
@@ -55,7 +56,17 @@ export type BridgeMessage =
   | { type: 'tick' }
   | { type: 'skinMissing'; form: string; ids: string[] }
   | { type: 'steps'; id: string; day: string }
+  | { type: 'saveStart' }
+  | { type: 'saveWait' }
+  | { type: 'saveError'; text: string }
+  | { type: 'saveStep'; cmd: string; ms: number; ok: boolean; steps: number; writes: number }
+  | { type: 'saveEnd'; ok: boolean; steps: number; writes: number; ms: number }
   | { type: 'ready' };
+
+/** ページから来た数（0 以上の整数で、大きすぎないもの）。違えば null */
+function count(value: unknown, max: number): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max ? value : null;
+}
 
 /** 入れておく値: 短い文字だけ（ページから来たものなので、長いものや文字でないものは捨てる） */
 function shortValues(value: unknown): Record<string, string> {
@@ -82,6 +93,26 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
       return { type: 'file', base64: message.base64, name: text(message.name, ''), mime: text(message.mime, 'application/octet-stream') };
     }
     if (message.type === 'ready') return { type: 'ready' };
+    // 保存の進み具合（SAVE_WATCH_JS）。通信の種類・数・かかった時間だけ
+    if (message.type === 'saveStart') return { type: 'saveStart' };
+    // ほかの画面の保存が終わるのを待たせた（SAVE_WATCH_JS）
+    if (message.type === 'saveWait') return { type: 'saveWait' };
+    // 保存に失敗したときに、ページが出したエラーの文（アプリの知らせに出すだけ。200 字まで）
+    if (message.type === 'saveError') return { type: 'saveError', text: typeof message.text === 'string' ? message.text.slice(0, 200) : '' };
+    if (message.type === 'saveStep') {
+      const ms = count(message.ms, 600_000);
+      const steps = count(message.steps, 10_000);
+      const writes = count(message.writes, 10_000);
+      if (typeof message.cmd !== 'string' || !/^[A-Za-z]{1,20}$/.test(message.cmd) || ms === null || steps === null || writes === null) return null;
+      return { type: 'saveStep', cmd: message.cmd, ms, ok: message.ok === true, steps, writes };
+    }
+    if (message.type === 'saveEnd') {
+      const ms = count(message.ms, 3_600_000);
+      const steps = count(message.steps, 10_000);
+      const writes = count(message.writes, 10_000);
+      if (ms === null || steps === null || writes === null) return null;
+      return { type: 'saveEnd', ok: message.ok === true, steps, writes, ms };
+    }
     // ヘルスケアの歩数をください（Walk the Talk の歩数の登録。アプリは stepsReplyJs で答える）
     if (message.type === 'steps' && typeof message.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(message.id) && typeof message.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(message.day)) {
       return { type: 'steps', id: message.id, day: message.day };
@@ -359,6 +390,15 @@ export const BRIDGE_JS = `
     // 後ろの暗い面を押すと閉じる。開いているあいだは、横にずらしても画面ごと戻らないようにする
     var sheet = document.querySelector('.myapp-pick-back, .myapp-cal-back');
     if (sheet) return sheet;
+    // 確認のメッセージ（スマホでは EZCraft が .tcc-msg-bar で出す。削除確認など）。× がないので、
+    // 戻る操作は「キャンセル」「いいえ」を押したことにする（ボタンが1つだけなら、それで閉じる）。決める方は押さない
+    var bar = document.querySelector('.tcc-msg-bar-back');
+    if (bar) {
+      var buttons = Array.prototype.slice.call(bar.querySelectorAll('.tcc-msg-bar-btn'));
+      var cancel = buttons.filter(function (b) { return /^(キャンセル|いいえ|閉じる)$/.test((b.textContent || '').trim()); })[0];
+      if (cancel) return cancel;
+      if (buttons.length === 1) return buttons[0];
+    }
     var best = null;
     var bestZ = -Infinity;
     document.querySelectorAll('.tcc-modal').forEach(function (m) {
@@ -384,6 +424,140 @@ export const BRIDGE_JS = `
     modalOpen = open;
     post({ type: 'modal', open: open });
   }, 300);
+})();
+true;
+`;
+
+/**
+ * 9. 保存の進み具合を、アプリに知らせる（ページを読み込んだあとに入れる）。
+ *
+ * EZCraft の保存は、トランザクションの始め（beginTrans）→ 読む・書く通信を1つずつ順に → 確定（commit）か取り消し（rollBack）。
+ * 勤怠実績の登録では、通信が 37 回・8〜9 秒かかった（2026-11-18 に測った。1 秒ほどの読み込みが 5 回と、2.6 秒の削除が 1 回）。
+ * アプリはこれを見て「保存しています（n/m）」と、長いときの声かけを出し、保存の途中で画面ごと戻らないようにする
+ * （戻ると、ページが消えて確定が送られず、保存が途中で切れる。src/components/EzcraftWebView.tsx）。
+ *
+ * 知らせるのは、通信の種類（insert など）・かかった時間・数だけ。データの中身は送らない。
+ *   - 始まり: beginTrans。トランザクションを使わない画面は、書き込みのボタンを押してから 5 秒以内の書き込みの通信
+ *   - 終わり: 自分のトランザクションの commit・rollBack。使わない画面は、通信が止んで 1 秒たったとき
+ *     （EZCraft は、表を開くたびに、ほかの人の 100 秒を超えたトランザクションを rollBack する。番号が違うので、それでは終わらない）
+ * 保存のあいだは、EZCraft の読み込み中の印を隠す（アプリが代わりに出す）。押せないようにする面はそのまま残す。
+ *
+ * 保存は、アプリ全体で1つずつ（src/webview/backgroundSaves.ts）。ほかの画面が保存しているあいだ（アプリが
+ * window.__myappSaveBusy を立てる）は、書き込みのボタンを押しても EZCraft に渡さずに待たせ（saveWait）、
+ * 終わったら（アプリが window.__myappSaveFree を呼ぶ）押し直す
+ */
+export const SAVE_WATCH_JS = `
+(function () {
+  if (window.__myappSaveWatch) return;
+  window.__myappSaveWatch = true;
+  var post = function (message) { try { window.ReactNativeWebView.postMessage(JSON.stringify(message)); } catch (e) {} };
+  var DB_URL = /\\/(?:procedure\\/BigData|tblCmn)\\/([A-Za-z]+)\\/?(?:\\?(.*))?$/;
+  var WRITE_CMD = /^(insert|update|upsert|delete|delIns)$/;
+  var WRITE_LABEL = /登録|削除|申請|更新|保存|取消|取り消|承認|却下|確定|送信/;
+  var NOT_WRITE_LABEL = /コピー|検索|クリア|閉じる|キャンセル|戻る/;
+  var saving = null;
+  var armedAt = 0;
+  var held = null; // ほかの画面の保存が終わるのを待っている、押されたボタン
+
+  document.addEventListener('click', function (e) {
+    var button = e.target && e.target.closest && e.target.closest('.tcc-btn');
+    var label = button ? (button.textContent || '').replace(/\\s+/g, '') : '';
+    if (!label || !WRITE_LABEL.test(label) || NOT_WRITE_LABEL.test(label)) return;
+    // ほかの画面が保存している（アプリが __myappSaveBusy で知らせる）。いまは押さず、終わってから押す
+    if (window.__myappSaveBusy) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      held = e.target;
+      post({ type: 'saveWait' });
+      return;
+    }
+    armedAt = Date.now();
+  }, true);
+  // アプリが「ほかの保存が終わった」と知らせてくる。待たせていたボタンを押す
+  window.__myappSaveFree = function () {
+    window.__myappSaveBusy = false;
+    var target = held;
+    held = null;
+    if (target && target.isConnected) target.click();
+  };
+
+  function start() {
+    saving = { at: Date.now(), steps: 0, writes: 0, pending: 0, trans: '', idle: null };
+    document.documentElement.classList.add('myapp-saving');
+    post({ type: 'saveStart' });
+  }
+  function end(ok) {
+    if (!saving) return;
+    clearTimeout(saving.idle);
+    post({ type: 'saveEnd', ok: ok, steps: saving.steps, writes: saving.writes, ms: Date.now() - saving.at });
+    saving = null;
+    document.documentElement.classList.remove('myapp-saving');
+    // 失敗したら、EZCraft が出したエラーの知らせの文を、少し待ってから知らせる（裏で保存していたとき、アプリが理由として出す）
+    if (!ok) setTimeout(function () { post({ type: 'saveError', text: errorText() }); }, 400);
+  }
+  function errorText() {
+    var boxes = Array.prototype.filter.call(document.querySelectorAll('.tcc-msg-box, .tcc-modal'), function (b) { return b.offsetParent !== null; });
+    var box = boxes[boxes.length - 1];
+    if (!box) return '';
+    return (box.innerText || '').split('\\n').map(function (line) { return line.trim(); })
+      .filter(function (line) { return line && !/^(OK|はい|いいえ|キャンセル|閉じる|×)$/.test(line); })
+      .join(' ').slice(0, 200);
+  }
+  function done(xhr) {
+    var db = xhr.__myappDb;
+    if (!db || db.done || !db.save || db.save !== saving) return;
+    db.done = true;
+    var small = db.cmd === 'beginTrans' || db.cmd === 'commit' || db.cmd === 'rollBack';
+    var head = '';
+    try { head = String(xhr.responseText || '').slice(0, small ? 4000 : 300); } catch (e) {}
+    var ok = xhr.status >= 200 && xhr.status < 300 && !/"status"\\s*:\\s*"error"/.test(head);
+    saving.pending -= 1;
+    saving.steps += 1;
+    if (db.cmd === 'beginTrans' || db.cmd === 'commit' || WRITE_CMD.test(db.cmd)) saving.writes += 1;
+    if (db.cmd === 'beginTrans' && !saving.trans) saving.trans = (/"transID"\\s*:\\s*"?(\\d+)/.exec(head) || [])[1] || '';
+    post({ type: 'saveStep', cmd: db.cmd, ms: Date.now() - db.at, ok: ok, steps: saving.steps, writes: saving.writes });
+    if ((db.cmd === 'commit' || db.cmd === 'rollBack') && (!saving.trans || db.trans === saving.trans)) {
+      end(db.cmd === 'commit' && ok);
+      return;
+    }
+    if (!saving.trans && saving.pending === 0) {
+      var current = saving;
+      current.idle = setTimeout(function () { if (saving === current && current.pending === 0) end(true); }, 1000);
+    }
+  }
+
+  var open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url, async) {
+    this.__myappDb = null;
+    try {
+      var m = DB_URL.exec(String(url));
+      if (m) this.__myappDb = { cmd: m[1], trans: (/(?:^|&)transId=(\\d+)/.exec(m[2] || '') || [])[1] || '', sync: async === false };
+    } catch (e) {}
+    return open.apply(this, arguments);
+  };
+  var send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function () {
+    var xhr = this;
+    var db = this.__myappDb;
+    if (db) {
+      try {
+        if (!saving && (db.cmd === 'beginTrans' || (WRITE_CMD.test(db.cmd) && Date.now() - armedAt < 5000))) start();
+        if (saving) {
+          db.save = saving;
+          db.at = Date.now();
+          saving.pending += 1;
+          clearTimeout(saving.idle);
+          if (!db.sync) xhr.addEventListener('loadend', function () { done(xhr); });
+        }
+      } catch (e) {}
+    }
+    try {
+      return send.apply(this, arguments);
+    } finally {
+      // 同期の通信（beginTrans・commit など）は、send が戻ったときに終わっている
+      if (db && db.sync && db.save) done(xhr);
+    }
+  };
 })();
 true;
 `;

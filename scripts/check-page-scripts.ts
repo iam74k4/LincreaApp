@@ -10,7 +10,7 @@
 //   2. \ が落ちた形（/(d{4})/ や /^s*/ など）が残っていないこと
 import { APP_SKINS } from '../src/webview/appStyles';
 import { bootJs, buildSkinScript } from '../src/webview/ezcraftSkin';
-import { BRIDGE_JS } from '../src/webview/bridge';
+import { BRIDGE_JS, SAVE_WATCH_JS } from '../src/webview/bridge';
 import { initAppJs } from '../src/webview/initApp';
 
 // \ が落ちた正規表現によくある形（前の文字が \ でない d{ や s* など）
@@ -19,6 +19,7 @@ const LOST_ESCAPE = /[^\\a-zA-Z](?:d\{\d|d\+\)|s\*\[|d日)|\|d\+\)|\^d\{|\^s\*|\
 const scripts: [string, string][] = [
   ...[...Object.keys(APP_SKINS), '(アプリごとの調整なし)'].map((id): [string, string] => [`skin ${id}`, buildSkinScript(id)]),
   ['bridge', BRIDGE_JS],
+  ['save-watch', SAVE_WATCH_JS],
   ['boot', bootJs('#ffffff')],
   ['initApp', initAppJs(null)],
 ];
