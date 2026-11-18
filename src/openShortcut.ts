@@ -107,6 +107,13 @@ export function openShortcutThroughMenu(shortcut: Shortcut, opts: OpenOptions = 
   });
 }
 
+/** 近道を開く（メニューの App.data の控えがあれば直接、なければメニューを裏で開いて進む） */
+export function openShortcut(shortcut: Shortcut, opts: OpenOptions = {}): void {
+  const appData = recallAppData(appDataKey(shortcut.app, shortcut.form));
+  if (appData) openShortcutDirect(shortcut, appData, opts);
+  else openShortcutThroughMenu(shortcut, opts);
+}
+
 /**
  * ページからの「その場で申請」: 申請の画面（近道にあるもの）を、いまの画面の上にシートで開く。
  * 近道にない画面なら false（何もしない）
@@ -117,8 +124,6 @@ export function openApplication(form: string, prefill: Record<string, string>, o
     if (!opts.fromQueue) stopApplyQueue();
     return false;
   }
-  const appData = recallAppData(appDataKey(shortcut.app, shortcut.form));
-  if (appData) openShortcutDirect(shortcut, appData, { ...opts, sheet: true, prefill });
-  else openShortcutThroughMenu(shortcut, { ...opts, sheet: true, prefill });
+  openShortcut(shortcut, { ...opts, sheet: true, prefill });
   return true;
 }

@@ -1,16 +1,31 @@
 // ログイン後の画面の組。マイアプリ一覧 → アプリ と重ねていく。
 // ヘッダーの色は、_layout.tsx のテーマ（ライト / ダーク）に任せる。
+import { useCallback, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { router, Stack } from 'expo-router';
+import { router, Stack, usePathname } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
+import { REMINDER_SHORTCUT, useAttendanceReminders } from '../../attendanceReminder';
 import { BackgroundSaveBanner } from '../../components/BackgroundSaveBanner';
-import { stopApplyQueue } from '../../openShortcut';
+import { openShortcut, stopApplyQueue } from '../../openShortcut';
+import { SHORTCUTS } from '../../shortcuts';
 import { SavePark, SaveParkProvider } from '../../webview/savePark';
 import { useColors } from '../../theme';
 
 export default function AppLayout() {
   const c = useColors();
+  // 勤怠登録の通知（src/attendanceReminder.ts）: アプリを開くたびに予約し直し、通知を押して開いたら勤務表を開く
+  // （いま勤務表を見ているなら、もう1枚は重ねない）
+  const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
+  const openTimesheet = useCallback(() => {
+    const shortcut = SHORTCUTS.find((s) => s.key === REMINDER_SHORTCUT);
+    if (shortcut && !pathnameRef.current.endsWith(`/${shortcut.direct.form}`)) openShortcut(shortcut);
+  }, []);
+  useAttendanceReminders(openTimesheet);
   // アプリの画面（WebView）は、ヘッダーを地の色で塗る。
   // iOS 26 のヘッダーは透けていて、スクロールした中身がぼかされずに時刻や戻るボタンと重なって見えるため
   // （ぼかしは画面の ScrollView にしか効かず、WebView の中のスクロールには効かない）

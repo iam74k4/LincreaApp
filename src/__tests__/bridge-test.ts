@@ -18,6 +18,22 @@ describe('steps: ヘルスケアの歩数をください', () => {
   });
 });
 
+describe('attendanceDays: 勤務表の日ごとの状態（勤怠登録の通知）', () => {
+  test('年月と、1日1文字の状態だけ通す', () => {
+    const days = 'oruuuooruuuuo'.padEnd(30, 'u');
+    expect(parse({ type: 'attendanceDays', month: '2026-11', days })).toEqual({ type: 'attendanceDays', month: '2026-11', days });
+  });
+  test.each([
+    ['年月の形が違う', { type: 'attendanceDays', month: '2026/11', days: 'u'.repeat(30) }],
+    ['ない月', { type: 'attendanceDays', month: '2026-13', days: 'u'.repeat(31) }],
+    ['知らない文字', { type: 'attendanceDays', month: '2026-11', days: 'x'.repeat(30) }],
+    ['短すぎる', { type: 'attendanceDays', month: '2026-11', days: 'u'.repeat(10) }],
+    ['文字でない', { type: 'attendanceDays', month: '2026-11', days: 30 }],
+  ])('%s ものは捨てる', (_, message) => {
+    expect(parse(message)).toBeNull();
+  });
+});
+
 describe('stepsReplyJs: 歩数の返事', () => {
   test('数は整数にして、マイナスは 0 にする', () => {
     expect(stepsReplyJs('s1', 8234.4)).toContain('("s1", 8234)');

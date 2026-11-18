@@ -8,6 +8,7 @@
 // 使っているあいだにログインが切れたときも、Face ID で入り直せれば、その場で続けられる（reauthenticate）。
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
+import { forgetAttendanceReminders } from '../attendanceReminder';
 import type { Session } from '../auth/api';
 import { forgetCognitoTokens, loadCognitoStorage } from '../auth/cognitoStorage';
 import { loginWithFaceId } from '../auth/faceId';
@@ -73,6 +74,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     forgetAllInitApps(); // 画面の定義の控えと、裏で読む画面の覚え書き
     discardOld(true); // 受け取った明細などのファイルも残さない
     resetSaves(); // 裏で続けていた保存の知らせも消す
+    forgetAttendanceReminders(); // 勤怠登録の通知の予約と、覚えていた勤務表の状態も消す
     setSession(null);
     clearSavedSession();
   }, []);

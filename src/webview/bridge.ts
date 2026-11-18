@@ -56,6 +56,7 @@ export type BridgeMessage =
   | { type: 'tick' }
   | { type: 'skinMissing'; form: string; ids: string[] }
   | { type: 'steps'; id: string; day: string }
+  | { type: 'attendanceDays'; month: string; days: string }
   | { type: 'saveStart' }
   | { type: 'saveWait' }
   | { type: 'saveError'; text: string }
@@ -116,6 +117,10 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
     // ヘルスケアの歩数をください（Walk the Talk の歩数の登録。アプリは stepsReplyJs で答える）
     if (message.type === 'steps' && typeof message.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(message.id) && typeof message.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(message.day)) {
       return { type: 'steps', id: message.id, day: message.day };
+    }
+    // 勤務表の、日ごとの状態（勤怠登録の通知のため。src/attendanceReminder.ts）。年月と、1日1文字（u・o・r・-）だけ
+    if (message.type === 'attendanceDays' && typeof message.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(message.month) && typeof message.days === 'string' && /^[uor-]{28,31}$/.test(message.days)) {
+      return { type: 'attendanceDays', month: message.month, days: message.days };
     }
     // 開発中だけ: 見た目の直しが名前で指している部品が、画面に見つからない（ezcraftSkin.ts の CHECK_JS）
     if (message.type === 'skinMissing' && typeof message.form === 'string' && Array.isArray(message.ids)) {

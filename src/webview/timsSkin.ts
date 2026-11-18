@@ -1835,6 +1835,10 @@ const SCRIPT = `
     var now = new Date();
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     var hasTop = false;
+    // 勤怠登録の通知のため、一覧の月（見出しの「2026年11月」）の日ごとの状態を集める（reportDays）
+    var listYm = title.match(/(\\d{4})年(\\d{1,2})月/);
+    var codes = [];
+    var rows = 0;
     Array.prototype.forEach.call(body.children, function (row) {
       if (!row.classList.contains('tcc-rpt-row')) return;
       var dateEl = row.querySelector('[id^="frmAttendance_dispDt"] .tcc-label-text');
@@ -1851,6 +1855,10 @@ const SCRIPT = `
         else if (/休日$/.test(status)) { kind = 'off'; order = 4; }
         else { kind = 'day'; order = 4; }
         if (order < 4) hasTop = true;
+        if (listYm && +m[1] === +listYm[2]) {
+          codes[+m[2] - 1] = status === '未登録' ? 'u' : /休日$/.test(status) ? 'o' : status ? 'r' : '-';
+          rows++;
+        }
       }
       if (row.getAttribute('data-myapp-day') !== kind) row.setAttribute('data-myapp-day', kind);
       var icon = row.querySelector('[id^="frmAttendance_lblIcon"] i');
@@ -1863,6 +1871,7 @@ const SCRIPT = `
       // 時刻の書き方をそろえる（「残業 00:30」→「残業 0:30」。アプリのほかの所と同じ）
       fixTimes(row.querySelector('[id^="frmAttendance_biko"] .tcc-label-text'));
     });
+    if (listYm) reportDays(+listYm[1], +listYm[2], codes, rows);
     // 月末（25日から）か、過ぎた月を見ているときは、勤務表申請を上に出す（CSS）
     var ymInput = document.getElementById('frmAttendance_yrmWork');
     ymInput = ymInput && ymInput.querySelector('input');
@@ -1879,6 +1888,21 @@ const SCRIPT = `
     if (attForm && attForm.hasAttribute('data-myapp-days') !== hasDays) attForm.toggleAttribute('data-myapp-days', hasDays);
     head(body, 'top', hasTop ? '今日と未登録の日' : '', 0);
     head(body, 'rest', hasTop ? 'ほかの日' : '', 3);
+  }
+  // 勤怠登録の通知（src/attendanceReminder.ts）: 見ている月の、日ごとの状態をアプリに知らせる（変わったときだけ）。
+  //   u: 未登録（勤務日）  o: 休日  r: 登録した日（休暇も）  -: 分からない
+  // 一覧の行が月の日数そろってから知らせる（読み直しの途中の、行が欠けたものは知らせない）。
+  // ほかの人の表も見る人（管理する人）の画面では、出ている表が自分のものとは限らないので、知らせない
+  var lastDays = '';
+  function reportDays(year, month, codes, rows) {
+    var size = new Date(year, month, 0).getDate();
+    if (rows !== size || isManager()) return;
+    var days = '';
+    for (var i = 0; i < size; i++) days += codes[i] || '-';
+    var key = year + '-' + (month < 10 ? '0' : '') + month;
+    if (key + days === lastDays) return;
+    lastDays = key + days;
+    try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'attendanceDays', month: key, days: days })); } catch (e) {}
   }
   // 申請の一覧の題名（2026/11/09_岡崎　昂功_有休）を「2026/11/09・岡崎 昂功・有休」で見せる（見せるだけ。CSS が data-myapp-title を出す）
   // あわせて、題名の最後（有休・勤務表）と同じ言葉の列は二重なので隠し（data-myapp-dup）、

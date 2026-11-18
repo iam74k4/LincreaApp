@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import { pathOf } from '../api/http';
+import { noteAttendanceDays } from '../attendanceReminder';
 import { SERVER_URL } from '../config';
 import { fileName, openFile, saveIncoming } from '../files';
 import { depositLaunch } from '../launch';
@@ -700,6 +701,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             if (message?.type === 'open') openWindow(message.url, message.handoff);
             if (message?.type === 'apply') apply(message.form, message.prefill, message.auto);
             if (message?.type === 'initApp') rememberInitApp({ app: message.app, form: message.form }, message.id, message.text);
+            if (message?.type === 'attendanceDays') noteAttendanceDays(message.month, message.days);
             if (message?.type === 'applyQueue' && startApplyQueue(message.form, message.items)) {
               // 申請して戻ってきたら、この画面（勤務表）を読み直す
               openedChild.current = true;
