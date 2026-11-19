@@ -963,9 +963,9 @@ const styles = StyleSheet.create({
 });
 
 /** この URL の画面の定義の控え（なければ null） */
-function cachedInitApp(uri: string): { app: string; form: string; text: string } | null {
+function cachedInitApp(uri: string): { app: string; form: string; id: string; text: string } | null {
   const form = initAppFormOfUrl(uri);
-  const text = form ? recallInitApp(form) : null;
-  return form && text ? { ...form, text } : null;
+  const cached = form ? recallInitApp(form) : null;
+  return form && cached ? { ...form, ...cached } : null;
 }
 

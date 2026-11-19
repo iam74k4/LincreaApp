@@ -43,7 +43,7 @@ const scripts: [string, string][] = [
   ['boot', bootJs('#ffffff')],
   ['show-page', SHOW_PAGE_JS],
   ['initApp（控えなし）', initAppJs(null)],
-  ['initApp（控えあり）', initAppJs({ app: 'L_Tims', form: 'frmAttendance', text: '/*<![CDATA[*/ var x = "</script> "; /*]]>*/' })],
+  ['initApp（控えあり）', initAppJs({ app: 'L_Tims', form: 'frmAttendance', id: 'abc=', text: '/*<![CDATA[*/ var x = "</script> "; /*]]>*/' })],
   ['opener', openerStubJs(handoff)],
   ['autoClick', autoClickJs('frmLTiMSTop_btnAttendance', 'LOGIN_USER')],
   ['restoreScroll', restoreScrollJs(position)],
