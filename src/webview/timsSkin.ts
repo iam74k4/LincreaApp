@@ -1883,7 +1883,12 @@ const SCRIPT = `
       var kind = 'blank';
       var order = 9;
       if (m) {
-        var time = new Date(ym ? +ym[1] : now.getFullYear(), +m[1] - 1, +m[2]).getTime();
+        // 締め日の都合で、一覧が年をまたぐ（12 月の一覧に 1 月の行がある・1 月の一覧に 12 月の行がある）ときは、行の年をずらす
+        var year = ym ? +ym[1] : now.getFullYear();
+        var titleMonth = listYm ? +listYm[2] : 0;
+        if (titleMonth >= 11 && +m[1] <= 2) year += 1;
+        else if (titleMonth && titleMonth <= 2 && +m[1] >= 11) year -= 1;
+        var time = new Date(year, +m[1] - 1, +m[2]).getTime();
         var statusEl = row.querySelector('[id^="frmAttendance_biko"]');
         var status = ((statusEl && statusEl.textContent) || '').trim();
         if (time === today) { kind = 'today'; order = 1; }
@@ -3587,6 +3592,7 @@ ${OVERTIME_MATH_JS}
   }
   // 控えがない・1日より古いときは、裏でプロジェクト選択を開いて読み、すぐ閉じる（画面には出さない。読み込み中の印も出さない）
   var catalogLoading = false;
+  var catalogPreload = null; // 裏で読んでいるあいだだけ、やめるための関数（preloadCatalog）
   function preloadCatalog(input, done) {
     var cat = readCatalog();
     if (catalogLoading || (cat && Date.now() - cat.at < 24 * 3600 * 1000)) return false;
@@ -3601,6 +3607,15 @@ ${OVERTIME_MATH_JS}
     icon.click();
     var start = Date.now();
     var cleared = false;
+    // 裏で読んでいるあいだに、人が「プロジェクト選択を開く」を押した: 裏で読むのをやめて、開いているダイアログをそのまま見せる
+    // （隠したダイアログの上からもう一度開こうとすると、何も出ないまま、あとで閉じてしまっていた）
+    catalogPreload = function () {
+      clearInterval(timer);
+      catalogPreload = null;
+      root.classList.remove('myapp-quiet', 'myapp-quiet-prj');
+      catalogLoading = false;
+      if (done) done(false);
+    };
     var timer = setInterval(function () {
       var dialog = document.getElementById('frmSelProj');
       // ダイアログが自分の入力欄を選んだら外す（キーボードを出さない）
@@ -3618,6 +3633,7 @@ ${OVERTIME_MATH_JS}
       var ok = Date.now() - start > 300 && harvestCatalog();
       if (!ok && Date.now() - start < 10000) return;
       clearInterval(timer);
+      catalogPreload = null;
       var quit = dialog && dialog.querySelector('.tcc-modal-quit');
       if (quit) quit.click();
       setTimeout(function () {
@@ -3635,7 +3651,13 @@ ${OVERTIME_MATH_JS}
     var n = comp ? comp.id.replace('frmAttendanceDtl_txtPrj', '') : '';
     var icon = document.querySelector('#frmAttendanceDtl_qbxProj' + n + ' div.icon-rt');
     if (!icon) return;
-    icon.click();
+    var reuse = false;
+    if (catalogPreload) {
+      catalogPreload();
+      var opened = document.getElementById('frmSelProj');
+      reuse = !!(opened && opened.offsetWidth);
+    }
+    if (!reuse) icon.click();
     // 前に探したままの言葉が残っていたら、消して全部を出す（開いたときに、関係のない1件だけが出ないように）
     var tries = 0;
     var clear = function () {
