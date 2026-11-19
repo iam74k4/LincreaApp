@@ -27,7 +27,7 @@ import { useColors } from '../theme';
 import { GlassButton } from './GlassButton';
 import { SaveProgress } from './SaveProgress';
 import { healthAvailable, stepsOn } from '../health';
-import { autoClickJs, BRIDGE_JS, childClosedJs, healthFlagJs, openerStubJs, parseBridgeMessage, restoreScrollJs, SAVE_WATCH_JS, stepsReplyJs } from '../webview/bridge';
+import { allowedFrom, autoClickJs, BRIDGE_JS, childClosedJs, healthFlagJs, openerStubJs, parseBridgeMessage, restoreScrollJs, SAVE_WATCH_JS, stepsDayAllowed, stepsReplyJs } from '../webview/bridge';
 import { bootJs, buildSkinScript, SHOW_PAGE_JS } from '../webview/ezcraftSkin';
 import { CAN_PARK, Parkable } from '../webview/savePark';
 import { appDataKeyOfUrl, rememberAppData } from '../webview/appDataCache';
@@ -87,6 +87,10 @@ const BACKGROUND_CLOSE_WAIT_MS = 10_000;
 const LEAVE_AFTER_START_WAIT_MS = 3000;
 // 保存の通信がこれだけ止まったら、見張りをやめる（ページの側で何かが止まった。戻れないままにしない）
 const SAVE_STALL_MS = 60_000;
+// 裏で続けている保存は、もっと長く待つ。見張りをやめるとページごと片づけるので、通信の途中で消すと、
+// サーバーに書きかけのやりとりが残る（次の保存が「Lock wait timeout」になる）。EZCraft は 100 秒を超えたやりとりを
+// 取り消すので、それより十分長く待ってから片づける
+const BACKGROUND_STALL_MS = 180_000;
 // 裏の保存に失敗したとき、ページが出すエラーの文（saveError）を待つ長さ
 // （SAVE_WATCH_JS は、失敗を知らせてから 0.4 秒ほどあとに、EZCraft が出したエラーの文を送ってくる）
 const ERROR_WAIT_MS = 2000;
@@ -276,15 +280,24 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     removeSelf();
   };
 
-  // 保存の通信が長く止まったら、見張りをやめる（戻れるようにする。裏で続けていたなら、前に戻して見てもらう）
+  // 保存の通信が長く止まったら、見張りをやめる（戻れるようにする。裏で続けていたなら、片づけて知らせに失敗を出す）。
+  // 裏で続けている保存は BACKGROUND_STALL_MS まで待つ（待つあいだは、知らせに「返事を待っています」と出す）
   const savingLastAt = saving?.lastAt ?? null;
   useEffect(() => {
     if (savingLastAt === null) return;
-    const timer = setTimeout(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const check = () => {
+      const quiet = Date.now() - savingLastAt;
+      if (inBackground.current && quiet < BACKGROUND_STALL_MS) {
+        updateSave(routeKey, '保存しています（返事を待っています）');
+        timer = setTimeout(check, BACKGROUND_STALL_MS - quiet);
+        return;
+      }
       updateSaving(null);
       if (inBackground.current) completeBackground(false);
       else endSave(routeKey, false);
-    }, SAVE_STALL_MS);
+    };
+    timer = setTimeout(check, SAVE_STALL_MS);
     return () => clearTimeout(timer);
     // completeBackground は、そのときの画面の重なりを読むので、最新のものでなくてよい
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -639,7 +652,9 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           onMessage={(e) => {
             // 知らせは、会社のサイトのページから来たものだけを受け付ける
             if (!isServerUrl(e.nativeEvent.url)) return;
-            const message = parseBridgeMessage(e.nativeEvent.data);
+            const parsed = parseBridgeMessage(e.nativeEvent.data);
+            // アプリごとの知らせ（歩数・申請・勤務表の状態）は、そのアプリの画面からだけ受け付ける（bridge の allowedFrom）
+            const message = parsed && allowedFrom(parsed, appId) ? parsed : null;
             if (message?.type === 'scroll') scroll.current = { y: message.y, target: message.target };
             if (message?.type === 'ready') setShown(true);
             if (message?.type === 'modal') setModalOpen(message.open);
@@ -650,7 +665,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             // Walk the Talk: 歩数の登録の欄に入れる、ヘルスケアの歩数（初めてなら、iOS が読んでよいかを聞く）
             if (message?.type === 'steps') {
               const { id, day } = message;
-              stepsOn(day).then((steps) => webRef.current?.injectJavaScript(stepsReplyJs(id, steps)));
+              // 未来の日・古すぎる日は、読まずに「読めなかった」と答える（ページは返事を待っているので、答えはする）
+              (stepsDayAllowed(day) ? stepsOn(day) : Promise.resolve(null)).then((steps) => webRef.current?.injectJavaScript(stepsReplyJs(id, steps)));
             }
             // 開発中だけ: EZCraft の画面が変わって、見た目の直しが効かなくなった部品がある（黄色い知らせで気づけるように）
             if (message?.type === 'skinMissing' && __DEV__) {

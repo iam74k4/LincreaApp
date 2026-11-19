@@ -169,6 +169,39 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
   }
 }
 
+/**
+ * その画面のアプリだけが送ってよい知らせ。知らせはサイト（同じホスト）から来たものしか受け付けないが、
+ * そのサイトには低コードで作られたアプリがいくつも載っている。ほかのアプリが歩数を読んだり、
+ * 申請の画面を値を入れて開かせたり、通知の予約を変えたりできないよう、アプリごとに分ける
+ */
+const ONLY_FROM: Partial<Record<BridgeMessage['type'], string>> = {
+  steps: 'YIF_walk_the_talk',
+  apply: 'L_Tims',
+  applyQueue: 'L_Tims',
+  attendanceDays: 'L_Tims',
+};
+/** 歩数を答える日: 今日から、さかのぼって 62 日まで（Walk the Talk の歩数の登録は、今週と少し前の週だけ） */
+const STEPS_BACK_DAYS = 62;
+
+/** appId の画面が、この知らせを送ってよいか */
+export function allowedFrom(message: BridgeMessage, appId: string): boolean {
+  const only = ONLY_FROM[message.type];
+  if (only && appId !== only) return false;
+  // 開いてよいのは申請の画面だけ（src/openShortcut.ts の近道にあるもの）
+  if ((message.type === 'apply' || message.type === 'applyQueue') && !/^frmApply_/.test(message.form)) return false;
+  return true;
+}
+
+/** その日の歩数を答えてよいか（未来の日と、古すぎる日は答えない） */
+export function stepsDayAllowed(day: string, now: Date = new Date()): boolean {
+  const [y, m, d] = day.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return false;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const oldest = new Date(today.getFullYear(), today.getMonth(), today.getDate() - STEPS_BACK_DAYS);
+  return date <= today && date >= oldest;
+}
+
 /** ページを読み込んだあとに入れる（1・2の開く側・3） */
 export const BRIDGE_JS = `
 (function () {
@@ -497,6 +530,8 @@ export const SAVE_WATCH_JS = `
     post({ type: 'saveEnd', ok: ok, steps: saving.steps, writes: saving.writes, ms: Date.now() - saving.at });
     saving = null;
     document.documentElement.classList.remove('myapp-saving');
+    // ページの中にも知らせる（残業申請: 取り消された保存の「作成済み」の記録を消す。timsSkin.ts）
+    try { window.dispatchEvent(new CustomEvent('myapp-save-end', { detail: { ok: ok } })); } catch (e) {}
     // 失敗したら、EZCraft が出したエラーの知らせの文を、少し待ってから知らせる（裏で保存していたとき、アプリが理由として出す）
     if (!ok) setTimeout(function () { post({ type: 'saveError', text: errorText() }); }, 400);
   }
