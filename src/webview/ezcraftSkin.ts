@@ -164,11 +164,29 @@ export function bootJs(background: string): string {
   window.__myappXhr = function () { return pending; };
   // 通信がなく、最後の通信が終わってから ms ミリ秒以上たったか（データを読み終わって、描き直しも済んだころか）
   window.__myappXhrIdle = function (ms) { return pending === 0 && Date.now() - (window.__myappXhrAt || 0) >= ms; };
+  // 数え漏れを残さない: 終わりの知らせ（loadend）が来ない終わり方（通信中に open し直した）と、返事が来ないまま 2 分たったものも、終わったことにする
+  // （数が 0 に戻らないと、空の一覧の知らせなどが、いつまでも「読み込み中」のまま出ない）
   var send = XMLHttpRequest.prototype.send;
+  var reopen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function () {
+    if (this.__myappEnd) this.__myappEnd();
+    return reopen.apply(this, arguments);
+  };
   XMLHttpRequest.prototype.send = function () {
+    var xhr = this;
     var done = false;
-    var end = function () { if (done) return; done = true; pending--; window.__myappXhrAt = Date.now(); };
+    var timer = null;
+    var end = function () {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (xhr.__myappEnd === end) xhr.__myappEnd = null;
+      pending--;
+      window.__myappXhrAt = Date.now();
+    };
     pending++;
+    xhr.__myappEnd = end;
+    timer = setTimeout(end, 120000);
     this.addEventListener('loadend', end);
     try { return send.apply(this, arguments); } catch (e) { end(); throw e; }
   };
@@ -249,7 +267,12 @@ const GENERIC_JS = `
       CONFIG.bottomBars[formId].forEach(function (id) {
         var el = byId(id);
         if (!el) return;
-        if (el.parentElement !== bar) bar.appendChild(el);
+        if (el.parentElement !== bar) {
+          // EZCraft が画面を作り直すと、同じ ID の新しいボタンができる（帯の中のものより前にあるので、byId はそちらを返す）。
+          // 帯に残った古いボタン（もう押しても動かない）は外してから、新しいほうを移す
+          Array.prototype.slice.call(bar.children).forEach(function (child) { if (child.id === id) child.remove(); });
+          bar.appendChild(el);
+        }
         if (!hidden(el)) visible.push(el);
       });
       CONFIG.bottomBars[formId].forEach(function (id) {
@@ -432,8 +455,15 @@ const GENERIC_JS = `
       var pager = grid.querySelector('.tcc-pager-navi');
       if (!pager) return;
       var m = /\\/\\s*(\\d+)\\s*p/.exec(pager.textContent || '');
-      // 続きをスクロールで足す一覧（growLists）も、ページ送りは出さない
-      var one = (!!m && +m[1] <= 1) || !!grid.__myappGrow;
+      // 続きをスクロールで足す一覧（growLists）も、ページ送りは出さない。ただし、アプリが持っている行（rowBuf）で
+      // 足せるぶんを越えてページがある（サーバーから次のページを読む一覧）なら、ページ送りを残す（2 ページ目より先に行けるように）
+      var one = !!m && +m[1] <= 1;
+      if (!one && grid.__myappGrow && window.jQuery) {
+        var t = window.jQuery(grid).data('tcc');
+        var rows = (t && t.rowBuf && t.rowBuf.length) || 0;
+        var size = (t && t._pageSize) || 1;
+        one = !m || +m[1] <= Math.ceil(rows / size);
+      }
       if (grid.hasAttribute('data-myapp-onepage') !== one) grid.toggleAttribute('data-myapp-onepage', one);
     });
   }
@@ -516,8 +546,16 @@ const GENERIC_JS = `
             Array.prototype.forEach.call(nav.children, function (o) { o.__pressedAt = o === b ? at : 0; });
             press();
             // ほかのタブを押し直したときは、前のぶんはやめる
+            // 確かめのメッセージやダイアログが出ている（「保存していない変更があります」など）ときは、押し直さない
+            // （後ろから押すと、メッセージが重なったり、一覧を二度読んだりする）
+            var blocked = function () {
+              return !!document.querySelector('.tcc-msg-bar-back, .myapp-pick-back') ||
+                Array.prototype.some.call(document.querySelectorAll('.tcc-modal'), function (m) { return m.offsetParent !== null; });
+            };
             [400, 1200, 2500].forEach(function (ms) {
-              setTimeout(function () { if (li.isConnected && !li.classList.contains('active') && b.__pressedAt === at) press(); }, ms);
+              setTimeout(function () {
+                if (li.isConnected && !li.classList.contains('active') && b.__pressedAt === at && !blocked()) press();
+              }, ms);
             });
           });
           nav.appendChild(b);
@@ -578,21 +616,30 @@ const GENERIC_JS = `
   // 確認のメッセージ（スマホでは EZCraft が「メッセージバー」.tcc-msg-bar で出す。勤怠の「削除確認」など）:
   // 見た目は CSS で、ほかのダイアログと同じカードにする。ここでは、
   //   - ダーク用の色の書き換え（DARK_JS）が、ボタンに色を直接書き込まないようにする（色は CSS で決める）
-  //   - 削除の確認なら、決めるボタン（OK）を赤にするしるしを付ける（ボタンの文字は変えない。EZCraft は文字で押されたボタンを見分ける）
+  //   - 削除・取り消しの確認なら、決めるボタン（OK）を赤にするしるしを付ける（ボタンの文字は変えない。EZCraft は文字で押されたボタンを見分ける）
+  //   - 決めるボタンは、並びの位置ではなく文字で見分ける（「キャンセル」「いいえ」でないもの）。目立たせるのはそちらだけ
+  // EZCraft はメッセージバーを使い回すことがあるので、題と文が変わったら、もう一度見る
+  var CANCEL_LABEL = /^(キャンセル|いいえ|閉じる|戻る)$/;
   function msgBars() {
-    document.querySelectorAll('.tcc-msg-bar-back:not([data-myapp-nodark])').forEach(function (back) {
+    document.querySelectorAll('.tcc-msg-bar-back').forEach(function (back) {
+      var bar = back.querySelector('.tcc-msg-bar');
+      var key = bar ? (bar.textContent || '') : '';
+      if (back.__myappMsgKey === key) return;
+      back.__myappMsgKey = key;
       back.setAttribute('data-myapp-nodark', '');
       back.querySelectorAll('[style]').forEach(function (el) {
         ['background-color', 'border-color', 'color'].forEach(function (prop) { el.style.removeProperty(prop); });
       });
-      var bar = back.querySelector('.tcc-msg-bar');
       var title = back.querySelector('.tcc-msg-bar-text > span');
-      if (bar && title && /削除/.test(title.textContent || '')) bar.setAttribute('data-myapp-danger', '');
+      if (bar) bar.toggleAttribute('data-myapp-danger', !!title && /削除|取消|取り消/.test(title.textContent || ''));
+      var buttons = Array.prototype.slice.call(back.querySelectorAll('.tcc-msg-bar-btn'));
+      var primary = buttons.filter(function (b) { return !CANCEL_LABEL.test((b.textContent || '').trim()); }).pop();
+      buttons.forEach(function (b) { b.toggleAttribute('data-myapp-primary', b === primary); });
       // 題の前の印（？など）と空白は出さない（iOS の確認と同じく、題と文だけを真ん中に）
       if (title) {
         title.querySelectorAll('i').forEach(function (i) { i.remove(); });
         var lead = title.firstChild;
-        if (lead && lead.nodeType === 3) lead.nodeValue = lead.nodeValue.replace(/^[\s\u00a0]+/, '');
+        if (lead && lead.nodeType === 3) lead.nodeValue = lead.nodeValue.replace(/^[\\s\u00a0]+/, '');
       }
     });
   }
@@ -902,12 +949,22 @@ const DARK_JS = `
   // その要素の後ろに、画面の上で実際に見えている地の色。
   // EZCraft は部品を座標で重ねて置くので、親ではない別の部品（色付きの帯など）が後ろにあることがある。
   // そこで、その位置に重なっている部品を上から順に見て、最初に色の付いているものを地とする。
+  // 画面に少しでも見えているか（全部が入っていなくてよい。幅の広いラベルや、少しはみ出した部品も塗る）
   function inViewport(r) {
-    return r.width > 0 && r.height > 0 && r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth;
+    return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
+  }
+  // 要素のしるし（クラスと style）。変わっていなければ、前に決めた色のままでよい（getComputedStyle を呼ばずにすむ）
+  function sigOf(el) {
+    return (typeof el.className === 'string' ? el.className : '') + '|' + (el.getAttribute('style') || '');
   }
   function backdrop(el) {
     var r = el.getBoundingClientRect();
-    var stack = document.elementsFromPoint(r.left + Math.min(r.width / 2, 8), r.top + r.height / 2);
+    // 見えている部分の中の点で調べる（画面の外の点では、重なっている部品が分からない）
+    var left = Math.max(r.left, 0);
+    var top = Math.max(r.top, 0);
+    var bottom = Math.min(r.bottom, innerHeight);
+    var width = Math.min(r.right, innerWidth) - left;
+    var stack = document.elementsFromPoint(left + Math.min(width / 2, 8), (top + bottom) / 2);
     for (var i = 0; i < stack.length; i++) {
       var c = parse(getComputedStyle(stack[i]).backgroundColor);
       if (c && c.a > 0.5) return c;
@@ -929,8 +986,9 @@ const DARK_JS = `
     // 先に地の色を決める（文字の色は、地が無彩色のときだけ明るくする）
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
-      // data-myapp-nodark の中は、アプリごとのスタイルが色まで決めているので触らない
-      if (el.__myappDone || el.closest('[data-myapp-nodark], .tcc-msg-bar-back')) continue;
+      // data-myapp-nodark の中は、アプリごとのスタイルが色まで決めているので触らない。
+      // 前に調べたあと、クラスも style も変わっていなければ、もう一度は調べない（重いので）
+      if (el.__myappBgSig === sigOf(el) || el.closest('[data-myapp-nodark], .tcc-msg-bar-back')) continue;
       var s = getComputedStyle(el);
       var bg = parse(s.backgroundColor);
       if (bg && bg.a > 0.5 && isNeutral(bg) && lum(bg) > 0.75) set(el, 'background-color', rgb(DARK.surface));
@@ -947,13 +1005,14 @@ const DARK_JS = `
         var bw = parseFloat(s.getPropertyValue('border-' + side + '-width'));
         if (bc && bw > 0 && isNeutral(bc) && lum(bc) > 0.6) set(el, 'border-' + side + '-color', rgb(DARK.border));
       });
+      el.__myappBgSig = sigOf(el);
     }
     for (var j = 0; j < all.length; j++) {
       var t = all[j];
-      if (t.__myappDone || t.closest('[data-myapp-nodark], .tcc-msg-bar-back')) continue;
+      // 決めたあとに EZCraft がクラスや style を変えたもの（使い回した部品など）は、もう一度決める
+      if (t.__myappDone === sigOf(t) || t.closest('[data-myapp-nodark], .tcc-msg-bar-back')) continue;
       // 画面の外にあるものは、見えている地の色が分からないので、スクロールして見えてから決める
       if (!inViewport(t.getBoundingClientRect())) continue;
-      t.__myappDone = true;
       var fg = parse(getComputedStyle(t).color);
       if (fg && lum(backdrop(t)) < 0.3) {
         if (isNeutral(fg) && lum(fg) < 0.45) {
@@ -963,6 +1022,7 @@ const DARK_JS = `
           set(t, 'color', rgb([fg.r, fg.g, fg.b].map(function (v) { return Math.round(v + (255 - v) * 0.55); })));
         }
       }
+      t.__myappDone = sigOf(t);
     }
   }
 
@@ -976,7 +1036,7 @@ const DARK_JS = `
       el.__myappOrig = null;
     });
     changed = [];
-    if (document.body) document.body.querySelectorAll('*').forEach(function (el) { el.__myappDone = false; });
+    if (document.body) document.body.querySelectorAll('*').forEach(function (el) { el.__myappDone = null; el.__myappBgSig = null; });
   }
 
   // 画面より広いダイアログ（スマホ向けに作り直していないもの）にしるしを付ける（CSS で画面の幅に収める）。
@@ -1020,10 +1080,18 @@ const DARK_JS = `
     var all = document.body ? document.body.getElementsByTagName('*') : [];
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
-      if (el.scrollWidth - el.clientWidth <= 1 || el.__myappNoSide) continue;
+      // 止めたあとに中身の幅が変わった（データが入った・入れ替わった）ら、止めるのをやめて測り直す。
+      // 中身が入る前に測って止めたままだと、あとから入った広い中身に横から届かなくなるため
+      if (el.__myappNoSide) {
+        if (el.__myappNoSide === el.scrollWidth) continue;
+        el.__myappNoSide = 0;
+        el.style.removeProperty('overflow-x');
+      }
+      if (el.scrollWidth - el.clientWidth <= 1) continue;
       var ox = getComputedStyle(el).overflowX;
       if (ox !== 'auto' && ox !== 'scroll') continue;
-      if (el.closest('[data-myapp-hscroll]') || el.matches('.myapp-recent, ul.tcc-tab-head')) continue;
+      // 画面より広いダイアログの中身は、わざと横にスクロールさせている（BASE_CSS の .myapp-wide-modal）
+      if (el.closest('[data-myapp-hscroll]') || el.matches('.myapp-recent, ul.tcc-tab-head, .myapp-wide-modal .tcc-modal-body')) continue;
       // 見えている中身の右端が、入れ物の右端をどれだけ越えているか
       var box = el.getBoundingClientRect();
       var right = box.left + el.clientWidth;
@@ -1035,23 +1103,37 @@ const DARK_JS = `
         if (shown(kids[k])) over = r.right - right;
       }
       if (over > SIDE_MAX) continue;
-      el.__myappNoSide = true;
       el.style.setProperty('overflow-x', 'hidden', 'important');
+      el.__myappNoSide = el.scrollWidth || 1;
       el.scrollLeft = 0;
     }
   }
 
   var timer = null;
+  // 1つの段でエラーが出ても、ほかの段（とくに、画面を見せる合図になる回数）は進める
+  function step(fn) {
+    try { fn(); } catch (e) { try { console.error('[myapp] 見た目の直し', e); } catch (_) {} }
+  }
   function restyle() {
     clearTimeout(timer);
-    applyConfig();
-    if (window.__myappAppUpdate) window.__myappAppUpdate();
-    markSingleTabs();
-    markWideModals();
-    fit();
-    noSideScroll();
-    if (media.matches) darken();
+    step(applyConfig);
+    if (window.__myappAppUpdate) step(window.__myappAppUpdate);
+    step(markSingleTabs);
+    step(markWideModals);
+    step(fit);
+    step(noSideScroll);
+    if (media.matches) step(darken);
     window.__myappUpdates = (window.__myappUpdates || 0) + 1; // 整え直した回数（REVEAL_JS が見る）
+  }
+  // スクロールしたときは、見えてきたものの色を決めるだけ（ダークのとき）。整え直しを丸ごとはしない（重いので）。
+  // アプリが出すシート（時刻のダイヤルなど）の中のスクロールでは何もしない
+  var scrollTimer = null;
+  function scrolled(e) {
+    if (!media.matches) return;
+    var target = e && e.target;
+    if (target && target.closest && target.closest('.myapp-pick')) return;
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(function () { step(darken); }, 120);
   }
   // 中身が変わるたびに、少し（0.06 秒）まとめてから整え直す（続けて描き直されるあいだに、何度も整え直さないように）
   function update() {
@@ -1073,7 +1155,7 @@ const DARK_JS = `
   document.addEventListener('click', function () { setTimeout(update, 300); }, true);
   document.addEventListener('input', update, true);
   document.addEventListener('change', update, true);
-  window.addEventListener('scroll', update, true);
+  window.addEventListener('scroll', scrolled, true);
   window.addEventListener('load', update);
   applyTheme();
   update();
@@ -2209,8 +2291,8 @@ body > .myapp-bottom-bar {
   background: var(--myapp-segment) !important;
   color: var(--myapp-text) !important;
 }
-.tcc-msg-bar .tcc-msg-bar-btn:last-child { background: var(--myapp-accent) !important; color: #FFFFFF !important; }
-.tcc-msg-bar[data-myapp-danger] .tcc-msg-bar-btn:last-child { background: var(--myapp-danger) !important; }
+.tcc-msg-bar .tcc-msg-bar-btn[data-myapp-primary] { background: var(--myapp-accent) !important; color: #FFFFFF !important; }
+.tcc-msg-bar[data-myapp-danger] .tcc-msg-bar-btn[data-myapp-primary] { background: var(--myapp-danger) !important; }
 /* 検索して選ぶダイアログ: ほかのシートと同じ、下から出るシート（上につまみ。下は画面の端まで） */
 .tcc-modal[id$="_mdl"] {
   left: 0 !important;
@@ -2239,8 +2321,10 @@ body > .tcc-component.cmblist > .cmblist-item[data-myapp-none]::before { content
 /* 文字のあるボタンには、EZCraft のアイコンを出さない（JS の textButtons）。文字だけのボタンにそろえる */
 .tcc-btn.myapp-text-btn > i.fa { display: none !important; }
 
-/* Web の青い縁取り（押したあとのフォーカスの印）は出さない */
-*:focus { outline: none !important; }
+/* Web の青い縁取り（押したあとのフォーカスの印）は出さない。ただし、キーボード（外付けのキーボードや、
+   iOS の「フルキーボードアクセス」）で動かしているときの印（:focus-visible）は残す。入力欄は、ふちの色で選んでいるのが分かる */
+*:focus:not(:focus-visible) { outline: none !important; }
+input:focus, textarea:focus, select:focus { outline: none !important; }
 * { -webkit-tap-highlight-color: transparent; }
 
 /* ダイアログの中身の枠線・影（EZCraft のもの。茶色がかった線に見える）は出さない */
@@ -2267,5 +2351,8 @@ body > .tcc-component.cmblist > .cmblist-item[data-myapp-none]::before { content
   flex: none; width: 36px; height: 36px; margin-left: auto; padding: 0; border: 0;
   border-radius: 18px; background: var(--myapp-segment); color: var(--myapp-text);
   font: inherit; font-size: 16px; font-weight: 600; line-height: 36px; text-align: center;
+  position: relative;
 }
+/* 見た目は 36px のまま、押せる範囲は 44px に */
+.myapp-cal-head .myapp-cal-close::after { content: ''; position: absolute; inset: -4px; }
 `;

@@ -8,7 +8,7 @@
 import type { InitAppForm } from './initAppCache';
 
 /** ページが動き出す前に入れる。cached は、この画面の定義の控え（なければ null） */
-export function initAppJs(cached: (InitAppForm & { text: string }) | null): string {
+export function initAppJs(cached: (InitAppForm & { id: string; text: string }) | null): string {
   return `(function () {
   if (window.__myappInitApp) return;
   window.__myappInitApp = true;
@@ -26,7 +26,8 @@ export function initAppJs(cached: (InitAppForm & { text: string }) | null): stri
     var q = {};
     try { new URL(url, location.href).searchParams.forEach(function (v, k) { q[k] = v; }); } catch (e) { return send.apply(this, arguments); }
 
-    if (cached && q.appid === cached.app && q.formid === cached.form) {
+    // 同じ画面でも、ID が違えば（EZCraft で画面を出し直した）控えは使わない。古い画面の定義で動かさないように
+    if (cached && q.appid === cached.app && q.formid === cached.form && q.id === cached.id) {
       var text = cached.text;
       cached = null; // 控えで答えるのは1回だけ
       var set = function (name, value) { Object.defineProperty(xhr, name, { configurable: true, get: function () { return value; } }); };

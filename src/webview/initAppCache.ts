@@ -12,9 +12,8 @@
 // 古いものを使い続けないよう、30 分で捨てる。
 // 裏で読む画面の覚え書き（アプリの名前・画面の名前・画面の ID だけ。中身は入れない）は端末に保存する。ログアウトで消す。
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetch } from 'expo/fetch';
 
-import { landedOnLogin } from '../api/http';
+import { landedOnLogin, serverFetch as fetch } from '../api/http';
 import { SERVER_URL } from '../config';
 
 const MAX_AGE_MS = 30 * 60 * 1000; // 30 分
@@ -27,7 +26,8 @@ export type InitAppForm = { app: string; form: string };
 /** 画面の定義を読むのに要るもの（id はページに書かれている画面の ID） */
 type RecentForm = InitAppForm & { id: string; usedAt: number };
 
-const store = new Map<string, { text: string; savedAt: number }>();
+// id は、ページが読む画面の定義の ID（EZCraft で画面を出し直すと変わる）。控えは、同じ ID の要求にだけ使う
+const store = new Map<string, { id: string; text: string; savedAt: number }>();
 const keyOf = ({ app, form }: InitAppForm) => `${app}/${form}`;
 
 /** /runapp/<アプリ>/<画面>/ の URL から、どの画面かを取り出す（runapp でなければ null） */
@@ -41,21 +41,21 @@ export function looksLikeInitApp(text: string): boolean {
   return text.length > 1000 && /^\s*\/\*\s*<!\[CDATA\[/.test(text);
 }
 
-/** 控えがあれば、その中身（古いものは捨てて null） */
-export function recallInitApp(form: InitAppForm): string | null {
+/** 控えがあれば、その ID と中身（古いものは捨てて null） */
+export function recallInitApp(form: InitAppForm): { id: string; text: string } | null {
   const entry = store.get(keyOf(form));
   if (!entry) return null;
   if (Date.now() - entry.savedAt > MAX_AGE_MS) {
     store.delete(keyOf(form));
     return null;
   }
-  return entry.text;
+  return { id: entry.id, text: entry.text };
 }
 
 /** ページが読んだ画面の定義を控え、次から裏で読む画面として覚えておく */
 export function rememberInitApp(form: InitAppForm, id: string, text: string): void {
   if (!looksLikeInitApp(text)) return;
-  store.set(keyOf(form), { text, savedAt: Date.now() });
+  store.set(keyOf(form), { id, text, savedAt: Date.now() });
   noteRecent({ ...form, id, usedAt: Date.now() });
 }
 
@@ -103,7 +103,7 @@ export function prefetchInitApps(): Promise<void> {
   running = (async () => {
     const list = (await readRecent()).sort((a, b) => b.usedAt - a.usedAt).slice(0, PREFETCH_MAX);
     for (const f of list) {
-      if (recallInitApp(f) !== null) continue;
+      if (recallInitApp(f)?.id === f.id) continue;
       try {
         const query = `appid=${encodeURIComponent(f.app)}&formid=${encodeURIComponent(f.form)}&id=${encodeURIComponent(f.id)}&_=${Date.now()}`;
         // ページ（jQuery）と同じ頼み方にする
@@ -116,7 +116,7 @@ export function prefetchInitApps(): Promise<void> {
         });
         if (!res.ok || landedOnLogin(res)) return; // ログインが切れているなど。続けても同じなのでやめる
         const text = await res.text();
-        if (looksLikeInitApp(text)) store.set(keyOf(f), { text, savedAt: Date.now() });
+        if (looksLikeInitApp(text)) store.set(keyOf(f), { id: f.id, text, savedAt: Date.now() });
       } catch {
         return; // 通信できない。次の機会に
       }

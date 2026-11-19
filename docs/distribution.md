@@ -47,6 +47,20 @@ npx eas-cli@latest update --channel preview --environment preview --message "直
 
 - アプリは、開いたときに新しい直しを裏で受け取り、**次に開いたとき** に切り替わる
 - 送る前に、`npm test`・`npx tsc --noEmit`・`npx expo lint`・`npm run check:pages` を通す
+- どの直しで動いているかは、ログイン画面とマイアプリのいちばん下に出る（例: `v1.0.0 · preview · 11/19 14:05 更新（a1b2c3d4）`。
+  まだ直しを受け取っていなければ「組み込み」）。問い合わせのときは、ここを見てもらう
+
+### まずい直しを送ってしまったとき
+
+前の直しに戻す（新しい版を作らずに、すぐ戻せる）:
+
+```bash
+npx eas-cli@latest update:rollback --platform ios --message "戻した理由"
+```
+
+- 一覧から、戻したい直し（いちばん新しいもの）を選ぶ。その前の直しが、もう一度送られる（前がなければ、配った版に入っていた中身に戻る）
+- 戻したあと、利用者はアプリを2回開き直すと切り替わる（1回目で受け取り、2回目で切り替わる）
+- 送った直しの一覧は expo.dev のプロジェクトの「Updates」で見られる
 
 ### 作り直しが要るとき
 
@@ -66,8 +80,11 @@ LincreaApp →「Actions」→ 下のどちらかを選ぶ →「Run workflow」
 
 | Actions の名前 | すること | ファイル |
 | --- | --- | --- |
-| iPhone に配る版を作る | 2. と同じ。登録した iPhone を、新しいものも含めて全部入れて作る | .github/workflows/eas-preview-build.yml |
+| iPhone に配る版を作る | 2. と同じ。登録した iPhone を、新しいものも含めて全部入れて作る。develop の中身を、チェックが通ったら作る | .github/workflows/eas-preview-build.yml |
 | 直しを送る | 3. と同じ。develop にある今の中身を、チェックが通ったら送る。「直した内容」を書いて始める | .github/workflows/eas-update.yml |
+| チェック | develop への push とプルリクエストのたびに、自動で動く（型・lint・テスト・ページのスクリプト） | .github/workflows/check.yml |
+
+- 「Run workflow」で develop 以外のブランチを選ぶと、配る版も直しも作らずに止まる（作りかけの直しを、配った iPhone に送らないため）
 
 - 「iPhone に配る版を作る」は、EAS に作業を頼んだら終わる。できあがりは、expo.dev のプロジェクトの「Builds」で見る（15〜30分ほど）。
   そのビルドのページのリンクを、相手に送る

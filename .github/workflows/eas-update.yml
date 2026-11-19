@@ -1,6 +1,7 @@
 # 作り直さずに、直しを送る（docs/distribution.md の 3.）。
 # GitHub の Actions のページ（スマホの GitHub アプリでもよい）から「Run workflow」で、直した内容を書いて始める。Mac は要らない。
 # 送るのは、develop にある今の中身。チェックが通らなければ送らない。
+# 「Run workflow」でほかのブランチを選んでも、develop でなければ止まる（作りかけの直しを、配った iPhone に送らないため）。
 name: 直しを送る
 
 on:
@@ -20,6 +21,7 @@ permissions:
 
 jobs:
   update:
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -32,7 +34,8 @@ jobs:
 
       - uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          # 版は固定する（上げるときは、ここを書き換えて試す）
+          eas-version: 27.10.0
           token: ${{ secrets.EXPO_TOKEN }}
 
       - run: npm ci

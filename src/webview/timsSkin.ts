@@ -1819,6 +1819,43 @@ const TIME_DIALS: Record<string, string> = {
   ...Object.fromEntries(['tokkyu', 'hurikyu', 'daikyu'].flatMap((f) => [[`frmApply_${f}_tm_from`, '開始'], [`frmApply_${f}_tm_to`, '終了']])),
 };
 
+/**
+ * 残業の計算（ページの中の SCRIPT に入れる）。時刻の読み書きと、残業の時間帯の始まり。
+ * ページのほかの部分に頼らない計算だけなので、ここだけ分けてテストする（src/__tests__/overtime-test.ts）
+ */
+export const OVERTIME_MATH_JS = `
+  function minutesOf(t) {
+    var m = /^(\\d{1,2}):?(\\d{2})$/.exec(String(t || '').trim());
+    return m ? +m[1] * 60 + +m[2] : null;
+  }
+  // 分を「H:MM」にする（負の値・数でないものは空。0 時より前の時刻を入力欄に入れないように）
+  function hhmm(min) {
+    if (typeof min !== 'number' || !isFinite(min) || min < 0) return '';
+    min = Math.round(min);
+    return Math.floor(min / 60) + ':' + ('0' + (min % 60)).slice(-2);
+  }
+  // 残業の始まり: 退勤から、休憩の時間を飛ばしながら、残業のぶん（分）だけさかのぼった時刻。
+  // breaks は [{ from, to }]（分）。夕方の休憩（18:00〜18:30 など）を残業の時間帯に入れないため
+  function overtimeStart(end, minutes, breaks) {
+    var cur = end;
+    var left = minutes;
+    var list = breaks.filter(function (b) { return b.to > b.from && b.from < end; })
+      .sort(function (a, b) { return b.to - a.to; });
+    for (var i = 0; i < list.length && left > 0; i++) {
+      var b = list[i];
+      var to = Math.min(b.to, cur);
+      if (to < cur) {
+        var take = Math.min(left, cur - to);
+        cur -= take;
+        left -= take;
+        if (left <= 0) break;
+      }
+      if (b.from < cur) cur = b.from;
+    }
+    return cur - left;
+  }
+`;
+
 // ---------------------------------------------------------------------------
 // ページの中で動かすもの（画面が変わるたびに呼ばれる。同じ結果なら何も書き換えない）
 // ---------------------------------------------------------------------------
@@ -1846,7 +1883,12 @@ const SCRIPT = `
       var kind = 'blank';
       var order = 9;
       if (m) {
-        var time = new Date(ym ? +ym[1] : now.getFullYear(), +m[1] - 1, +m[2]).getTime();
+        // 締め日の都合で、一覧が年をまたぐ（12 月の一覧に 1 月の行がある・1 月の一覧に 12 月の行がある）ときは、行の年をずらす
+        var year = ym ? +ym[1] : now.getFullYear();
+        var titleMonth = listYm ? +listYm[2] : 0;
+        if (titleMonth >= 11 && +m[1] <= 2) year += 1;
+        else if (titleMonth && titleMonth <= 2 && +m[1] >= 11) year -= 1;
+        var time = new Date(year, +m[1] - 1, +m[2]).getTime();
         var statusEl = row.querySelector('[id^="frmAttendance_biko"]');
         var status = ((statusEl && statusEl.textContent) || '').trim();
         if (time === today) { kind = 'today'; order = 1; }
@@ -2684,21 +2726,40 @@ const SCRIPT = `
     if (reasonRow && last && isNew) chips(reasonRow, [
       { label: '前回の理由: ' + last.replace(/\\s+/g, ' ').slice(0, 24), run: function () { typeInto(reason, last); } },
     ], false);
-    // 登録を押したときの理由を、この端末に覚えておく（次の申請で「前回の理由」に出す）
+    // 登録を押したら、理由と日付を覚えておき、書き込みがうまくいってから（bridge.ts の myapp-saved）この端末に記録する
+    // （次の申請の「前回の理由」と、勤怠実績登録の「作成済み」のため）。
+    // 押しただけでは記録しない。理由が空で弾かれた・サーバーで失敗した・確かめでやめたときに「作成済み」になり、
+    // その日の残業申請が出されないままになるため。保存が取り消されたら（myapp-save-end の ok が false）、記録も消す
     var done = document.querySelector('#frmApply_zangyo_btnDone .tcc-btn');
     if (done && !done.__myappRemember) {
       done.__myappRemember = true;
       done.addEventListener('click', function () {
-        var r = reason && reason.value.trim();
-        if (r) { try { localStorage.setItem(LAST_REASON, r); } catch (e) {} }
-        var d = date && date.value.trim();
-        if (d) {
-          var list = appliedDates().filter(function (x) { return x !== d; });
-          list.push(d);
-          try { localStorage.setItem(OT_APPLIED, JSON.stringify(list.slice(-60))); } catch (e) {}
-        }
+        form.__myappOtSubmit = { reason: reason && reason.value.trim(), date: date && date.value.trim(), at: Date.now() };
       }, true);
     }
+    if (!form.__myappOtSaved) {
+      form.__myappOtSaved = true;
+      window.addEventListener('myapp-saved', function () {
+        var s = form.__myappOtSubmit;
+        if (!s || Date.now() - s.at > 60000) return;
+        form.__myappOtSubmit = null;
+        if (s.reason) { try { localStorage.setItem(LAST_REASON, s.reason); } catch (e) {} }
+        if (s.date) {
+          markApplied(s.date, true);
+          form.__myappOtRecorded = { date: s.date, at: Date.now() };
+        }
+      });
+      window.addEventListener('myapp-save-end', function (e) {
+        var rec = form.__myappOtRecorded;
+        form.__myappOtRecorded = null;
+        if (rec && e.detail && e.detail.ok === false && Date.now() - rec.at < 60000) markApplied(rec.date, false);
+      });
+    }
+  }
+  function markApplied(date, on) {
+    var list = appliedDates().filter(function (x) { return x !== date; });
+    if (on) list.push(date);
+    try { localStorage.setItem(OT_APPLIED, JSON.stringify(list.slice(-60))); } catch (e) {}
   }
 
   function applyForm(form) {
@@ -2783,11 +2844,24 @@ const SCRIPT = `
   //   この端末から残業申請を出した日は「作成済み」と出し、自動では開かない
   // 所定の時間: 一般・平日は 9:00〜17:30（休憩 1 時間）で 7:30。9:00〜18:00（休憩 1 時間）なら 0:30 が残業
   var STANDARD = [{ match: '平日', minutes: 450 }];
-  function minutesOf(t) {
-    var m = /^(\\d{1,2}):?(\\d{2})$/.exec(String(t || '').trim());
-    return m ? +m[1] * 60 + +m[2] : null;
+  // 時刻の読み書き・残業の時間帯（minutesOf・hhmm・overtimeStart）
+${OVERTIME_MATH_JS}
+  // 勤怠実績登録の休憩の時刻（分）。出勤より前の時刻は、日をまたいだものとして 24 時間を足す
+  function dtlBreaks(start) {
+    var out = [];
+    for (var n = 1; n <= 4; n++) {
+      var f = document.querySelector('#frmAttendanceDtl_break_tm_from' + n + ' input');
+      var t = document.querySelector('#frmAttendanceDtl_break_tm_to' + n + ' input');
+      var from = minutesOf(f && f.value);
+      var to = minutesOf(t && t.value);
+      if (from === null || to === null) continue;
+      if (start !== null && from < start) from += 1440;
+      if (start !== null && to < start) to += 1440;
+      if (to < from) to += 1440;
+      out.push({ from: from, to: to });
+    }
+    return out;
   }
-  function hhmm(min) { return Math.floor(min / 60) + ':' + ('0' + (min % 60)).slice(-2); }
   function textOf(id) { var el = document.getElementById(id); return el ? (el.textContent || '').trim() : ''; }
   function overtimeOf() {
     var tp = textOf('frmAttendanceDtl_work_tp');
@@ -2795,15 +2869,21 @@ const SCRIPT = `
     if (!rule) return null;
     var work = minutesOf(textOf('frmAttendanceDtl_work_tm'));
     var endInput = document.querySelector('#frmAttendanceDtl_work_end_tm input');
+    var sttInput = document.querySelector('#frmAttendanceDtl_work_stt_tm input');
     var end = minutesOf(endInput && endInput.value);
+    var start = minutesOf(sttInput && sttInput.value);
     if (work === null || end === null) return null;
+    // 退勤が出勤より前の時刻なら、日をまたいだ（1:00 は 25:00）
+    if (start !== null && end < start) end += 1440;
     var ot = work - rule.minutes;
     if (ot <= 0) return null;
+    var from = overtimeStart(end, ot, dtlBreaks(start));
+    if (from < 0) return null;
     var dm = /(\\d{4})\\D(\\d{1,2})\\D(\\d{1,2})/.exec(textOf('frmAttendanceDtl_lblDt'));
     if (!dm) return null;
     var p = function (n) { return ('0' + n).slice(-2); };
     var date = dm[1] + '/' + p(+dm[2]) + '/' + p(+dm[3]);
-    return { date: date, from: hhmm(Math.max(0, end - ot)), to: hhmm(end), minutes: ot, standard: rule.minutes };
+    return { date: date, from: hhmm(from), to: hhmm(end), minutes: ot, standard: rule.minutes };
   }
   function postApply(ot, auto) {
     try {
@@ -2843,7 +2923,8 @@ const SCRIPT = `
       var input = document.querySelector('#frmAttendanceDtl_' + id + ' input');
       if (!input || input.__myappOtWatch) return;
       input.__myappOtWatch = true;
-      input.addEventListener('input', function (e) { if (e.isTrusted) form.__myappTimesEdited = true; });
+      // キーボードで打った（isTrusted）か、時刻のダイヤルで選んだ（__myappDialEdit。openDial）ときだけ数える
+      input.addEventListener('input', function (e) { if (e.isTrusted || input.__myappDialEdit) form.__myappTimesEdited = true; });
     });
     var save = document.querySelector('#frmAttendanceDtl_btnIns .tcc-btn');
     if (save && !save.__myappOt) {
@@ -3236,20 +3317,42 @@ const SCRIPT = `
       var o = ((row.querySelector('[id^="frmAttendance_biko"]') || {}).textContent || '').match(/残業\\s*(\\d{1,2}):(\\d{2})/);
       if (!m || !o || +o[1] * 60 + +o[2] <= 0) return;
       var date = ym[1] + '/' + p(+m[1]) + '/' + p(+m[2]);
-      out.push({ date: date, label: label, applied: applied.indexOf(date) >= 0 });
+      // 申請済み: この端末から出した日か、勤務表の日の札（サーバーが出す申請の印）に「残業」とある日（Web やほかの端末から出したもの）
+      var rib = row.querySelector('.ribon span');
+      var onServer = !!rib && /残業/.test(rib.textContent || '');
+      out.push({ date: date, label: label, applied: onServer || applied.indexOf(date) >= 0 });
     });
     return out.sort(function (a, b) { return a.date.localeCompare(b.date); });
   }
-  // 「出力」タブの一覧から、日ごとの退勤と残業（日付 → { end: 分, ot: 分 }）
+  // 一覧の列を、見出しの文字で確かめる。いつもの列（fallback）の見出しが pattern に合えばそれ、合わなければ合う最初の列。
+  // 見出しが読めない一覧は fallback のまま。見出しはあるのに合う列がなければ -1（列が並べ替えられた。違う列の値を使わない）
+  function columnOf(grid, fallback, pattern) {
+    var heads = {};
+    var any = false;
+    grid.querySelectorAll('.TccGridHeadScroll th').forEach(function (th) {
+      var m = th.className.match(/_tdCol(\\d+)/);
+      if (!m) return;
+      var text = (th.textContent || '').replace(/\\s+/g, '');
+      if (text) { heads[m[1]] = text; any = true; }
+    });
+    if (!any) return fallback;
+    if (pattern.test(heads[fallback] || '')) return fallback;
+    for (var k in heads) if (pattern.test(heads[k])) return +k;
+    return -1;
+  }
+  // 「出力」タブの一覧から、日ごとの退勤と残業（日付 → { end: 分, ot: 分 }）。見ている月の分だけ
   function attdTimes() {
     var map = {};
     var grid = document.getElementById('frmAttendance_grdAttd');
     if (!grid) return map;
+    var endCol = columnOf(grid, 11, /退勤|終業|終了/);
+    var otCol = columnOf(grid, 29, /残業/);
+    if (endCol < 0 || otCol < 0) return map;
     grid.querySelectorAll('.TccGridBodyScroll tbody tr').forEach(function (tr) {
       var date = (cellText(tr, 1).match(/\\d{4}\\/\\d{2}\\/\\d{2}/) || [])[0];
-      var end = minutesOf(cellText(tr, 11));
-      var ot = minutesOf(cellText(tr, 29));
-      if (date && end !== null && ot) map[date] = { end: end, ot: ot };
+      var end = minutesOf(cellText(tr, endCol));
+      var ot = minutesOf(cellText(tr, otCol));
+      if (date && end !== null && ot && end - ot >= 0) map[date] = { end: end, ot: ot };
     });
     return map;
   }
@@ -3489,6 +3592,7 @@ const SCRIPT = `
   }
   // 控えがない・1日より古いときは、裏でプロジェクト選択を開いて読み、すぐ閉じる（画面には出さない。読み込み中の印も出さない）
   var catalogLoading = false;
+  var catalogPreload = null; // 裏で読んでいるあいだだけ、やめるための関数（preloadCatalog）
   function preloadCatalog(input, done) {
     var cat = readCatalog();
     if (catalogLoading || (cat && Date.now() - cat.at < 24 * 3600 * 1000)) return false;
@@ -3503,6 +3607,15 @@ const SCRIPT = `
     icon.click();
     var start = Date.now();
     var cleared = false;
+    // 裏で読んでいるあいだに、人が「プロジェクト選択を開く」を押した: 裏で読むのをやめて、開いているダイアログをそのまま見せる
+    // （隠したダイアログの上からもう一度開こうとすると、何も出ないまま、あとで閉じてしまっていた）
+    catalogPreload = function () {
+      clearInterval(timer);
+      catalogPreload = null;
+      root.classList.remove('myapp-quiet', 'myapp-quiet-prj');
+      catalogLoading = false;
+      if (done) done(false);
+    };
     var timer = setInterval(function () {
       var dialog = document.getElementById('frmSelProj');
       // ダイアログが自分の入力欄を選んだら外す（キーボードを出さない）
@@ -3520,6 +3633,7 @@ const SCRIPT = `
       var ok = Date.now() - start > 300 && harvestCatalog();
       if (!ok && Date.now() - start < 10000) return;
       clearInterval(timer);
+      catalogPreload = null;
       var quit = dialog && dialog.querySelector('.tcc-modal-quit');
       if (quit) quit.click();
       setTimeout(function () {
@@ -3537,7 +3651,13 @@ const SCRIPT = `
     var n = comp ? comp.id.replace('frmAttendanceDtl_txtPrj', '') : '';
     var icon = document.querySelector('#frmAttendanceDtl_qbxProj' + n + ' div.icon-rt');
     if (!icon) return;
-    icon.click();
+    var reuse = false;
+    if (catalogPreload) {
+      catalogPreload();
+      var opened = document.getElementById('frmSelProj');
+      reuse = !!(opened && opened.offsetWidth);
+    }
+    if (!reuse) icon.click();
     // 前に探したままの言葉が残っていたら、消して全部を出す（開いたときに、関係のない1件だけが出ないように）
     var tries = 0;
     var clear = function () {
@@ -3781,12 +3901,18 @@ const SCRIPT = `
     var wheel = document.createElement('div');
     wheel.className = 'myapp-dial-wheel';
     wheel.setAttribute('aria-label', name);
+    // VoiceOver では「調整可能」な部品として読む（上下にスワイプすると 1 つずつ変わる）。キーボードでは ↑ ↓
+    wheel.setAttribute('role', 'slider');
+    wheel.setAttribute('tabindex', '0');
+    wheel.setAttribute('aria-valuemin', String(values[0].value));
+    wheel.setAttribute('aria-valuemax', String(values[values.length - 1].value));
     var list = document.createElement('div');
     list.className = 'myapp-dial-list';
     values.forEach(function (v, i) {
       // 止まる位置は行（div）で決め、筒の形に見せる変形は中の文字（span）にだけかける（行を変形すると、止まる位置がずれる）
       var item = document.createElement('div');
       item.className = 'myapp-dial-item';
+      item.setAttribute('aria-hidden', 'true'); // 読み上げは、回している列（slider）の値で
       var face = document.createElement('span');
       face.textContent = v.label;
       item.appendChild(face);
@@ -3818,8 +3944,20 @@ const SCRIPT = `
       if (index >= 0) items[index].classList.remove('myapp-dial-on');
       items[now].classList.add('myapp-dial-on');
       index = now;
+      wheel.setAttribute('aria-valuenow', String(values[now].value));
+      wheel.setAttribute('aria-valuetext', values[now].label + name);
       onPick(values[now].value);
     }
+    // 1 つずつ動かす（VoiceOver の上下のスワイプ・キーボードの ↑ ↓）
+    function nudge(step) {
+      var next = Math.max(0, Math.min(values.length - 1, (index < 0 ? 0 : index) + step));
+      wheel.scrollTop = next * DIAL_ROW;
+      paint();
+    }
+    wheel.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); nudge(-1); }
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); nudge(1); }
+    });
     wheel.addEventListener('scroll', function () {
       if (queued) return;
       queued = true;
@@ -3854,9 +3992,10 @@ const SCRIPT = `
     title.textContent = DIALS[id];
     title.appendChild(pickClose());
     sheet.appendChild(title);
-    // 時（0〜23。いま入っている時刻が 24 時を越えていれば、そこまで）と、分（0〜59）
+    // 時（0〜23。退勤・終了の時刻は、日をまたいだ 29 時（翌朝 5 時）まで。いま入っている時刻がそれを越えていれば、そこまで）と、分（0〜59）
+    var lastHour = !duration && /(work_end_tm|zangyo_tm_to|kyuzitu_tm_to)$/.test(id) ? 29 : 23;
     var hours = [];
-    for (var i = 0; i <= Math.max(23, h); i++) hours.push({ label: duration ? String(i) : pad2(i), value: i });
+    for (var i = 0; i <= Math.max(lastHour, h); i++) hours.push({ label: duration ? String(i) : pad2(i), value: i });
     var minutes = [];
     for (var k = 0; k < 60; k++) minutes.push({ label: pad2(k), value: k });
     var dial = document.createElement('div');
@@ -3892,7 +4031,10 @@ const SCRIPT = `
       closePicker();
       if (!duration) { try { localStorage.setItem(dialKey(id), value); } catch (err) {} }
       input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      // 人が選んだ値として入れる（勤怠実績登録の残業: 時刻を直して登録したら、残業申請を自動で開く。overtimeCard）
+      input.__myappDialEdit = input.value !== value;
       typeInto(input, value);
+      input.__myappDialEdit = false;
     });
     foot.appendChild(go);
     // 消す（入っているときだけ）
@@ -3907,7 +4049,9 @@ const SCRIPT = `
         e.preventDefault();
         closePicker();
         input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+        input.__myappDialEdit = true;
         typeInto(input, '');
+        input.__myappDialEdit = false;
       });
       more.appendChild(clear);
     }

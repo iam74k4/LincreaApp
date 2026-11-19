@@ -1,6 +1,6 @@
 // ページからアプリへの知らせ（src/webview/bridge.ts の parseBridgeMessage）と、アプリからページへの返事。
 // ページから来るものは信用しないので、形の違うものは捨てることを確かめる。
-import { healthFlagJs, parseBridgeMessage, stepsReplyJs } from '../webview/bridge';
+import { allowedFrom, healthFlagJs, parseBridgeMessage, stepsDayAllowed, stepsReplyJs } from '../webview/bridge';
 
 const parse = (message: unknown) => parseBridgeMessage(JSON.stringify(message));
 
@@ -78,5 +78,40 @@ describe('そのほかの知らせ', () => {
   });
   test('申請の画面の名前に使えない字があれば捨てる', () => {
     expect(parse({ type: 'apply', form: '../evil', prefill: {} })).toBeNull();
+  });
+});
+
+describe('allowedFrom: アプリごとの知らせは、そのアプリの画面からだけ', () => {
+  const steps = { type: 'steps', id: 's1', day: '2026-11-17' } as const;
+  const apply = { type: 'apply', form: 'frmApply_zangyo', prefill: {}, auto: false } as const;
+  test('歩数は Walk the Talk からだけ', () => {
+    expect(allowedFrom(steps, 'YIF_walk_the_talk')).toBe(true);
+    expect(allowedFrom(steps, 'L_HealthCare')).toBe(false);
+  });
+  test('申請・まとめて申請・勤務表の状態は TiMS からだけ', () => {
+    expect(allowedFrom(apply, 'L_Tims')).toBe(true);
+    expect(allowedFrom(apply, 'L_Payslip')).toBe(false);
+    expect(allowedFrom({ type: 'applyQueue', form: 'frmApply_zangyo', items: [{ date: '2026/11/17' }] }, 'YIF_walk_the_talk')).toBe(false);
+    expect(allowedFrom({ type: 'attendanceDays', month: '2026-11', days: 'u'.repeat(30) }, 'L_Payslip')).toBe(false);
+  });
+  test('開いてよいのは申請の画面だけ', () => {
+    expect(allowedFrom({ ...apply, form: 'frmAttendanceDtl' }, 'L_Tims')).toBe(false);
+  });
+  test('ほかの知らせは、どのアプリからでも', () => {
+    expect(allowedFrom({ type: 'ready' }, 'L_Payslip')).toBe(true);
+  });
+});
+
+describe('stepsDayAllowed: 歩数を答える日', () => {
+  const now = new Date(2026, 10, 19, 10);
+  test.each([
+    ['今日', '2026-11-19', true],
+    ['先週', '2026-11-12', true],
+    ['62 日前', '2026-09-18', true],
+    ['63 日前', '2026-09-17', false],
+    ['明日', '2026-11-20', false],
+    ['ない日', '2026-02-30', false],
+  ])('%s', (_, day, ok) => {
+    expect(stepsDayAllowed(day, now)).toBe(ok);
   });
 });
