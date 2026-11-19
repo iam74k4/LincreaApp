@@ -1417,9 +1417,13 @@ ${HEALTH_RESULT_CSS}
         var text = m[1] + '/' + m[2] + '/' + m[3] + '（' + '日月火水木金土'.charAt(d.getDay()) + '）時点';
         if (el.textContent !== text) el.textContent = text;
         // いつの集計かは、一覧の上の1行（更新の決まりの注意書き）にまとめる（一覧の下に離れて浮かないように。下の行は隠す）
+        // 更新の決まり（「毎週金曜日 9:00」など）は、EZCraft の注意書きにあるものを使う（アプリには書かない。決まりが変わっても合うように）
         var note = document.querySelector('#ranking_id_2026Walk_lbl4 .tcc-label-text');
-        var line = text + '・毎週金曜日 9:00 に更新';
-        if (note && note.textContent !== line) note.textContent = line;
+        if (!note) return;
+        if (note.__myappOrig === undefined) note.__myappOrig = note.textContent || '';
+        var rule = /毎(?:週|日)[^0-9０-９]{0,6}[0-9０-９]{1,2}\\s*[:：時]\\s*[0-9０-９]{0,2}/.exec(note.__myappOrig);
+        var line = rule ? text + '・' + rule[0].replace(/\\s+/g, ' ').trim() + ' に更新' : text;
+        if (note.textContent !== line) note.textContent = line;
       };
     `,
     // 主な操作（歩数の登録など）は、画面の下に浮かせたガラスのボタンに
@@ -1512,7 +1516,10 @@ ${place('mainMenu_id_2026Walk_lbl19', '152px', 95, '24px', 24)}
 #mainMenu_id_2026Walk_lbl19 :is(.tcc-label, .tcc-label-text) {
   width: 24px !important; height: 24px !important; padding: 0 !important; overflow: visible !important;
   border: none !important; background: transparent !important; line-height: 24px !important;
+  position: relative !important;
 }
+/* 見た目は 24px のまま、押せる範囲は 44px に */
+#mainMenu_id_2026Walk_lbl19 .tcc-label::after { content: ''; position: absolute; inset: -10px; }
 #mainMenu_id_2026Walk_lbl19 .tcc-label-text,
 #mainMenu_id_2026Walk_lbl19 i { font-size: 17px !important; color: var(--myapp-text2) !important; }
 
