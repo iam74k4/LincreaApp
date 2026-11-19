@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -17,11 +18,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
-import Constants from 'expo-constants';
 
 import { login, LoginError, type Session } from '../auth/api';
 import { biometry, disableFaceId, enableFaceId, faceIdUser, loginWithFaceId, renewFaceIdToken, type Biometry } from '../auth/faceId';
 import { loadRememberedUsername, saveRememberedUsername } from '../auth/rememberedUsername';
+import { versionLabel } from '../appVersion';
 import { GlassButton } from '../components/GlassButton';
 import { sizes, useColors, type Colors } from '../theme';
 
@@ -96,7 +97,10 @@ export function LoginScreen({ onLoggedIn, onForgotPassword, onLoginHelp }: Props
       // オフなら、前に入れた鍵を消す。Face ID をやめても（顔が合わなくても）、ログインはそのまま進める
       if (kind && useBio) {
         if (bioUser === name) await renewFaceIdToken(name, refreshToken);
-        else await enableFaceId(name, refreshToken, kind);
+        else if (!(await enableFaceId(name, refreshToken, kind))) {
+          // やめた・顔が合わなかった・保存できなかった。ログインはそのまま進め、次も同じかどうかを伝えておく
+          Alert.alert(`${kind} は使えるようになっていません`, `次もパスワードでログインします。${kind} を使うときは、ログイン画面のスイッチをオンにしてログインし直してください。`);
+        }
       } else if (bioUser) {
         await disableFaceId();
       }
@@ -279,7 +283,7 @@ export function LoginScreen({ onLoggedIn, onForgotPassword, onLoginHelp }: Props
           </View>
         </ScrollView>
 
-        <Text style={styles.version}>v{Constants.expoConfig?.version}</Text>
+        <Text style={styles.version}>{versionLabel()}</Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

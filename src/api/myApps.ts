@@ -6,10 +6,9 @@
 //
 // サーバーの返事（snake_case の生データ）は、ここでアプリ用の形（MyApp）に直してから渡す。
 // 画面はサーバーの項目名や状態コードを知らなくてよい。
-import { fetch } from 'expo/fetch';
 
 import { SERVER_URL } from '../config';
-import { landedOnLogin, SessionExpiredError } from './http';
+import { landedOnLogin, serverFetch as fetch, SessionExpiredError } from './http';
 
 // ---- アプリの中で使う形 ----
 

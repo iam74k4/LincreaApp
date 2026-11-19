@@ -1,7 +1,7 @@
 // 「いまログインしているか」を、アプリ全体で1か所に持つ。
 // 画面はここを見て表示を切り替える（どの画面を出すかは src/app/_layout.tsx の守り役が決める）。
 //
-// 起動したときは、サーバーのログインがまだ有効か確かめて、有効ならログイン画面を飛ばす。
+// 起動したときは、サーバーのログインがまだ有効か確かめて、有効ならログイン画面を飛ばす（電波がないときは、前の人のまま始める）。
 // 切れていても、Face ID でログインできるようにしてあれば、Face ID で入り直す（src/auth/faceId.ts）。
 // 確かめている間は restoring が true（その間は画面を出さずに待つ）。
 //
@@ -41,9 +41,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     (async () => {
       // 前の版が端末に残したトークンを消す（src/auth/cognitoStorage.ts）
       await loadCognitoStorage();
-      let restored = await restoreSession();
+      const result = await restoreSession();
+      // 電波がない: 前にログインしていた人なら、その人の画面（マイアプリ）を出しておく。一覧は「つながっていません」と
+      // 「もう一度読み込む」を出し、つながって読み直したときに、ログインが切れていればログイン画面に戻す
+      let restored: Session | null = result.status === 'valid' ? result.session : result.status === 'offline' ? result.saved : null;
       // サーバーのログインが切れていたら、Face ID で入り直す（使っていなければ、何も出さずにログイン画面へ）
-      if (!restored && active) {
+      if (!restored && result.status === 'expired' && active) {
         const faceId = await loginWithFaceId();
         if (faceId.ok) {
           forgetAllAppData();

@@ -28,10 +28,9 @@ import {
   CognitoUserPool,
   type CognitoUserSession,
 } from 'amazon-cognito-identity-js';
-import { fetch } from 'expo/fetch';
 import { NativeModules } from 'react-native';
 
-import { pathOf } from '../api/http';
+import { pathOf, serverFetch as fetch } from '../api/http';
 import { SERVER_URL } from '../config';
 import { cognitoStorage, loadCognitoStorage } from './cognitoStorage';
 
@@ -138,7 +137,8 @@ async function startServerSession(idToken: string, remember: boolean): Promise<v
 /** サーバー側のログインを終わらせる（Web 版のログアウトと同じ GET /logout）。失敗しても止めない */
 export async function logout(): Promise<void> {
   try {
-    await fetch(`${SERVER_URL}/logout`, { credentials: 'include' });
+    // 電波がないときに、ログアウトのボタンを押したまま待たせない（サーバーのログインは、期限で切れる）
+    await fetch(`${SERVER_URL}/logout`, { credentials: 'include' }, 5_000);
   } catch (e) {
     console.log(`[logout] NG ${e instanceof Error ? e.message : String(e)}`);
   }

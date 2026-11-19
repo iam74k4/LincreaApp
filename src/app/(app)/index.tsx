@@ -14,9 +14,10 @@ import {
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
-import { SessionExpiredError } from '../../api/http';
+import { describeError, SessionExpiredError } from '../../api/http';
 import { fetchMyApps, type MyApp } from '../../api/myApps';
 import { logout } from '../../auth/api';
+import { versionLabel } from '../../appVersion';
 import { AppDataPrefetch } from '../../components/AppDataPrefetch';
 import { MyAppRow } from '../../components/MyAppRow';
 import { appOrder, displayName } from '../../knownApps';
@@ -50,7 +51,7 @@ export default function MyAppsScreen() {
         signOut(); // 守り役がログイン画面へ戻す
         return;
       }
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     },
     [signOut],
   );
@@ -316,6 +317,8 @@ export default function MyAppsScreen() {
             onRetry={reload}
           />
         }
+        // いちばん下に、動いている版（問い合わせのときに伝えてもらう）
+        ListFooterComponent={apps && apps.length > 0 ? <Text style={styles.version}>{versionLabel()}</Text> : undefined}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} />}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -446,6 +449,12 @@ function createStyles(c: Colors) {
     },
     emptyText: {
       fontSize: 15,
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+    version: {
+      marginTop: 24,
+      fontSize: 12,
       color: c.textSecondary,
       textAlign: 'center',
     },

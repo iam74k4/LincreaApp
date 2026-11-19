@@ -5,13 +5,14 @@
 // トークンも端末には残さない（Cognito の部品の保存場所は src/auth/cognitoStorage.ts。Face ID の鍵だけは src/auth/faceId.ts が Face ID 付きで持つ）。
 // 次の起動では、サーバーのログインがまだ有効か確かめてから、この控えで画面を戻す。
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetch } from 'expo/fetch';
 
-import { landedOnLogin } from '../api/http';
+import { landedOnLogin, NetworkError, serverFetch } from '../api/http';
 import { SERVER_URL } from '../config';
 import type { Session } from './api';
 
 const KEY = 'session.username';
+/** 起動のときに待つ長さ（電波が弱いときに、くるくるのまま長く待たせない） */
+const RESTORE_TIMEOUT_MS = 10_000;
 
 export async function saveSession(session: Session): Promise<void> {
   try {
@@ -29,15 +30,32 @@ export async function clearSavedSession(): Promise<void> {
   }
 }
 
-/** サーバーのログインがまだ有効なら、そのセッションを返す。切れていれば null */
-export async function restoreSession(): Promise<Session | null> {
+/** 前にログインしていた人（ログアウトしていなければ）。いなければ null */
+async function savedSession(): Promise<Session | null> {
   try {
-    const res = await fetch(`${SERVER_URL}/main/`, { credentials: 'include' });
-    await res.text();
-    if (!res.ok || landedOnLogin(res)) return null;
-    const username = (await AsyncStorage.getItem(KEY)) ?? '';
-    return { username };
+    const username = await AsyncStorage.getItem(KEY);
+    return username === null ? null : { username };
   } catch {
-    return null; // 通信できないときは、ログイン画面から
+    return null;
+  }
+}
+
+/**
+ * 起動したときの、前のログインの様子:
+ *   valid   … サーバーのログインがまだ有効（session で画面を戻す）
+ *   expired … 切れている（Face ID で入り直すか、ログイン画面へ）
+ *   offline … サーバーにつながらない。前にログインしていた人がいれば saved（その人の画面を出しておき、つながったら確かめる）
+ */
+export type Restored = { status: 'valid'; session: Session } | { status: 'expired' } | { status: 'offline'; saved: Session | null };
+
+export async function restoreSession(): Promise<Restored> {
+  try {
+    const res = await serverFetch(`${SERVER_URL}/main/`, { credentials: 'include' }, RESTORE_TIMEOUT_MS);
+    await res.text();
+    if (!res.ok || landedOnLogin(res)) return { status: 'expired' };
+    return { status: 'valid', session: (await savedSession()) ?? { username: '' } };
+  } catch (e) {
+    if (e instanceof NetworkError) return { status: 'offline', saved: await savedSession() };
+    return { status: 'expired' };
   }
 }

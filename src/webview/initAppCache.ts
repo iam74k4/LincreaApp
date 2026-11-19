@@ -12,9 +12,8 @@
 // 古いものを使い続けないよう、30 分で捨てる。
 // 裏で読む画面の覚え書き（アプリの名前・画面の名前・画面の ID だけ。中身は入れない）は端末に保存する。ログアウトで消す。
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetch } from 'expo/fetch';
 
-import { landedOnLogin } from '../api/http';
+import { landedOnLogin, serverFetch as fetch } from '../api/http';
 import { SERVER_URL } from '../config';
 
 const MAX_AGE_MS = 30 * 60 * 1000; // 30 分
