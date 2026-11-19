@@ -3879,12 +3879,18 @@ ${OVERTIME_MATH_JS}
     var wheel = document.createElement('div');
     wheel.className = 'myapp-dial-wheel';
     wheel.setAttribute('aria-label', name);
+    // VoiceOver では「調整可能」な部品として読む（上下にスワイプすると 1 つずつ変わる）。キーボードでは ↑ ↓
+    wheel.setAttribute('role', 'slider');
+    wheel.setAttribute('tabindex', '0');
+    wheel.setAttribute('aria-valuemin', String(values[0].value));
+    wheel.setAttribute('aria-valuemax', String(values[values.length - 1].value));
     var list = document.createElement('div');
     list.className = 'myapp-dial-list';
     values.forEach(function (v, i) {
       // 止まる位置は行（div）で決め、筒の形に見せる変形は中の文字（span）にだけかける（行を変形すると、止まる位置がずれる）
       var item = document.createElement('div');
       item.className = 'myapp-dial-item';
+      item.setAttribute('aria-hidden', 'true'); // 読み上げは、回している列（slider）の値で
       var face = document.createElement('span');
       face.textContent = v.label;
       item.appendChild(face);
@@ -3916,8 +3922,20 @@ ${OVERTIME_MATH_JS}
       if (index >= 0) items[index].classList.remove('myapp-dial-on');
       items[now].classList.add('myapp-dial-on');
       index = now;
+      wheel.setAttribute('aria-valuenow', String(values[now].value));
+      wheel.setAttribute('aria-valuetext', values[now].label + name);
       onPick(values[now].value);
     }
+    // 1 つずつ動かす（VoiceOver の上下のスワイプ・キーボードの ↑ ↓）
+    function nudge(step) {
+      var next = Math.max(0, Math.min(values.length - 1, (index < 0 ? 0 : index) + step));
+      wheel.scrollTop = next * DIAL_ROW;
+      paint();
+    }
+    wheel.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); nudge(-1); }
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); nudge(1); }
+    });
     wheel.addEventListener('scroll', function () {
       if (queued) return;
       queued = true;

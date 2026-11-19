@@ -164,11 +164,29 @@ export function bootJs(background: string): string {
   window.__myappXhr = function () { return pending; };
   // 通信がなく、最後の通信が終わってから ms ミリ秒以上たったか（データを読み終わって、描き直しも済んだころか）
   window.__myappXhrIdle = function (ms) { return pending === 0 && Date.now() - (window.__myappXhrAt || 0) >= ms; };
+  // 数え漏れを残さない: 終わりの知らせ（loadend）が来ない終わり方（通信中に open し直した）と、返事が来ないまま 2 分たったものも、終わったことにする
+  // （数が 0 に戻らないと、空の一覧の知らせなどが、いつまでも「読み込み中」のまま出ない）
   var send = XMLHttpRequest.prototype.send;
+  var reopen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function () {
+    if (this.__myappEnd) this.__myappEnd();
+    return reopen.apply(this, arguments);
+  };
   XMLHttpRequest.prototype.send = function () {
+    var xhr = this;
     var done = false;
-    var end = function () { if (done) return; done = true; pending--; window.__myappXhrAt = Date.now(); };
+    var timer = null;
+    var end = function () {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (xhr.__myappEnd === end) xhr.__myappEnd = null;
+      pending--;
+      window.__myappXhrAt = Date.now();
+    };
     pending++;
+    xhr.__myappEnd = end;
+    timer = setTimeout(end, 120000);
     this.addEventListener('loadend', end);
     try { return send.apply(this, arguments); } catch (e) { end(); throw e; }
   };
@@ -249,7 +267,12 @@ const GENERIC_JS = `
       CONFIG.bottomBars[formId].forEach(function (id) {
         var el = byId(id);
         if (!el) return;
-        if (el.parentElement !== bar) bar.appendChild(el);
+        if (el.parentElement !== bar) {
+          // EZCraft が画面を作り直すと、同じ ID の新しいボタンができる（帯の中のものより前にあるので、byId はそちらを返す）。
+          // 帯に残った古いボタン（もう押しても動かない）は外してから、新しいほうを移す
+          Array.prototype.slice.call(bar.children).forEach(function (child) { if (child.id === id) child.remove(); });
+          bar.appendChild(el);
+        }
         if (!hidden(el)) visible.push(el);
       });
       CONFIG.bottomBars[formId].forEach(function (id) {
