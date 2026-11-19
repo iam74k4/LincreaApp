@@ -1,4 +1,4 @@
-import { daysInMonth, keepRecentMonths, planReminders, unregisteredDays } from '../attendanceSchedule';
+import { daysInMonth, isProbablyOff, keepRecentMonths, planReminders, unregisteredDays } from '../attendanceSchedule';
 
 /** 1か月分の状態を作る（土日は休日。code(日) が返せばその状態、返さなければ registeredUntil の日までは登録済み、そのあとは未登録） */
 function month(year: number, m: number, registeredUntil: number, code: (day: number) => string | undefined = () => undefined): string {
@@ -24,8 +24,8 @@ describe('unregisteredDays', () => {
   });
 
   it('counts unknown future weekdays, but not unknown past days', () => {
-    // 何も分からない: 過ぎた日は数えず、今日（水）から先の月〜金（18・19・20・23・24）だけ数える
-    expect(unregisteredDays(at(2026, 11, 25, 12), at(2026, 11, 18, 13), {})).toBe(5);
+    // 何も分からない: 過ぎた日は数えず、今日（水）から先の勤務日（18・19・20・24）だけ数える（23 は勤労感謝の日）
+    expect(unregisteredDays(at(2026, 11, 25, 12), at(2026, 11, 18, 13), {})).toBe(4);
   });
 
   it('counts unregistered days of the month before', () => {
@@ -84,4 +84,38 @@ describe('daysInMonth', () => {
     expect(daysInMonth('2026-02')).toBe(28);
     expect(daysInMonth('2026-11')).toBe(30);
   });
+});
+
+describe('isProbablyOff: まだ勤務表を見ていない日を、勤務日と見込むか', () => {
+  const off = (y: number, m: number, d: number) => isProbablyOff(new Date(y, m - 1, d));
+  test.each([
+    ['元日', 2027, 1, 1],
+    ['年末年始（1/3）', 2027, 1, 4 - 1],
+    ['年末（12/29）', 2026, 12, 29],
+    ['成人の日（2027 年は 1/11）', 2027, 1, 11],
+    ['春分の日（2027 年は 3/21 の日曜 → 3/22 が振替休日）', 2027, 3, 22],
+    ['昭和の日', 2027, 4, 29],
+    ['こどもの日', 2027, 5, 5],
+    ['海の日（2027 年は 7/19）', 2027, 7, 19],
+    ['敬老の日（2026 年は 9/21）', 2026, 9, 21],
+    ['国民の休日（2026 年 9/22。敬老の日と秋分の日のあいだ）', 2026, 9, 22],
+    ['秋分の日（2026 年は 9/23）', 2026, 9, 23],
+    ['勤労感謝の日', 2026, 11, 23],
+    ['土曜', 2026, 11, 21],
+  ])('%s は休み', (_, y, m, d) => {
+    expect(off(y, m, d)).toBe(true);
+  });
+  test.each([
+    ['ふつうの平日', 2026, 11, 19],
+    ['1/4（仕事始め）', 2027, 1, 4],
+    ['12/28', 2026, 12, 28],
+  ])('%s は勤務日', (_, y, m, d) => {
+    expect(off(y, m, d)).toBe(false);
+  });
+});
+
+test('年始の水曜: まだ見ていない 1 月の祝日と年末年始は、未登録に数えない', () => {
+  // 2027/1/6（水）。12 月は全部登録済み。1 月はまだ見ていない（1/1〜1/3 は年始、1/4・1/5 は勤務日）
+  const months = { '2026-12': 'r'.repeat(31) };
+  expect(unregisteredDays(new Date(2027, 0, 6, 12), new Date(2026, 11, 20, 9), months)).toBe(2);
 });
