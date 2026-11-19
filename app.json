@@ -13,7 +13,7 @@
       "url": "https://u.expo.dev/e12d22b0-a737-471c-bd39-fbc16f03f1eb"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.iam74k4.LincreaApp",
       "config": {
         "usesNonExemptEncryption": false
@@ -66,7 +66,7 @@
         }
       ]
     ],
-    "scheme": "logindemo",
+    "scheme": "lincrea",
     "extra": {
       "router": {
         "asyncRoutes": {

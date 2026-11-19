@@ -14,11 +14,11 @@ jest.mock('expo-sharing', () => ({}));
 
 describe('外からアプリを開くリンク（+native-intent）', () => {
   test('起動したリンクは、中身を見ずに最初の画面から始める', () => {
-    expect(redirectSystemPath({ path: 'logindemo://run/L_Tims/frmLTiMSTop?auto=frmLTiMSTop_btnApply', initial: true })).toBe('/');
+    expect(redirectSystemPath({ path: 'lincrea://run/L_Tims/frmLTiMSTop?auto=frmLTiMSTop_btnApply', initial: true })).toBe('/');
   });
   test('開いているときに来たリンクでは、何もしない', () => {
-    expect(redirectSystemPath({ path: 'logindemo://run/L_Tims/frmApply_zangyo?launch=x', initial: false })).toBeNull();
-    expect(redirectSystemPath({ path: 'logindemo://file?uri=file:///etc/passwd', initial: false })).toBeNull();
+    expect(redirectSystemPath({ path: 'lincrea://run/L_Tims/frmApply_zangyo?launch=x', initial: false })).toBeNull();
+    expect(redirectSystemPath({ path: 'lincrea://file?uri=file:///etc/passwd', initial: false })).toBeNull();
   });
 });
 
