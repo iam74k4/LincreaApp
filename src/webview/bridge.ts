@@ -775,3 +775,26 @@ export function healthFlagJs(available: boolean): string {
 export function stepsReplyJs(id: string, steps: number | null): string {
   return `window.__myappStepsReply && window.__myappStepsReply(${JSON.stringify(id)}, ${steps === null ? 'null' : Math.max(0, Math.round(steps))}); true;`;
 }
+
+/** 入力欄に入れておく値を、ページに渡す（ページが動き出す前に。値は短い文字だけ: src/launch.ts の shortValues） */
+export function prefillJs(prefill: Record<string, string> | null): string {
+  return prefill ? `window.__myappPrefill = ${JSON.stringify(prefill)};\n` : '';
+}
+
+/** ページに、画面の下の空けておく高さ（ホームに戻るバー）を CSS の変数 --myapp-safe-bottom で伝える */
+export function safeAreaJs(bottom: number): string {
+  return `document.documentElement.style.setProperty('--myapp-safe-bottom', '${Math.round(bottom)}px');\n`;
+}
+
+/**
+ * ページに入れるスクリプトを、1本ずつ try で囲んでつなぐ。1本が動いている途中で例外を出しても、続くスクリプト
+ * （ブリッジ・保存の見張り・見た目の直し）は動く。文法の誤りはここでは防げないので、scripts/check-page-scripts.ts で確かめる
+ */
+export function joinScripts(parts: string[]): string {
+  return (
+    parts
+      .filter((js) => js.trim() !== '' && js.trim() !== 'true;')
+      .map((js) => `try {\n${js}\n} catch (e) { try { console.error('[myapp]', e); } catch (_) {} }\n`)
+      .join('') + 'true;\n'
+  );
+}

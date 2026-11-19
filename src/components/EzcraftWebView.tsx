@@ -27,7 +27,22 @@ import { useColors } from '../theme';
 import { GlassButton } from './GlassButton';
 import { SaveProgress } from './SaveProgress';
 import { healthAvailable, stepsOn } from '../health';
-import { allowedFrom, autoClickJs, BRIDGE_JS, childClosedJs, healthFlagJs, openerStubJs, parseBridgeMessage, restoreScrollJs, SAVE_WATCH_JS, stepsDayAllowed, stepsReplyJs } from '../webview/bridge';
+import {
+  allowedFrom,
+  autoClickJs,
+  BRIDGE_JS,
+  childClosedJs,
+  healthFlagJs,
+  joinScripts,
+  openerStubJs,
+  parseBridgeMessage,
+  prefillJs,
+  restoreScrollJs,
+  safeAreaJs,
+  SAVE_WATCH_JS,
+  stepsDayAllowed,
+  stepsReplyJs,
+} from '../webview/bridge';
 import { bootJs, buildSkinScript, SHOW_PAGE_JS } from '../webview/ezcraftSkin';
 import { CAN_PARK, Parkable } from '../webview/savePark';
 import { appDataKeyOfUrl, rememberAppData } from '../webview/appDataCache';
@@ -639,8 +654,16 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           // 画面の端で引っぱっても、外（何もないところ）を出さない。横のスクロールは、ページの側で画面の幅に切る（ezcraftSkin の BASE_CSS）
           bounces={false}
           overScrollMode="never"
-          injectedJavaScriptBeforeContentLoaded={bootJs(c.background) + openerStubJs(handoff) + prefillJs(prefill) + initAppJs(initApp) + healthFlagJs(HEALTH)}
-          injectedJavaScript={safeAreaJs(insets.bottom) + BRIDGE_JS + SAVE_WATCH_JS + buildSkinScript(appId) + (autoClick && autoClick.steps.length > 0 ? autoClickJs(autoClick.steps[0], autoClick.ready) : '') + restoreScrollJs(restoreTo)}
+          // ページに入れるスクリプトは、1本ずつ囲んでつなぐ（1本が例外を出しても、ほかは動く。bridge の joinScripts）
+          injectedJavaScriptBeforeContentLoaded={joinScripts([bootJs(c.background), openerStubJs(handoff), prefillJs(prefill), initAppJs(initApp), healthFlagJs(HEALTH)])}
+          injectedJavaScript={joinScripts([
+            safeAreaJs(insets.bottom),
+            BRIDGE_JS,
+            SAVE_WATCH_JS,
+            buildSkinScript(appId),
+            autoClick && autoClick.steps.length > 0 ? autoClickJs(autoClick.steps[0], autoClick.ready) : '',
+            restoreScrollJs(restoreTo),
+          ])}
           // iOS では onMessage を渡さないと injectedJavaScript が実行されない（react-native-webview の既知の動き）
           // 画面全体は、会社のサイトのページだけを出す。ほかのサイトへのリンクは、アプリの外（Safari）で開く
           // （アプリが入れる仕組みとデータが、ほかのサイトに渡らないように。src/webview/origin.ts）
@@ -946,12 +969,3 @@ function cachedInitApp(uri: string): { app: string; form: string; text: string }
   return form && text ? { ...form, text } : null;
 }
 
-/** 入力欄に入れておく値を、ページに渡す（ページが動き出す前に。値は短い文字だけ: RunApp の parsePrefill） */
-function prefillJs(prefill: Record<string, string> | null): string {
-  return prefill ? `window.__myappPrefill = ${JSON.stringify(prefill)};\n` : '';
-}
-
-/** ページに、画面の下の空けておく高さ（ホームに戻るバー）を CSS の変数 --myapp-safe-bottom で伝える */
-function safeAreaJs(bottom: number): string {
-  return `document.documentElement.style.setProperty('--myapp-safe-bottom', '${Math.round(bottom)}px');\n`;
-}
