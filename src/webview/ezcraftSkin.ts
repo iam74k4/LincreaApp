@@ -443,10 +443,34 @@ const GENERIC_JS = `
 
   // 一覧のカード（cardGrid）のために: 値のない欄にしるし（見出しだけが出ないように）、
   // ページが1つしかない一覧にもしるし（« < 1 / 1p > » を出さないように）
-  function tidyGrids() {
+  // 一覧のマスを見直すのは、中身が変わった一覧（gridsDirty）だけ。ページのどこかが変わるたびに、全部の一覧の全部のマスを
+  // 調べ直すと重いため（勤務表の出力は 1,000 マスを超える）。見落としのないよう、全部の見直しも 1.5 秒に 1 回はする
+  var gridsDirty = [];
+  var gridsFullAt = 0;
+  function markGridsIn(node) {
+    if (!node || node.nodeType !== 1) node = node && node.parentElement;
+    if (!node || !node.closest) return;
+    var body = node.closest('.TccGridBodyScroll');
+    if (body) { if (gridsDirty.indexOf(body) < 0) gridsDirty.push(body); return; }
+    if (node.getElementsByClassName('TccGridBodyScroll').length) {
+      Array.prototype.forEach.call(node.getElementsByClassName('TccGridBodyScroll'), function (b) {
+        if (gridsDirty.indexOf(b) < 0) gridsDirty.push(b);
+      });
+    }
+  }
+  window.__myappNoteMutations = function (records) {
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      markGridsIn(r.target);
+      for (var k = 0; k < r.addedNodes.length; k++) if (r.addedNodes[k].nodeType === 1) markGridsIn(r.addedNodes[k]);
+    }
+  };
+  // チェックを入れた・外した（中身の文字は変わらない）
+  document.addEventListener('change', function (e) { markGridsIn(e.target); }, true);
+  function tidyCell(td) {
+    var text = td.textContent || '';
     // 名前の中に、文字の番号のまま入っているもの（「ハ&#12442;スキー」= パスキー）は、文字に直して見せる（見せるだけ。データはそのまま）
-    document.querySelectorAll('.TccGridBodyScroll td').forEach(function (td) {
-      if ((td.textContent || '').indexOf('&#') < 0) return;
+    if (text.indexOf('&#') >= 0) {
       var w = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
       var node;
       while ((node = w.nextNode())) {
@@ -458,11 +482,22 @@ const GENERIC_JS = `
         if (v.normalize) v = v.normalize('NFC');
         if (v !== node.nodeValue) node.nodeValue = v;
       }
-    });
-    document.querySelectorAll('.TccGridBodyScroll td').forEach(function (td) {
-      // 「----」（値なし）も、空として扱う（見出しだけが「合計 ----」と出ないように）
-      var blank = !/[^\\s\\-－―ー]/.test(td.textContent || '') && !td.querySelector('input:checked, img, i');
-      if (td.hasAttribute('data-myapp-blank') !== blank) td.toggleAttribute('data-myapp-blank', blank);
+      text = td.textContent || '';
+    }
+    // 「----」（値なし）も、空として扱う（見出しだけが「合計 ----」と出ないように）
+    var blank = !/[^\\s\\-－―ー]/.test(text) && !td.querySelector('input:checked, img, i');
+    if (td.hasAttribute('data-myapp-blank') !== blank) td.toggleAttribute('data-myapp-blank', blank);
+  }
+  function tidyGrids() {
+    var now = Date.now();
+    var bodies = gridsDirty;
+    gridsDirty = [];
+    if (now - gridsFullAt > 1500) {
+      gridsFullAt = now;
+      bodies = Array.prototype.slice.call(document.getElementsByClassName('TccGridBodyScroll'));
+    }
+    bodies.forEach(function (body) {
+      if (body.isConnected) body.querySelectorAll('td').forEach(tidyCell);
     });
     document.querySelectorAll('.tcc-component.grid').forEach(function (grid) {
       var pager = grid.querySelector('.tcc-pager-navi');
@@ -1163,7 +1198,10 @@ const DARK_JS = `
 
   media.addEventListener('change', applyTheme);
   // 中身はあとから描かれる・入れ替わるので、そのたびに測り直し、塗り直す
-  new MutationObserver(update).observe(root, { childList: true, subtree: true });
+  new MutationObserver(function (records) {
+    if (window.__myappNoteMutations) window.__myappNoteMutations(records);
+    update();
+  }).observe(root, { childList: true, subtree: true });
   if (window.ResizeObserver && document.body) new ResizeObserver(update).observe(document.body);
   document.addEventListener('click', function () { setTimeout(update, 300); }, true);
   document.addEventListener('input', update, true);
