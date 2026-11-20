@@ -8,11 +8,24 @@
 //
 // 色の考え方: 設計者がわざわざ付けた色（緑のボタン、青い見出しなど）は残す。
 // 白い地・黒い文字・灰色の線のような「無彩色」だけを、テーマの色に置き換える。
+import { compactCss, compactJs } from './compact';
 import { APP_SKINS, roleCss, type AppSkin } from './appStyles';
 import { SEARCH_ICON } from './layout';
 
 /** WebView に読み込ませる JavaScript を作る（appId はアプリケーション ID。アプリごとの調整に使う） */
+// 作ったスクリプトは、アプリごとに控えて使い回す（TiMS は 600KB を超える。画面を描き直すたびに作り直さない）
+const skinCache = new Map<string, string>();
+
 export function buildSkinScript(appId: string): string {
+  let js = skinCache.get(appId);
+  if (js === undefined) {
+    js = compactJs(makeSkinScript(appId));
+    skinCache.set(appId, js);
+  }
+  return js;
+}
+
+function makeSkinScript(appId: string): string {
   const skin = APP_SKINS[appId];
   const css = BASE_CSS + GLASS_CSS + (skin ? roleCss(skin) : '');
   const mobileForms = skin?.mobileForms ?? [];
@@ -43,7 +56,7 @@ export function buildSkinScript(appId: string): string {
   // ---- スタイルを差し込む ----
   var style = document.createElement('style');
   style.id = 'myapp-skin';
-  style.textContent = ${JSON.stringify(css)};
+  style.textContent = ${JSON.stringify(compactCss(css))};
   (document.head || root).appendChild(style);
 
   // ---- アプリごとの動き（appStyles.ts の script。window.__myappAppUpdate を決める） ----

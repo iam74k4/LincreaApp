@@ -636,6 +636,31 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     [heading, title, pageTitle, modalOpen, c, busy, canLeave, leaveDuringSave],
   );
 
+  // ページに入れるスクリプト（合わせて 700KB ほどになる）。中身が変わるときだけ作り直す。
+  // 保存の一歩ごとなど、この画面は何度も描き直されるので、そのたびに大きな文字をつなぎ直さないように。
+  // 1本ずつ囲んでつなぐ（1本が例外を出しても、ほかは動く。bridge の joinScripts）
+  const background = c.background;
+  const beforeLoadJs = useMemo(
+    () => joinScripts([bootJs(background), openerStubJs(handoff), prefillJs(prefill), initAppJs(initApp), healthFlagJs(HEALTH)]),
+    [background, handoff, prefill, initApp],
+  );
+  const firstStep = autoClick && autoClick.steps.length > 0 ? autoClick.steps[0] : null;
+  const readyKey = autoClick?.ready ?? '';
+  const afterLoadJs = useMemo(
+    () =>
+      joinScripts([
+        safeAreaJs(insets.bottom),
+        BRIDGE_JS,
+        SAVE_WATCH_JS,
+        buildSkinScript(appId),
+        firstStep ? autoClickJs(firstStep, readyKey) : '',
+        restoreScrollJs(restoreTo),
+      ]),
+    [insets.bottom, appId, firstStep, readyKey, restoreTo],
+  );
+  const source = useMemo(() => ({ uri }), [uri]);
+  const webStyle = useMemo(() => [styles.web, { backgroundColor: background }], [background]);
+
   return (
     <>
       <Stack.Screen options={screenOptions} />
@@ -644,8 +669,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         <WebView
           ref={webRef}
           key={reloadKey}
-          source={{ uri }}
-          style={[styles.web, { backgroundColor: c.background }]}
+          source={source}
+          style={webStyle}
           sharedCookiesEnabled // iOS: アプリの fetch が保存した Cookie（ログイン）を WebView でも使う
           // 余白の自動調整はしない。ヘッダーは塗ってあり、WebView はその下から始まる（src/app/(app)/_layout.tsx）。
           // 自動にすると、ページの長さによって画面の下（ホームに戻るバー）のぶんを引いたり引かなかったりして、
@@ -654,16 +679,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           // 画面の端で引っぱっても、外（何もないところ）を出さない。横のスクロールは、ページの側で画面の幅に切る（ezcraftSkin の BASE_CSS）
           bounces={false}
           overScrollMode="never"
-          // ページに入れるスクリプトは、1本ずつ囲んでつなぐ（1本が例外を出しても、ほかは動く。bridge の joinScripts）
-          injectedJavaScriptBeforeContentLoaded={joinScripts([bootJs(c.background), openerStubJs(handoff), prefillJs(prefill), initAppJs(initApp), healthFlagJs(HEALTH)])}
-          injectedJavaScript={joinScripts([
-            safeAreaJs(insets.bottom),
-            BRIDGE_JS,
-            SAVE_WATCH_JS,
-            buildSkinScript(appId),
-            autoClick && autoClick.steps.length > 0 ? autoClickJs(autoClick.steps[0], autoClick.ready) : '',
-            restoreScrollJs(restoreTo),
-          ])}
+          injectedJavaScriptBeforeContentLoaded={beforeLoadJs}
+          injectedJavaScript={afterLoadJs}
           // iOS では onMessage を渡さないと injectedJavaScript が実行されない（react-native-webview の既知の動き）
           // 画面全体は、会社のサイトのページだけを出す。ほかのサイトへのリンクは、アプリの外（Safari）で開く
           // （アプリが入れる仕組みとデータが、ほかのサイトに渡らないように。src/webview/origin.ts）
