@@ -10,6 +10,7 @@
 //   2. \ が落ちた形（/(d{4})/ や /^s*/ など）が残っていないこと
 //   3. アプリごとの見た目の直しを、空のページ（jsdom）で動かしても、最初の一歩でエラーにならないこと
 //   4. スクリプトの中の CSS の { と } の数が合っていること（1つ欠けると、そのあとの決まりがすべて効かなくなる）
+//   5. 複数行にまたがる文字（` や行末の \）がないこと（小さくするとき、行頭の空白を消すため。src/webview/compact.ts）
 import { JSDOM, VirtualConsole } from 'jsdom';
 
 import { APP_SKINS } from '../src/webview/appStyles';
@@ -76,6 +77,9 @@ for (const [name, js] of scripts) {
   }
   const lost = js.match(LOST_ESCAPE);
   if (lost) ng(name, `\\ が落ちた正規表現らしいもの: ${lost.slice(0, 5).join(' / ')}`);
+  // 小さくする（src/webview/compact.ts）ときに、行頭の空白とコメントの行を消すので、複数行にまたがる文字を使わない
+  const multiline = js.split('\n').find((line) => line.includes('`') || /\\$/.test(line));
+  if (multiline) ng(name, `複数行にまたがる文字（\` や行末の \\）がある: ${multiline.trim().slice(0, 80)}`);
 }
 
 // CSS: スクリプトの中で style に入れる文字（`...` の中の、{ と } のある長い文字）の数を数える
