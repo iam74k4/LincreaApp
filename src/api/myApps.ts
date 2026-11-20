@@ -8,7 +8,7 @@
 // 画面はサーバーの項目名や状態コードを知らなくてよい。
 
 import { SERVER_URL } from '../config';
-import { landedOnLogin, serverFetch as fetch, SessionExpiredError } from './http';
+import { csrfOf, forgetCsrf, landedOnLogin, NetworkError, recallCsrf, rememberCsrf, serverFetch as fetch, SessionExpiredError } from './http';
 
 // ---- アプリの中で使う形 ----
 
@@ -58,7 +58,26 @@ const STATUS_AVAILABLE = '01';
 const STATUS_DEVELOPING = '11';
 
 export async function fetchMyApps(): Promise<MyApp[]> {
-  const csrf = await fetchCsrfToken();
+  // 覚えている合言葉があれば、それで聞く（/main/ を読み直さない）。うまくいかなければ、合言葉を読み直してもう一度
+  const remembered = recallCsrf();
+  if (remembered) {
+    try {
+      const apps = await findApps(remembered);
+      if (apps) return apps;
+    } catch (e) {
+      // つながらないときは、合言葉を読み直しても同じなので、そのまま知らせる
+      if (e instanceof NetworkError) throw e;
+      // 合言葉が古い（ログインし直した）などで断られた。下で読み直して、もう一度聞く
+    }
+    forgetCsrf();
+  }
+  const apps = await findApps(await fetchCsrfToken());
+  if (!apps) throw new Error('一覧を読み込めませんでした。');
+  return apps;
+}
+
+/** 一覧を聞く。返事が一覧の形でなければ null（合言葉が古いときなど） */
+async function findApps(csrf: string): Promise<MyApp[] | null> {
   const res = await fetch(`${SERVER_URL}/application/find/`, {
     method: 'POST',
     credentials: 'include',
@@ -74,7 +93,8 @@ export async function fetchMyApps(): Promise<MyApp[]> {
   if (!res.ok) throw new Error(`一覧を読み込めませんでした（HTTP ${res.status}）`);
 
   const json = (await res.json()) as { data?: RawApp[] };
-  return (json.data ?? []).map(toMyApp);
+  if (!Array.isArray(json.data)) return null;
+  return json.data.map(toMyApp);
 }
 
 /** Web 版が毎回ヘッダーに付けている合言葉を、/main/ のページから読む */
@@ -82,8 +102,9 @@ async function fetchCsrfToken(): Promise<string> {
   const res = await fetch(`${SERVER_URL}/main/`, { credentials: 'include' });
   if (landedOnLogin(res)) throw new SessionExpiredError();
   const html = await res.text();
-  const token = html.match(/<html[^>]*\s_t="([^"]+)"/)?.[1];
+  const token = csrfOf(html);
   if (!token) throw new Error('サーバーの合言葉（CSRF トークン）を読めませんでした。');
+  rememberCsrf(html);
   return token;
 }
 

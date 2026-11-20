@@ -6,7 +6,7 @@
 // 次の起動では、サーバーのログインがまだ有効か確かめてから、この控えで画面を戻す。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { landedOnLogin, NetworkError, serverFetch } from '../api/http';
+import { landedOnLogin, NetworkError, rememberCsrf, serverFetch } from '../api/http';
 import { SERVER_URL } from '../config';
 import type { Session } from './api';
 
@@ -51,8 +51,9 @@ export type Restored = { status: 'valid'; session: Session } | { status: 'expire
 export async function restoreSession(): Promise<Restored> {
   try {
     const res = await serverFetch(`${SERVER_URL}/main/`, { credentials: 'include' }, RESTORE_TIMEOUT_MS);
-    await res.text();
+    const html = await res.text();
     if (!res.ok || landedOnLogin(res)) return { status: 'expired' };
+    rememberCsrf(html); // マイアプリの一覧を聞くときに使う（/main/ をもう一度読まない）
     return { status: 'valid', session: (await savedSession()) ?? { username: '' } };
   } catch (e) {
     if (e instanceof NetworkError) return { status: 'offline', saved: await savedSession() };

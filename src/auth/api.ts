@@ -30,7 +30,7 @@ import {
 } from 'amazon-cognito-identity-js';
 import { NativeModules } from 'react-native';
 
-import { pathOf, serverFetch as fetch } from '../api/http';
+import { forgetCsrf, pathOf, rememberCsrf, serverFetch as fetch } from '../api/http';
 import { SERVER_URL } from '../config';
 import { cognitoStorage, loadCognitoStorage } from './cognitoStorage';
 
@@ -120,7 +120,8 @@ async function startServerSession(idToken: string, remember: boolean): Promise<v
   }
   done('サーバーがトークンを受け付けた', `HTTP ${handoff.status} → ${nextPath}`);
 
-  // 4. ログインが要るページを開いて、ログインしたままか確かめる
+  // 4. ログインが要るページを開いて、ログインしたままか確かめる。新しいログインの合言葉も、ここで覚える
+  forgetCsrf();
   const home = await fetch(HOME_URL, { credentials: 'include' });
   const homePath = pathOf(home.url);
   if (!home.ok) {
@@ -131,6 +132,7 @@ async function startServerSession(idToken: string, remember: boolean): Promise<v
       'Cognito の本人確認は通りましたが、サーバー側のログインができていません（/main/ を開くとログイン画面に戻されます）。',
     );
   }
+  rememberCsrf(await home.text());
   done('ログインしたままページを開けた', `GET /main/ → ${homePath}`);
 }
 
