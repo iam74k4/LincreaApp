@@ -45,7 +45,8 @@ env:
 
 jobs:
   testflight:
-    # macOS 26（Xcode 26）。Xcode を上げるときは、ここを書き換えて「送る」を外した手動の実行で確かめる
+    # macOS 26（Xcode 26）。Xcode を上げるときは、ここを書き換えて「送る」を外した手動の実行で確かめる。
+    # 2027 年 4 月からは iOS 27 SDK（Xcode 27）で作った版しか送れない（Apple の警告）。それまでに上げる
     runs-on: macos-26
     timeout-minutes: 90
     steps:
