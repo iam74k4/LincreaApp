@@ -8,12 +8,10 @@ import type { SymbolViewProps } from 'expo-symbols';
 import type { MyApp } from './api/myApps';
 
 export type KnownApp = {
-  /** 一覧に出す名前と、その下の一言 */
+  /** 一覧に出す名前と、その一言（一言は画面には出さず、読み上げのヒントに使う） */
   name: string;
   subtitle: string;
   symbol: SymbolViewProps['name'];
-  /** アイコンの地の色 */
-  background: string;
   /** 一覧に並べる順（小さいほど上。よく使うものを上に） */
   order: number;
 };
@@ -23,42 +21,36 @@ export const KNOWN_APPS: Record<string, KnownApp> = {
     name: '勤怠 TiMS',
     subtitle: '勤務表・各種申請',
     symbol: { ios: 'person.badge.clock.fill', android: 'schedule', web: 'schedule' },
-    background: '#FF9500',
     order: 1,
   },
   L_Payslip: {
     name: '給与・賞与明細',
     subtitle: '毎月の明細を見る',
     symbol: { ios: 'yensign.circle.fill', android: 'currency_yen', web: 'currency_yen' },
-    background: '#34C759',
     order: 2,
   },
   L_Payslip_Juminzei: {
     name: '住民税の通知書',
     subtitle: '特別徴収税額の通知書を取得',
     symbol: { ios: 'building.columns.fill', android: 'description', web: 'description' },
-    background: '#30B0C7',
     order: 4,
   },
   L_HealthCare: {
     name: '健康診断',
     subtitle: '予約と結果',
     symbol: { ios: 'heart.fill', android: 'favorite', web: 'favorite' },
-    background: '#FF2D55',
     order: 3,
   },
   L_ITEE: {
     name: '資格取得者の検索',
     subtitle: '情報処理技術者試験',
     symbol: { ios: 'graduationcap.fill', android: 'school', web: 'school' },
-    background: '#5856D6',
     order: 5,
   },
   YIF_walk_the_talk: {
     name: 'Walk the Talk',
     subtitle: '歩数とポイント',
     symbol: { ios: 'figure.walk', android: 'directions_walk', web: 'directions_walk' },
-    background: '#A2845E',
     order: 6,
   },
 };

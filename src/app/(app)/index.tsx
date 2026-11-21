@@ -273,7 +273,7 @@ export default function MyAppsScreen() {
         ListHeaderComponent={
           apps ? (
             <View>
-              {shortcuts.length > 0 && <Text style={[styles.sectionTitle, styles.firstSectionTitle]}>よく使う</Text>}
+              {/* よく使う: 1枚のカードに横1列。アイコンの下に短い名前（小見出しは出さない） */}
               {shortcuts.length > 0 && (
                 <View style={styles.shortcuts}>
                   {shortcuts.map((shortcut) => (
@@ -282,23 +282,19 @@ export default function MyAppsScreen() {
                       onPress={() => openShortcut(shortcut)}
                       style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}
                       accessibilityRole="button"
-                      accessibilityLabel={`${shortcut.title}、${shortcut.subtitle}`}
+                      accessibilityLabel={shortcut.title}
+                      accessibilityHint={shortcut.subtitle}
                     >
-                      <View style={[styles.shortcutIcon, { backgroundColor: shortcut.color }]}>
+                      <View style={styles.shortcutIcon}>
                         {pending?.key === shortcut.key ? (
-                          <ActivityIndicator size="small" color="#FFFFFF" />
+                          <ActivityIndicator size="small" color={c.iconGlyph} />
                         ) : (
-                          <SymbolView name={shortcut.symbol} size={18} weight="semibold" tintColor="#FFFFFF" />
+                          <SymbolView name={shortcut.symbol} size={24} weight="medium" tintColor={c.iconGlyph} />
                         )}
                       </View>
-                      <View style={styles.shortcutText}>
-                        <Text style={styles.shortcutTitle} numberOfLines={1}>
-                          {shortcut.title}
-                        </Text>
-                        <Text style={styles.shortcutSubtitle} numberOfLines={1}>
-                          {shortcut.subtitle}
-                        </Text>
-                      </View>
+                      <Text style={styles.shortcutTitle} numberOfLines={1}>
+                        {shortcut.short ?? shortcut.title}
+                      </Text>
                     </Pressable>
                   ))}
                 </View>
@@ -385,51 +381,38 @@ function createStyles(c: Colors) {
       paddingTop: 8,
       paddingBottom: 8,
     },
-    // 大きな見出し（マイアプリ）のすぐ下の小見出しは、「アプリ」の上と同じくらい間をあける
-    firstSectionTitle: {
-      paddingTop: 16,
-    },
+    // よく使う: 1枚のカードに、4つを同じ幅で横に並べる
     shortcuts: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 10,
-      paddingHorizontal: 16,
-      paddingBottom: 20,
-    },
-    shortcutIcon: {
-      width: 32,
-      height: 32,
-      borderRadius: 9,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    shortcut: {
-      flexGrow: 1,
-      flexBasis: '45%',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      minHeight: 64,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      marginHorizontal: 16,
+      marginTop: 16,
+      marginBottom: 20,
+      paddingHorizontal: 8,
+      paddingTop: 16,
+      paddingBottom: 14,
       borderRadius: sizes.cardRadius,
       backgroundColor: c.card,
+    },
+    shortcutIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.iconTile,
+    },
+    shortcut: {
+      flex: 1,
+      alignItems: 'center',
+      gap: 8,
+      minHeight: 76,
     },
     pressed: {
       opacity: 0.6,
     },
-    shortcutText: {
-      flex: 1,
-      gap: 2,
-    },
     shortcutTitle: {
-      fontSize: 17,
-      fontWeight: '600',
+      fontSize: 12,
       color: c.text,
-    },
-    shortcutSubtitle: {
-      fontSize: 13,
-      color: c.textSecondary,
     },
     // 行の間の線。カードの地の上に、アイコンの右（文字の頭）から引く
     separatorRow: {
@@ -438,7 +421,7 @@ function createStyles(c: Colors) {
     },
     separator: {
       height: StyleSheet.hairlineWidth,
-      marginLeft: 74,
+      marginLeft: 60, // 16（左の余白）+ 30（アイコン）+ 14（すきま）
       backgroundColor: c.separator,
     },
     empty: {

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 
 import type { MyApp } from '../api/myApps';
@@ -8,7 +8,8 @@ import { sizes, useColors, type Colors } from '../theme';
 import { AppIcon } from './AppIcon';
 
 /**
- * 一覧の1行。使う人に要るのは「どのアプリか」だけなので、アイコン・名前・説明だけを出す。
+ * 一覧の1行。使う人に要るのは「どのアプリか」だけなので、アイコンと名前だけを出す。
+ * 説明（一言）は画面には出さず、読み上げのときのヒントにだけ使う。
  * 版・リリース日・稼働中 / 開発中は出さない（作る人向けの情報で、「稼働中」と「開発中」が並ぶと矛盾して見える）。
  * 使えないアプリにだけ「停止中」を出す。名前と一言は、知っているアプリなら短いもの（src/knownApps.ts）。
  * 一覧は、角の丸い1枚のカードに行を並べる（iOS の設定アプリと同じ）。first・last で、カードの上下の角を丸める。
@@ -27,16 +28,9 @@ export function MyAppRow({ app, onPress, first, last }: { app: MyApp; onPress: (
       style={({ pressed }) => [styles.row, first && styles.first, last && styles.last, pressed && styles.rowPressed]}
     >
       <AppIcon icon={app.icon} appId={app.logicName} />
-      <View style={styles.body}>
-        <Text style={styles.name} numberOfLines={1}>
-          {name}
-        </Text>
-        {description !== '' && (
-          <Text style={styles.description} numberOfLines={1}>
-            {description}
-          </Text>
-        )}
-      </View>
+      <Text style={styles.name} numberOfLines={1}>
+        {name}
+      </Text>
       {!app.isAvailable && <Text style={[styles.tag, styles.stopped]}>停止中</Text>}
       <SymbolView
         name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
@@ -54,8 +48,8 @@ function createStyles(c: Colors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 14,
-      minHeight: 68,
-      paddingVertical: 12,
+      minHeight: 52,
+      paddingVertical: 10,
       paddingLeft: 16,
       paddingRight: 16,
       marginHorizontal: 16,
@@ -72,18 +66,10 @@ function createStyles(c: Colors) {
     rowPressed: {
       backgroundColor: c.pressed,
     },
-    body: {
-      flex: 1,
-      gap: 3,
-    },
     name: {
+      flex: 1,
       fontSize: 17,
-      fontWeight: '600',
       color: c.text,
-    },
-    description: {
-      fontSize: 13, // 上の近道やメニューのカードの説明と同じ大きさ
-      color: c.textSecondary,
     },
     tag: {
       fontSize: 11,

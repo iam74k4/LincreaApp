@@ -26,6 +26,9 @@ export type Colors = {
   /** 押せるもの（ボタン・リンク・スイッチ）の色 */
   accent: string;
   onAccent: string;
+  /** マイアプリのアイコン: 薄い青の地（iconTile）に、青い線の絵（iconGlyph）。どのアプリも同じ2色でそろえる */
+  iconTile: string;
+  iconGlyph: string;
   danger: string;
   /** 状態のしるし（文字色 / 地の色） */
   available: { text: string; background: string };
@@ -44,6 +47,8 @@ const light: Colors = {
   separator: '#E3E3E8',
   accent: '#007AFF',
   onAccent: '#FFFFFF',
+  iconTile: 'rgba(0, 122, 255, 0.12)',
+  iconGlyph: '#007AFF',
   danger: '#D92D20',
   available: { text: '#1E7B34', background: '#E3F5E7' },
   stopped: { text: '#B42318', background: '#FDE7E5' },
@@ -61,6 +66,8 @@ const dark: Colors = {
   separator: '#2C2C2E',
   accent: '#0A84FF',
   onAccent: '#FFFFFF',
+  iconTile: 'rgba(10, 132, 255, 0.18)',
+  iconGlyph: '#409CFF',
   danger: '#FF6B5E',
   available: { text: '#7EE2A0', background: '#123620' },
   stopped: { text: '#FF9C94', background: '#3D1714' },

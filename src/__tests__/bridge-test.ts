@@ -76,6 +76,12 @@ describe('そのほかの知らせ', () => {
     const message = parse({ type: 'apply', form: 'frmApply_zangyo', prefill: { date: '2026/11/17', note: 'x'.repeat(41), n: 5 }, auto: true });
     expect(message).toEqual({ type: 'apply', form: 'frmApply_zangyo', prefill: { date: '2026/11/17' }, auto: true });
   });
+  test('手で入れたパスワードは、文字で 1〜128 字のものだけ', () => {
+    expect(parse({ type: 'pwTyped', value: 'abc' })).toEqual({ type: 'pwTyped', value: 'abc' });
+    expect(parse({ type: 'pwTyped', value: '' })).toBeNull();
+    expect(parse({ type: 'pwTyped', value: 'x'.repeat(129) })).toBeNull();
+    expect(parse({ type: 'pwTyped', value: 123 })).toBeNull();
+  });
   test('申請の画面の名前に使えない字があれば捨てる', () => {
     expect(parse({ type: 'apply', form: '../evil', prefill: {} })).toBeNull();
   });
@@ -96,6 +102,12 @@ describe('allowedFrom: アプリごとの知らせは、そのアプリの画面
   });
   test('開いてよいのは申請の画面だけ', () => {
     expect(allowedFrom({ ...apply, form: 'frmAttendanceDtl' }, 'L_Tims')).toBe(false);
+  });
+  test('明細のパスワードは、給与・賞与明細とだけやりとりする', () => {
+    expect(allowedFrom({ type: 'pwFaceId' }, 'L_Payslip')).toBe(true);
+    expect(allowedFrom({ type: 'pwFaceId' }, 'L_Tims')).toBe(false);
+    expect(allowedFrom({ type: 'pwTyped', value: 'x' }, 'L_Payslip')).toBe(true);
+    expect(allowedFrom({ type: 'pwTyped', value: 'x' }, 'YIF_walk_the_talk')).toBe(false);
   });
   test('ほかの知らせは、どのアプリからでも', () => {
     expect(allowedFrom({ type: 'ready' }, 'L_Payslip')).toBe(true);

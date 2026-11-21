@@ -1,7 +1,7 @@
 // £-TiMS 勤怠管理（アプリケーション ID: L_Tims）の見た目と動き。
 //
 // 画面は3つ:
-//   frmLTiMSTop      … メニュー（勤怠管理・勤怠申請・システム設定）とお知らせ
+//   frmLTiMSTop      … お知らせとメニュー（勤怠管理・勤怠申請・システム設定）
 //   frmAttendance    … 勤務表。パソコン向けの月のカレンダーを、スマホでは縦の一覧にする
 //                      （上に「今日」と「過ぎたのに未登録の日」を集め、その下にほかの日を日付の順に）
 //   frmAttendanceDtl … 勤怠実績登録（1日分の入力）。入力欄をスマホの幅に並べ直す
@@ -11,8 +11,13 @@ import type { AppSkin } from './appStyles';
 import { cardGrid, fillButton, fillInput, fillLabel, fullWidth, listToBottom, place, row, scoped, searchBox, searchField, sheetDialog, text } from './layout';
 
 // ---------------------------------------------------------------------------
-// メニュー（frmLTiMSTop）: メニューのカード → お知らせ → 各種申請。タイトル・ロゴ・時計は出さない
+// メニュー（frmLTiMSTop）: 名前 → お知らせ → メニューのカード → 各種申請。タイトル・ロゴ・時計は出さない
+//   EZCraft では、名前とカードが上の段（R1）、お知らせと各種申請が下の段（R2）にある。
+//   お知らせをカードの上に出すため、上の段にお知らせの場所を空けて、お知らせ（R2 の中の部品）をそこへ上げる。
+//   下の段の部品は、下の段の上の端（= 上の段の下の端）からの位置で置くので、上の段の高さのぶんだけ上にずらす。
 // ---------------------------------------------------------------------------
+/** 上の段（名前・お知らせの場所・カード）の高さ。お知らせの行の高さ（--myapp-ann）で変わる */
+const TOP_R1 = (extra: number) => `calc(${extra}px + var(--myapp-ann, 150px))`;
 const TOP_CSS = `
 ${fullWidth('frmLTiMSTop')}
 #frmLTiMSTop,
@@ -20,8 +25,8 @@ ${fullWidth('frmLTiMSTop')}
 #frmLTiMSTop_R2 { height: auto !important; }
 #frmLTiMSTop .tcc-tile.col { float: none !important; }
 
-/* メニュー */
-#frmLTiMSTop_R1_C2, #frmLTiMSTop_blank3 { height: 228px !important; }
+/* 上の段: 名前（12〜36）・お知らせの場所（48〜76＋お知らせ）・カード2枚 */
+#frmLTiMSTop_R1_C2, #frmLTiMSTop_blank3 { height: ${TOP_R1(252)} !important; }
 ${place('frmLTiMSTop_lblUser', '16px', 12, 'calc(100% - 32px)', 24)}
 #frmLTiMSTop_lblUser .tcc-label-text { text-align: left !important; }
 #frmLTiMSTop_lblUser * { font-size: 15px !important; font-weight: 400 !important; color: var(--myapp-text2) !important; }
@@ -30,23 +35,19 @@ ${place('frmLTiMSTop_lblUser', '16px', 12, 'calc(100% - 32px)', 24)}
 /* 名前の行も、小見出し（お知らせ・各種申請）と同じく、画面の左から 20pt に */
 #frmLTiMSTop_lblUser .tcc-label { padding-left: 0 !important; border-left-width: 0 !important; }
 #frmLTiMSTop_lblUser .tcc-label-text { padding-left: 4px !important; }
-${row('frmLTiMSTop_btnAttendance', 48, 76)}
-/* 説明は、見出しの文字（色の付いた印の右）の下にそろえる */
-${place('frmLTiMSTop_lbl1', '88px', 86, 'calc(100% - 136px)', 20)}
-${row('frmLTiMSTop_btnApply', 136, 76)}
-${place('frmLTiMSTop_lbl5', '88px', 174, 'calc(100% - 136px)', 20)}
-${text('frmLTiMSTop_lbl1', 13, { muted: true })}
-${text('frmLTiMSTop_lbl5', 13, { muted: true })}
-#frmLTiMSTop_lbl1 .tcc-label, #frmLTiMSTop_lbl5 .tcc-label, #frmLTiMSTop_lbl1 .tcc-label-text, #frmLTiMSTop_lbl5 .tcc-label-text { padding: 0 !important; margin: 0 !important; text-indent: 0 !important; }
-/* メニューのカード: マイアプリ・勤怠申請の一覧と同じく、左に色の付いた四角の印（白い線の絵）。EZCraft の小さな印は出さない */
+/* カードは見出しだけ（説明の lbl1・lbl5 は出さない）。お知らせの下に並べる */
+${row('frmLTiMSTop_btnAttendance', 96, 64)}
+#frmLTiMSTop #frmLTiMSTop_btnAttendance { top: ${TOP_R1(96)} !important; }
+${row('frmLTiMSTop_btnApply', 172, 64)}
+#frmLTiMSTop #frmLTiMSTop_btnApply { top: ${TOP_R1(172)} !important; }
+/* メニューのカード: マイアプリ・勤怠申請の一覧と同じく、左に薄い青の四角の印（青い線の絵）。EZCraft の小さな印は出さない */
 #frmLTiMSTop_btnAttendance .tcc-btn > i, #frmLTiMSTop_btnApply .tcc-btn > i { display: none !important; }
 /* fillButton（余白 0）より強く書く */
 #frmLTiMSTop #frmLTiMSTop_btnAttendance .tcc-btn, #frmLTiMSTop #frmLTiMSTop_btnApply .tcc-btn {
   position: relative !important;
   justify-content: flex-start !important;
-  align-items: flex-start !important;
-  /* 題名は上から 14px、その下（説明のラベル）に1行ぶん空ける */
-  padding: 14px 16px 0 72px !important;
+  align-items: center !important;
+  padding: 0 16px 0 72px !important;
   font-size: 17px !important;
   line-height: 22px !important;
   color: var(--myapp-text) !important;
@@ -55,8 +56,8 @@ ${text('frmLTiMSTop_lbl5', 13, { muted: true })}
 #frmLTiMSTop_btnAttendance .tcc-btn::before, #frmLTiMSTop_btnApply .tcc-btn::before {
   content: ''; position: absolute; left: 16px; top: 50%; width: 40px; height: 40px; margin-top: -20px; border-radius: 10px;
 }
-#frmLTiMSTop_btnAttendance .tcc-btn::before { background: #007AFF ${iconImage('M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4')} center / 24px no-repeat; }
-#frmLTiMSTop_btnApply .tcc-btn::before { background: #5856D6 ${iconImage('M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M14 3v5h5 M9 13h6 M9 17h6')} center / 24px no-repeat; }
+${iconTile('#frmLTiMSTop_btnAttendance .tcc-btn::before', 'M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4', '24px')}
+${iconTile('#frmLTiMSTop_btnApply .tcc-btn::before', 'M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M14 3v5h5 M9 13h6 M9 17h6', '24px')}
 /* お知らせの題名が2行になるときは、行の長さをそろえて折り返す（2行目が「す！」だけにならないように） */
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll td { text-wrap: balance; }
 /* システム設定は、管理する人の仕事（パソコンで使う）。ふつうの人が押すと「権限がありません」になるので、スマホでは出さない */
@@ -64,14 +65,16 @@ ${text('frmLTiMSTop_lbl5', 13, { muted: true })}
 ${fillButton('frmLTiMSTop_btnAttendance')}
 ${fillButton('frmLTiMSTop_btnApply')}
 
-/* お知らせと各種申請。お知らせのカードは、お知らせの行の高さに合わせる（JS の topAnnouncement が --myapp-ann に入れる。
-   1件だけのときに、下に空の白い面が残らないように）。その下の「各種申請」も、それに合わせて上下する */
-#frmLTiMSTop_R2_C1, #frmLTiMSTop_blank2 { height: calc(290px + var(--myapp-ann, 150px)) !important; }
-${place('frmLTiMSTop_lbl_announcement_title', '16px', 8, '160px', 24)}
+/* お知らせ。カードは、お知らせの行の高さに合わせる（JS の topAnnouncement が --myapp-ann に入れる。
+   1件だけのときに、下に空の白い面が残らないように）。その下のメニューのカードも、それに合わせて上下する。
+   お知らせは下の段（R2）の部品なので、上の段の高さ（TOP_R1(252)）のぶん上へ: 見出しは全体の 48、表は 76 から */
+#frmLTiMSTop_R2, #frmLTiMSTop_R2_C1, #frmLTiMSTop_blank2, #frmLTiMSTop_blank2_body { overflow: visible !important; }
+${place('frmLTiMSTop_lbl_announcement_title', '16px', 48 - 252, '160px', 24)}
+#frmLTiMSTop #frmLTiMSTop_lbl_announcement_title { top: calc(-204px - var(--myapp-ann, 150px)) !important; }
 /* 小見出し（お知らせ・各種申請）は、ほかの画面の小見出しと同じく文字だけに（ベル・紙の印は、文字にくっついて見える） */
 #frmLTiMSTop_lbl_announcement_title i, #frmLTiMSTop_lbl12 i { display: none !important; }
-${row('frmLTiMSTop_grdAnnouncement', 36, 150)}
-#frmLTiMSTop #frmLTiMSTop_grdAnnouncement { height: var(--myapp-ann, 150px) !important; }
+${row('frmLTiMSTop_grdAnnouncement', 76 - 252, 150)}
+#frmLTiMSTop #frmLTiMSTop_grdAnnouncement { top: calc(-176px - var(--myapp-ann, 150px)) !important; height: var(--myapp-ann, 150px) !important; }
 ${cardGrid('frmLTiMSTop_grdAnnouncement', [[3], [1, 2]])}
 /* お知らせの、中身のない行（区切りの線だけが出る）は出さない。最後の行の下には線を引かない */
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr:not(:has(> td.frmLTiMSTop_grdAnnouncement_tdCol3:not([data-myapp-blank]))) { display: none !important; }
@@ -79,15 +82,15 @@ ${cardGrid('frmLTiMSTop_grdAnnouncement', [[3], [1, 2]])}
 /* お知らせは読むだけ。押しても選んだ色を残さない（選ぶ意味のない表なので、青く光ったままにしない） */
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr.myapp-tapped,
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr.myapp-tapped > td { background-color: transparent !important; }
-${place('frmLTiMSTop_lbl12', '16px', 204, '160px', 24)}
-#frmLTiMSTop #frmLTiMSTop_lbl12 { top: calc(54px + var(--myapp-ann, 150px)) !important; }
-${row('frmLTiMSTop_grdApply', 232, 196)}
-#frmLTiMSTop #frmLTiMSTop_grdApply { top: calc(82px + var(--myapp-ann, 150px)) !important; }
+/* 各種申請: 下の段に残るのはこれだけ（下の段の上の端から） */
+#frmLTiMSTop_R2_C1, #frmLTiMSTop_blank2 { height: 248px !important; }
+${place('frmLTiMSTop_lbl12', '16px', 8, '160px', 24)}
+${row('frmLTiMSTop_grdApply', 36, 196)}
 ${cardGrid('frmLTiMSTop_grdApply', [[3], [2, 1], [5, 6]])}
 /* 申請中のものがないときは、「ありません」の一行ぶんの高さに */
 #frmLTiMSTop_grdApply.myapp-empty { height: 72px !important; }
 #frmLTiMSTop_R2:has(#frmLTiMSTop_grdApply.myapp-empty) #frmLTiMSTop_R2_C1,
-#frmLTiMSTop_R2:has(#frmLTiMSTop_grdApply.myapp-empty) #frmLTiMSTop_blank2 { height: calc(170px + var(--myapp-ann, 150px)) !important; }
+#frmLTiMSTop_R2:has(#frmLTiMSTop_grdApply.myapp-empty) #frmLTiMSTop_blank2 { height: 124px !important; }
 `;
 
 // ---------------------------------------------------------------------------
@@ -1134,22 +1137,30 @@ ${place(D('remarks'), '16px', 36, 'calc(100% - 32px)', 88)}
 // ---------------------------------------------------------------------------
 const AP = (id: string) => `frmApply_${id}`;
 /**
- * 申請の種類（よく使う順に）: ボタン・名前・説明の部品と、アイコン（色・24×24 の線の SVG の path）・短い説明。
+ * 申請の種類（よく使う順に）: ボタン・名前・説明の部品と、アイコン（24×24 の線の SVG の path。色はどれも同じ: iconTile）・短い説明。
  * 説明は Web 版の「〜する場合に使用」を、いつ使うかが分かる短い言葉にする（relabel）
  */
 const APPLY_KINDS = [
-  { button: 'zangyo', title: 'lbl20', note: 'lbl39', color: '#FF9500', icon: 'M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18z M12 7v5l3.5 2', text: '残業・深夜勤務をするとき' },
-  { button: 'yukyu', title: 'lbl19', note: 'lbl38', color: '#34C759', icon: 'M12 8a4 4 0 1 1 0 8a4 4 0 1 1 0-8z M12 2.5v2 M12 19.5v2 M2.5 12h2 M19.5 12h2 M5.3 5.3l1.4 1.4 M17.3 17.3l1.4 1.4 M5.3 18.7l1.4-1.4 M17.3 6.7l1.4-1.4', text: '有給休暇を取るとき' },
-  { button: 'chikokuSotai', title: 'lbl22', note: 'lbl41', color: '#FF2D55', icon: 'M12 6a7 7 0 1 1 0 14a7 7 0 1 1 0-14z M12 9.5V13l2 1.5 M5 4 3 6 M19 4l2 2', text: '遅刻・早退をするとき' },
-  { button: 'kyuzitu', title: 'lbl17', note: 'lbl36', color: '#5856D6', icon: 'M5 8h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 20H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 8z M9 8V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V8', text: '休日に出勤するとき' },
-  { button: 'daikyu', title: 'lbl16', note: 'lbl35', color: '#30B0C7', icon: 'M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4 M9 15l2 2 4-4', text: '休日出勤のかわりに休むとき' },
-  { button: 'hurikyu', title: 'lbl18', note: 'lbl37', color: '#007AFF', icon: 'M4 8h13 M14 4.5 17.5 8 14 11.5 M20 16H7 M10 12.5 6.5 16l3.5 3.5', text: '休日と出勤日を入れ替えるとき' },
-  { button: 'tokkyu', title: 'lbl21', note: 'lbl40', color: '#AF52DE', icon: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z', text: '慶弔などの特別休暇を取るとき' },
+  { button: 'zangyo', title: 'lbl20', note: 'lbl39', icon: 'M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18z M12 7v5l3.5 2', text: '残業・深夜勤務をするとき' },
+  { button: 'yukyu', title: 'lbl19', note: 'lbl38', icon: 'M12 8a4 4 0 1 1 0 8a4 4 0 1 1 0-8z M12 2.5v2 M12 19.5v2 M2.5 12h2 M19.5 12h2 M5.3 5.3l1.4 1.4 M17.3 17.3l1.4 1.4 M5.3 18.7l1.4-1.4 M17.3 6.7l1.4-1.4', text: '有給休暇を取るとき' },
+  { button: 'chikokuSotai', title: 'lbl22', note: 'lbl41', icon: 'M12 6a7 7 0 1 1 0 14a7 7 0 1 1 0-14z M12 9.5V13l2 1.5 M5 4 3 6 M19 4l2 2', text: '遅刻・早退をするとき' },
+  { button: 'kyuzitu', title: 'lbl17', note: 'lbl36', icon: 'M5 8h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 20H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 8z M9 8V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V8', text: '休日に出勤するとき' },
+  { button: 'daikyu', title: 'lbl16', note: 'lbl35', icon: 'M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4 M9 15l2 2 4-4', text: '休日出勤のかわりに休むとき' },
+  { button: 'hurikyu', title: 'lbl18', note: 'lbl37', icon: 'M4 8h13 M14 4.5 17.5 8 14 11.5 M20 16H7 M10 12.5 6.5 16l3.5 3.5', text: '休日と出勤日を入れ替えるとき' },
+  { button: 'tokkyu', title: 'lbl21', note: 'lbl40', icon: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z', text: '慶弔などの特別休暇を取るとき' },
 ];
 /** アイコンを、色の付いた四角に白い線で描いた画像（CSS の背景）にする */
-function iconImage(path: string): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+function iconImage(path: string, stroke: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+/**
+ * アイコンの四角: マイアプリのアイコンと同じ「薄い青の地に青い線」（src/theme.ts の iconTile・iconGlyph）。
+ * 線の色は絵の中に書くので、ライトとダークで別の絵にする（ダークは :root[data-myapp-theme="dark"]）
+ */
+function iconTile(selector: string, path: string, size: string): string {
+  return `${selector} { background: var(--myapp-icon-tile) ${iconImage(path, '#007AFF')} center / ${size} no-repeat; }
+:root[data-myapp-theme="dark"] ${selector} { background-image: ${iconImage(path, '#409CFF')}; }`;
 }
 const APPLY_CARD = 76;
 const APPLY_GAP = 12;
@@ -1195,7 +1206,7 @@ const APPLY_CSS = `
 ${['lbl2', 'lbl3', 'lbl4', 'lbl5', 'lbl6', 'lbl7', 'lbl8', 'lin3', 'lin4', 'lin5', 'lin6', 'lin7', 'lin8', 'lin9']
   .map((id) => `#${AP(id)}`)
   .join(',\n')} { display: none !important; }
-${APPLY_KINDS.map(({ button, title, note, color, icon }, i) => {
+${APPLY_KINDS.map(({ button, title, note, icon }, i) => {
   const top = 16 + i * (APPLY_CARD + APPLY_GAP);
   return `
 ${row(AP(button), top, APPLY_CARD)}
@@ -1215,8 +1226,8 @@ ${fillButton(AP(button))}
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: ${color} ${iconImage(icon)} center / 22px 22px no-repeat;
 }
+${iconTile(`#${AP(button)} .tcc-btn::before`, icon, '22px 22px')}
 #${AP(button)} .tcc-btn::after {
   content: '›';
   position: absolute;
@@ -2838,7 +2849,9 @@ const SCRIPT = `
   }
 
   // 勤怠実績登録: 残業。所定の時間（勤務体系ごと）を超えて働いたぶんを残業とし、その場で残業申請を作れるようにする。
-  //   - 「残業申請を作る」を押すと、日付と時刻（退勤から残業のぶんさかのぼった時刻〜退勤）を入れた残業申請の画面が開く
+  //   - 「残業申請を作る」を押すと、日付と時刻（その日に登録した出勤〜退勤。例: 9:00〜18:00）を入れた残業申請の画面が開く。
+  //     会社の決まりで、残業申請の時刻は残業の時間帯ではなく、その日の勤務の始まりから終わりまでを書く。
+  //     出勤の時刻が分からないときだけ、退勤から残業のぶんさかのぼった時刻を入れる
   //   - 時刻を入れ直して残業のある日を「登録」したら、登録が終わったところで、その画面を自動で開く（理由を入れて登録するだけ）。
   //     時刻を変えずに登録したとき（プロジェクトだけ直したときなど）は開かない
   //   この端末から残業申請を出した日は「作成済み」と出し、自動では開かない
@@ -2863,6 +2876,8 @@ ${OVERTIME_MATH_JS}
     return out;
   }
   function textOf(id) { var el = document.getElementById(id); return el ? (el.textContent || '').trim() : ''; }
+  // 時刻の欄に入れる形（9:00 → 09:00。EZCraft の時刻の欄と同じ、時を2けたに）
+  function clock(min) { var t = hhmm(min); return t.length === 4 ? '0' + t : t; }
   function overtimeOf() {
     var tp = textOf('frmAttendanceDtl_work_tp');
     var rule = STANDARD.filter(function (r) { return tp.indexOf(r.match) >= 0; })[0];
@@ -2877,13 +2892,14 @@ ${OVERTIME_MATH_JS}
     if (start !== null && end < start) end += 1440;
     var ot = work - rule.minutes;
     if (ot <= 0) return null;
-    var from = overtimeStart(end, ot, dtlBreaks(start));
+    // 申請の開始は出勤の時刻（分からなければ、退勤から残業のぶんさかのぼった時刻）
+    var from = start !== null ? start : overtimeStart(end, ot, dtlBreaks(start));
     if (from < 0) return null;
     var dm = /(\\d{4})\\D(\\d{1,2})\\D(\\d{1,2})/.exec(textOf('frmAttendanceDtl_lblDt'));
     if (!dm) return null;
     var p = function (n) { return ('0' + n).slice(-2); };
     var date = dm[1] + '/' + p(+dm[2]) + '/' + p(+dm[3]);
-    return { date: date, from: hhmm(from), to: hhmm(end), minutes: ot, standard: rule.minutes };
+    return { date: date, from: clock(from), to: clock(end), minutes: ot, standard: rule.minutes };
   }
   function postApply(ot, auto) {
     try {
@@ -3345,19 +3361,23 @@ ${OVERTIME_MATH_JS}
     for (var k in heads) if (pattern.test(heads[k])) return +k;
     return -1;
   }
-  // 「出力」タブの一覧から、日ごとの退勤と残業（日付 → { end: 分, ot: 分 }）。見ている月の分だけ
+  // 「出力」タブの一覧から、日ごとの出勤・退勤と残業（日付 → { start: 分 または null, end: 分, ot: 分 }）。見ている月の分だけ
   function attdTimes() {
     var map = {};
     var grid = document.getElementById('frmAttendance_grdAttd');
     if (!grid) return map;
+    var startCol = columnOf(grid, 10, /出勤|始業|開始/);
     var endCol = columnOf(grid, 11, /退勤|終業|終了/);
     var otCol = columnOf(grid, 29, /残業/);
     if (endCol < 0 || otCol < 0) return map;
     grid.querySelectorAll('.TccGridBodyScroll tbody tr').forEach(function (tr) {
       var date = (cellText(tr, 1).match(/\\d{4}\\/\\d{2}\\/\\d{2}/) || [])[0];
+      var start = startCol < 0 ? null : minutesOf(cellText(tr, startCol));
       var end = minutesOf(cellText(tr, endCol));
       var ot = minutesOf(cellText(tr, otCol));
-      if (date && end !== null && ot && end - ot >= 0) map[date] = { end: end, ot: ot };
+      // 退勤が出勤より前の時刻なら、日をまたいだ（1:00 は 25:00）
+      if (start !== null && end !== null && end < start) end += 1440;
+      if (date && end !== null && ot && end - ot >= 0) map[date] = { start: start, end: end, ot: ot };
     });
     return map;
   }
@@ -3395,7 +3415,9 @@ ${OVERTIME_MATH_JS}
     closePicker();
     var days = otDays().map(function (d) {
       var t = times[d.date];
-      return { date: d.date, label: d.label, applied: d.applied, from: t ? hhmm(t.end - t.ot) : '', to: t ? hhmm(t.end) : '', ot: t ? t.ot : 0 };
+      // 申請の時刻は、その日の出勤〜退勤（出勤が分からなければ、退勤から残業のぶんさかのぼった時刻〜退勤）
+      var from = t ? (t.start !== null ? t.start : t.end - t.ot) : null;
+      return { date: d.date, label: d.label, applied: d.applied, from: t ? clock(from) : '', to: t ? clock(t.end) : '', ot: t ? t.ot : 0 };
     }).filter(function (d) { return d.to; });
     var back = document.createElement('div');
     back.className = 'myapp-pick-back';
@@ -3905,8 +3927,15 @@ ${OVERTIME_MATH_JS}
     var d = new Date();
     return Math.min(23 * 60 + 55, d.getHours() * 60 + Math.round(d.getMinutes() / 5) * 5);
   }
-  // 回す列を1つ作る。values は [{ label, value }]。真ん中に来た値が変わるたびに onPick を呼ぶ
+  // 回す列を1つ作る。values は [{ label, value }]。真ん中に来た値が変わるたびに onPick を呼ぶ。
+  // 列は端で止まらず、ぐるぐる回る（分なら 59 の下に 00、00 の上に 59。iOS の時刻の選び方と同じ）。
+  // 同じ並びを何回も続けて置き、回し終わったら（指を離して止まったら）真ん中の並びの同じ値へ、見た目を変えずに移る
   function dialWheel(values, start, name, onPick) {
+    var n = values.length;
+    // 並びの数は奇数。強くはじいても端に着かない長さ（20000px）にする
+    var copies = Math.max(5, Math.ceil(20000 / (n * DIAL_ROW))) | 1;
+    var mid = Math.floor(copies / 2) * n; // 真ん中の並びの、最初の行
+    var total = copies * n;
     var wheel = document.createElement('div');
     wheel.className = 'myapp-dial-wheel';
     wheel.setAttribute('aria-label', name);
@@ -3914,23 +3943,27 @@ ${OVERTIME_MATH_JS}
     wheel.setAttribute('role', 'slider');
     wheel.setAttribute('tabindex', '0');
     wheel.setAttribute('aria-valuemin', String(values[0].value));
-    wheel.setAttribute('aria-valuemax', String(values[values.length - 1].value));
+    wheel.setAttribute('aria-valuemax', String(values[n - 1].value));
     var list = document.createElement('div');
     list.className = 'myapp-dial-list';
-    values.forEach(function (v, i) {
-      // 止まる位置は行（div）で決め、筒の形に見せる変形は中の文字（span）にだけかける（行を変形すると、止まる位置がずれる）
-      var item = document.createElement('div');
-      item.className = 'myapp-dial-item';
-      item.setAttribute('aria-hidden', 'true'); // 読み上げは、回している列（slider）の値で
-      var face = document.createElement('span');
-      face.textContent = v.label;
-      item.appendChild(face);
-      // 上下の値を押したら、それを真ん中まで回す
-      item.addEventListener('click', function () { wheel.scrollTo({ top: i * DIAL_ROW, behavior: 'smooth' }); });
-      list.appendChild(item);
-    });
+    for (var c = 0; c < copies; c++) {
+      values.forEach(function (v, k) {
+        var row = c * n + k;
+        // 止まる位置は行（div）で決め、筒の形に見せる変形は中の文字（span）にだけかける（行を変形すると、止まる位置がずれる）
+        var item = document.createElement('div');
+        item.className = 'myapp-dial-item';
+        item.setAttribute('aria-hidden', 'true'); // 読み上げは、回している列（slider）の値で
+        var face = document.createElement('span');
+        face.textContent = v.label;
+        item.appendChild(face);
+        // 上下の値を押したら、それを真ん中まで回す
+        item.addEventListener('click', function () { wheel.scrollTo({ top: row * DIAL_ROW, behavior: 'smooth' }); });
+        list.appendChild(item);
+      });
+    }
     wheel.appendChild(list);
-    var index = -1;
+    var index = -1; // 真ん中にある行（並び全体での番号）
+    var picked = -1; // 選ばれている値（values の番号）
     var queued = false;
     var lastTick = 0;
     function paint() {
@@ -3938,45 +3971,68 @@ ${OVERTIME_MATH_JS}
       var center = wheel.scrollTop / DIAL_ROW;
       var items = list.children;
       // 真ん中から離れた行ほど、筒の奥へ回りこむように縮めて寄せる
-      for (var i = Math.max(0, Math.floor(center) - 4); i < Math.min(items.length, Math.ceil(center) + 5); i++) {
+      for (var i = Math.max(0, Math.floor(center) - 4); i < Math.min(total, Math.ceil(center) + 5); i++) {
         var d = i - center;
         var th = Math.max(-80, Math.min(80, d * 20)) * Math.PI / 180;
         var y = DIAL_R * Math.sin(th) - d * DIAL_ROW;
         items[i].firstChild.style.transform = 'translateY(' + y.toFixed(1) + 'px) scaleY(' + Math.cos(th).toFixed(3) + ')';
       }
-      var now = Math.max(0, Math.min(values.length - 1, Math.round(center)));
+      var now = Math.max(0, Math.min(total - 1, Math.round(center)));
       if (now === index) return;
-      if (index >= 0 && Date.now() - lastTick > 35) {
-        lastTick = Date.now();
-        try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tick' })); } catch (e) {}
-      }
       if (index >= 0) items[index].classList.remove('myapp-dial-on');
       items[now].classList.add('myapp-dial-on');
       index = now;
-      wheel.setAttribute('aria-valuenow', String(values[now].value));
-      wheel.setAttribute('aria-valuetext', values[now].label + name);
-      onPick(values[now].value);
+      // 真ん中の並びへ移っただけ（値は同じ）なら、手ごたえも知らせもしない
+      var v = now % n;
+      if (v === picked) return;
+      if (picked >= 0 && Date.now() - lastTick > 35) {
+        lastTick = Date.now();
+        try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tick' })); } catch (e) {}
+      }
+      picked = v;
+      wheel.setAttribute('aria-valuenow', String(values[v].value));
+      wheel.setAttribute('aria-valuetext', values[v].label + name);
+      onPick(values[v].value);
     }
+    // 止まったら、真ん中の並びの同じ値へ移る（並びの長さのぶんだけ動かすので、見た目は変わらない）
+    var touching = false;
+    var settle = 0;
+    function recenter() {
+      if (touching || index < 0) return;
+      var want = mid + (index % n);
+      if (want === index) return;
+      wheel.scrollTop += (want - index) * DIAL_ROW;
+      paint();
+    }
+    function later() {
+      clearTimeout(settle);
+      settle = setTimeout(recenter, 160);
+    }
+    wheel.addEventListener('touchstart', function () { touching = true; clearTimeout(settle); }, { passive: true });
+    wheel.addEventListener('touchend', function () { touching = false; later(); }, { passive: true });
+    wheel.addEventListener('touchcancel', function () { touching = false; later(); }, { passive: true });
     // 1 つずつ動かす（VoiceOver の上下のスワイプ・キーボードの ↑ ↓）
     function nudge(step) {
-      var next = Math.max(0, Math.min(values.length - 1, (index < 0 ? 0 : index) + step));
+      var next = Math.max(0, Math.min(total - 1, (index < 0 ? mid : index) + step));
       wheel.scrollTop = next * DIAL_ROW;
       paint();
+      recenter();
     }
     wheel.addEventListener('keydown', function (e) {
       if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); nudge(-1); }
       else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); nudge(1); }
     });
     wheel.addEventListener('scroll', function () {
+      later(); // 回っているあいだ（指を離したあとの惰性も）は、止まるまで待つ
       if (queued) return;
       queued = true;
       requestAnimationFrame(paint);
     }, { passive: true });
-    // シートを画面に置いてから、始めの値を真ん中に
+    // シートを画面に置いてから、始めの値を、真ん中の並びで真ん中に
     wheel.__start = function () {
-      var i = 0;
-      values.forEach(function (v, k) { if (v.value === start) i = k; });
-      wheel.scrollTop = i * DIAL_ROW;
+      var k = 0;
+      values.forEach(function (v, j) { if (v.value === start) k = j; });
+      wheel.scrollTop = (mid + k) * DIAL_ROW;
       paint();
     };
     return wheel;
@@ -4420,9 +4476,6 @@ export const TIMS_SKIN: AppSkin = {
   ],
   relabel: {
     ...Object.fromEntries(APPLY_KINDS.map(({ note, text: label }) => [AP(note), label])),
-    // メニューのカードの説明（「〜を行います」）を、短い言い方に
-    frmLTiMSTop_lbl1: '毎日の出退勤と作業の登録',
-    frmLTiMSTop_lbl5: '残業・休暇などの申請と状況',
     // 代休の注意書き: 全角のかっこで囲んだ文を、ふつうの1文に
     frmApply_daikyu_lbl30: '代休を取ると、給与から控除されます。',
   },
@@ -4448,11 +4501,12 @@ export const TIMS_SKIN: AppSkin = {
     frmAttendance_grdPrj: 'データはありません',
   },
   cards: [
-    { button: 'frmLTiMSTop_btnAttendance', subtitle: 'frmLTiMSTop_lbl1' },
-    { button: 'frmLTiMSTop_btnApply', subtitle: 'frmLTiMSTop_lbl5' },
+    { button: 'frmLTiMSTop_btnAttendance' },
+    { button: 'frmLTiMSTop_btnApply' },
   ],
   sections: ['frmLTiMSTop_lbl_announcement_title', 'frmLTiMSTop_lbl12'],
-  hidden: ['frmLTiMSTop_R1_C1', 'frmLTiMSTop_lblQuit', 'frmLTiMSTop_lblYser', 'frmLTiMSTop_btnSettings'],
+  // カードの説明（lbl1・lbl5）は出さない。見出しだけで分かる
+  hidden: ['frmLTiMSTop_R1_C1', 'frmLTiMSTop_lbl1', 'frmLTiMSTop_lbl5', 'frmLTiMSTop_lblQuit', 'frmLTiMSTop_lblYser', 'frmLTiMSTop_btnSettings'],
   script: SCRIPT,
   layout: [TOP_CSS, scoped(':root.myapp-att-list', ATT_FRAME_CSS + LIST_CSS), scoped(':root.myapp-att-tab', ATT_FRAME_CSS + ATT_TABS_CSS), DTL_CSS, scoped(':root.myapp-apply-new', APPLY_FRAME_CSS + APPLY_CSS), scoped(':root.myapp-apply-tab', APPLY_FRAME_CSS + APPLY_TABS_CSS), YUKYU_CSS, ...APPLY_FORMS.map(applyFormCss), DAIKYU_CSS, REFLOW_CSS, PROJECT_SELECT_CSS, EMPLOYEE_SELECT_CSS, PICK_CSS].join('\n'),
 };
