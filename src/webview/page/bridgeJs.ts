@@ -31,8 +31,9 @@
 //    書き込みの通信（/procedure/BigData/update・insert・delete・upsert など）と、登録・削除・申請などのボタン。
 //    アプリは、重ねて開いた画面から戻ったとき、その間に書き込みがあったときだけ元の画面を読み直す。
 //    保存がうまく終わったら、ページの中にも myapp-saved を出す（勤怠実績登録が、登録のあと残業申請を開くため）。
-//    保存の途中（SAVE_WATCH_JS が見ている保存）の書き込みなら、確定してから（myapp-save-end の ok）出す。
-//    1つめの書き込みで出すと、保存の途中で残業申請が開き、あとで取り消されても、開いたまま・理由も覚えたままになっていた
+//    保存の見張り（SAVE_WATCH_JS）が見ている保存なら、見張りが保存の終わり（確定・通信が止んだ・ページが閉じる）に、
+//    うまくいったときだけ1回出す。1つめの書き込みで出すと、保存の途中で残業申請が開き、あとで取り消されても、
+//    開いたまま・理由も覚えたままになっていた。見張りが見ていない書き込みは、返事の中身がエラーでなければ、すぐ出す
 //
 // 8. ダイアログ（EZCraft の .tcc-modal と、アプリが出すシート .myapp-pick）が開いているかを知らせる（modal）。
 //    開いているあいだは、ヘッダーの ‹ や横へのスワイプで画面ごと戻らず、まずダイアログを閉じる
@@ -240,26 +241,16 @@ export const BRIDGE_JS = compactJs(`
 
   // 5. データを書き込んだら、アプリに知らせる（書き込みの通信と、登録・削除・申請などのボタン）
   var wrote = function (label) { post({ type: 'write', label: label || '' }); };
-  // 保存の途中の書き込み: 保存が終わるのを待って、うまくいったときだけ知らせる（1つの保存で1回）
-  var waitingEnd = false;
-  function savedAtEnd() {
-    if (waitingEnd) return;
-    waitingEnd = true;
-    window.addEventListener('myapp-save-end', function once(e) {
-      window.removeEventListener('myapp-save-end', once);
-      waitingEnd = false;
-      if (e.detail && e.detail.ok === true) window.dispatchEvent(new Event('myapp-saved'));
-    });
-  }
   var xhrOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url) {
     try {
       if (/\\/(update|insert|delete|upsert)\\/?$/i.test(String(url).split('?')[0])) {
         wrote();
-        // 保存がうまく終わったら、ページの中に知らせる（上の 5）
+        // 保存がうまく終わったら、ページの中に知らせる（上の 5）。保存の見張り（SAVE_WATCH_JS）が見ている保存の書き込みは、
+        // 見張りが保存の終わりに1回だけ知らせるので、ここでは知らせない（どの保存の書き込みかは、送ったときに見張りが付ける）
         this.addEventListener('load', function () {
           if (this.status < 200 || this.status >= 300) return;
-          if (document.documentElement.classList.contains('myapp-saving')) { savedAtEnd(); return; }
+          if (this.__myappDb && this.__myappDb.save) return;
           var head = '';
           try { head = String(this.responseText || '').slice(0, 300); } catch (e) {}
           if (!/"status"\\s*:\\s*"error"/.test(head)) window.dispatchEvent(new Event('myapp-saved'));
@@ -483,21 +474,34 @@ export const SAVE_WATCH_JS = compactJs(`
   };
 
   function start() {
-    saving = { at: Date.now(), steps: 0, writes: 0, pending: 0, trans: '', idle: null };
+    saving = { at: Date.now(), steps: 0, writes: 0, pending: 0, trans: '', idle: null, wrote: false, failed: false };
     document.documentElement.classList.add('myapp-saving');
     post({ type: 'saveStart' });
   }
-  function end(ok) {
+  // quiet: アプリがもうあきらめた保存（__myappSaveGiveUp）。アプリには知らせず、ページの中だけ片づける
+  function end(ok, quiet) {
     if (!saving) return;
     clearTimeout(saving.idle);
-    post({ type: 'saveEnd', ok: ok, steps: saving.steps, writes: saving.writes, ms: Date.now() - saving.at });
+    var wrote = saving.wrote;
+    if (!quiet) post({ type: 'saveEnd', ok: ok, steps: saving.steps, writes: saving.writes, ms: Date.now() - saving.at });
     saving = null;
     document.documentElement.classList.remove('myapp-saving');
-    // ページの中にも知らせる（残業申請: 取り消された保存の「作成済み」の記録を消す。timsSkin.ts）
     try { window.dispatchEvent(new CustomEvent('myapp-save-end', { detail: { ok: ok } })); } catch (e) {}
+    // 書き込んで、うまく終わった: ページの中に「保存した」と知らせる（BRIDGE_JS の 5。保存ごとに1回。残業申請を開くなど）
+    if (ok && wrote) { try { window.dispatchEvent(new Event('myapp-saved')); } catch (e) {} }
     // 失敗したら、EZCraft が出したエラーの知らせの文を、少し待ってから知らせる（裏で保存していたとき、アプリが理由として出す）
-    if (!ok) setTimeout(function () { post({ type: 'saveError', text: errorText() }); }, 400);
+    if (!ok && !quiet) setTimeout(function () { post({ type: 'saveError', text: errorText() }); }, 400);
   }
+  // アプリが、返事の来ない保存をあきらめた（src/components/EzcraftWebView/EzcraftWebView.tsx）。ページの中の見張りも終わりにする
+  // （終わりにしないと、このページのあとの保存を、終わらない保存の続きとして数え、「保存した」も知らせなくなる）
+  window.__myappSaveGiveUp = function () { end(false, true); };
+  // トランザクションを使わない保存は、通信が止んで 1 秒で終わりにする。その前にページが閉じる（EZCraft は書き込みの
+  // すぐあとに window.close を呼ぶことがある）なら、閉じる前に終わりにする（閉じたことより先に、保存の結果をアプリに届ける）
+  var closePage = window.close;
+  window.close = function () {
+    if (saving && !saving.trans && saving.pending === 0) end(!saving.failed);
+    return closePage.apply(this, arguments);
+  };
   function errorText() {
     var boxes = Array.prototype.filter.call(document.querySelectorAll('.tcc-msg-box, .tcc-modal'), function (b) { return b.offsetParent !== null; });
     var box = boxes[boxes.length - 1];
@@ -521,6 +525,7 @@ export const SAVE_WATCH_JS = compactJs(`
     saving.pending -= 1;
     saving.steps += 1;
     if (db.cmd === 'beginTrans' || db.cmd === 'commit' || WRITE_CMD.test(db.cmd)) saving.writes += 1;
+    if (WRITE_CMD.test(db.cmd) && !ok) saving.failed = true;
     if (db.cmd === 'beginTrans' && !saving.trans) saving.trans = (/"transID"\\s*:\\s*"?(\\d+)/.exec(head) || [])[1] || '';
     post({ type: 'saveStep', cmd: db.cmd, ms: Date.now() - db.at, ok: ok, steps: saving.steps, writes: saving.writes });
     if ((db.cmd === 'commit' || db.cmd === 'rollBack') && (!saving.trans || db.trans === saving.trans)) {
@@ -529,7 +534,8 @@ export const SAVE_WATCH_JS = compactJs(`
     }
     if (!saving.trans && saving.pending === 0) {
       var current = saving;
-      current.idle = setTimeout(function () { if (saving === current && current.pending === 0) end(true); }, 1000);
+      // 書き込みの返事がエラーだったなら、失敗（トランザクションなら rollBack が来るが、使わない画面は来ない）
+      current.idle = setTimeout(function () { if (saving === current && current.pending === 0) end(!current.failed); }, 1000);
     }
   }
 
@@ -552,6 +558,8 @@ export const SAVE_WATCH_JS = compactJs(`
         if (saving) {
           db.save = saving;
           db.at = Date.now();
+          // 書き込みを送った（返事より先に、ページが確定を送ることがあるので、送ったときに数える）
+          if (WRITE_CMD.test(db.cmd)) saving.wrote = true;
           saving.pending += 1;
           clearTimeout(saving.idle);
           if (!db.sync) xhr.addEventListener('loadend', function () { done(xhr); });

@@ -255,6 +255,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       webRef.current?.injectJavaScript('window.__myappCloseModal && window.__myappCloseModal(); true;');
       return;
     }
+    // シートを閉じようとした（× など）。保存が終わってページが閉じても、まとめて申請の次の1件は開かない
+    if (sheet && (savingRef.current || waitingSave)) stopApplyQueue();
     if (savingRef.current) {
       if (canLeave && moveToBackground()) return;
       updateSaving((run) => ({ ...run, backAfter: true }));
@@ -266,7 +268,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     }
     // 保存も待ちもない（保存が終わった直後に、まだ出ていた ‹ を押した）: この画面を閉じる
     closeThisScreen();
-  }, [canLeave, closeThisScreen, modalOpen, moveToBackground, requestLeaveAfterStart, updateSaving, waitingSave]);
+  }, [canLeave, closeThisScreen, modalOpen, moveToBackground, requestLeaveAfterStart, updateSaving, waitingSave, sheet]);
   // 保存のあいだと、前の保存を待っているあいだは、iOS の戻る動き（‹ とスワイプ）を止める（途中で画面が消えると、保存が切れる）。
   // 裏で続けられるときは、‹ を同じ見た目のボタンに替え、スワイプは保存の知らせの上で受けて、アプリが自分で戻る
   // （iOS の戻る動きを止めると、iOS がいったん動きを取り消すので、画面が一瞬戻ってから去って見える。2026-11-18、実機）。
@@ -368,6 +370,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         return;
       }
       updateSaving(null);
+      // ページの中の保存の見張りも終わりにする（そのままだと、このページのあとの保存を、終わらない保存の続きとして数える）
+      webRef.current?.injectJavaScript('window.__myappSaveGiveUp && window.__myappSaveGiveUp(); true;');
       if (inBackground.current) completeBackground(false, true);
       else endSave(routeKey, false);
     };
@@ -488,7 +492,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       webRef.current?.injectJavaScript('window.__myappAutoClickStop = true; true;');
     }, 15000);
     return () => clearTimeout(timer);
-  }, [launching, stopAutoClick]);
+    // 読み直したら（reloadKey）、読み直したページの分を、もう一度 15 秒待つ
+  }, [launching, stopAutoClick, reloadKey]);
 
   // 整った合図（ready）が来なくても、8 秒たったら見せる（ページの側で何かがうまく動かなかったときのため）
   useEffect(() => {

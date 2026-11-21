@@ -2872,7 +2872,8 @@ ${REASONS_JS}
     window.addEventListener('myapp-saved', function () {
       var s = form.__myappReasonSubmit;
       form.__myappReasonSubmit = null;
-      if (s && Date.now() - s.at < 60000) rememberReason(kind, s.text);
+      // 押してから5分まで（承認者の確かめに答えるのを待ち、保存が確定してから知らせが来るので、長めに待つ）
+      if (s && Date.now() - s.at < 300000) rememberReason(kind, s.text);
     });
   }
   function appliedDates() {
@@ -2954,7 +2955,7 @@ ${REASONS_JS}
       form.__myappOtSaved = true;
       window.addEventListener('myapp-saved', function () {
         var s = form.__myappOtSubmit;
-        if (!s || Date.now() - s.at > 60000) return;
+        if (!s || Date.now() - s.at > 300000) return; // 押してから5分まで（上の理由と同じ）
         form.__myappOtSubmit = null;
         if (s.reason) { try { localStorage.setItem(LAST_REASON, s.reason); } catch (e) {} }
         if (s.date) markApplied(s.date, true);
@@ -3122,8 +3123,8 @@ ${OVERTIME_MATH_JS}
       // 登録のあと EZCraft がすぐ画面を閉じることがあるので、ページの側では待たない（待つのはアプリの側。閉じたら戻ってから開く）
       window.addEventListener('myapp-saved', function () {
         var pending = form.__myappPendingApply;
-        // 確定してから知らせるので、電波が弱くて保存が長引いても間に合うように、1分まで待つ
-        if (!pending || Date.now() - pending.at > 60000) return;
+        // 確定してから知らせるので、確かめに答えるのを待ったり、電波が弱くて保存が長引いたりしても間に合うように、5分まで待つ
+        if (!pending || Date.now() - pending.at > 300000) return;
         form.__myappPendingApply = null;
         postApply(pending.ot, true);
       });

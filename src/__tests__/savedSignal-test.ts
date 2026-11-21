@@ -6,20 +6,20 @@ import { JSDOM } from 'jsdom';
 
 import { BRIDGE_JS, SAVE_WATCH_JS } from '../webview/page/bridgeJs';
 
-/** 同期の通信（beginTrans・commit・rollBack）に返す中身 */
-const SYNC_REPLY: Record<string, string> = {
-  beginTrans: '{"status":"success","meta":{"transID":"77"},"data":[]}',
-  commit: '{"status":"success","meta":{},"data":[]}',
-  rollBack: '{"status":"success","meta":{},"data":[]}',
-};
+/** 同期の通信（beginTrans・commit・rollBack）に返す中身（テストが書き換える） */
+let SYNC_REPLY: Record<string, string>;
 
-/** 偽の通信。非同期のものは、テストが finish() で終わらせる（本物と同じく load → loadend の順） */
+/**
+ * 偽の通信。非同期のものは、テストが finish() で終わらせる。本物と同じく、ページが付けた onreadystatechange が先、
+ * そのあと load → loadend の順（ページの処理が、返事を受けてすぐ次の通信（確定など）を送ることがある）
+ */
 function makeFakeXHR() {
   return class FakeXHR {
     url = '';
     async = true;
     status = 0;
     responseText = '';
+    onreadystatechange: (() => void) | null = null;
     private listeners: Record<string, (() => void)[]> = {};
     open(_method: string, url: string, async?: boolean) {
       this.url = url;
@@ -38,6 +38,7 @@ function makeFakeXHR() {
     finish(text = '{"status":"success","meta":{},"data":[]}', status = 200) {
       this.status = status;
       this.responseText = text;
+      this.onreadystatechange?.call(this);
       for (const type of ['load', 'loadend']) (this.listeners[type] ?? []).forEach((fn) => fn.call(this));
     }
   };
@@ -47,23 +48,32 @@ type FakeXHR = InstanceType<ReturnType<typeof makeFakeXHR>>;
 let dom: JSDOM;
 let XHR: ReturnType<typeof makeFakeXHR>;
 let saved: number;
+/** アプリに届いた知らせの種類（順に）。「保存した」はページの中の知らせなので saved として並べる */
+let events: string[];
 
-/** EZCraft の Db.js と同じ形で通信する（async: false は同期） */
-function request(cmd: string, { sync = false, query = '' } = {}): FakeXHR {
+/** EZCraft の Db.js と同じ形で通信する（async: false は同期）。then があれば、返事を受けたページの処理として先に走らせる */
+function request(cmd: string, { sync = false, query = '', then }: { sync?: boolean; query?: string; then?: () => void } = {}): FakeXHR {
   const xhr = new XHR();
   xhr.open(sync ? 'GET' : 'POST', `/procedure/BigData/${cmd}/${query ? `?${query}` : ''}`, !sync);
+  if (then) xhr.onreadystatechange = then;
   xhr.send();
   return xhr;
 }
 const wait = (ms: number) => new Promise((resolve) => dom.window.setTimeout(resolve, ms));
 
 beforeEach(() => {
+  SYNC_REPLY = {
+    beginTrans: '{"status":"success","meta":{"transID":"77"},"data":[]}',
+    commit: '{"status":"success","meta":{},"data":[]}',
+    rollBack: '{"status":"success","meta":{},"data":[]}',
+  };
+  events = [];
   XHR = makeFakeXHR();
   dom = new JSDOM('<!doctype html><html><body><div class="tcc-btn" id="ins"><a>登 録</a></div></body></html>', {
     runScripts: 'outside-only',
   });
   const w = dom.window as unknown as { ReactNativeWebView: unknown; XMLHttpRequest: unknown; eval: (js: string) => unknown };
-  w.ReactNativeWebView = { postMessage: () => {} };
+  w.ReactNativeWebView = { postMessage: (json: string) => events.push((JSON.parse(json) as { type: string }).type) };
   w.XMLHttpRequest = XHR;
   // ページに入れるのと同じ順（EzcraftWebView の afterLoadJs）
   w.eval(BRIDGE_JS);
@@ -71,6 +81,7 @@ beforeEach(() => {
   saved = 0;
   dom.window.addEventListener('myapp-saved', () => {
     saved += 1;
+    events.push('saved');
   });
 });
 afterEach(() => {
@@ -97,14 +108,19 @@ test('トランザクションの保存が取り消された（rollBack）ら、
 test('確定の返事がエラーなら、知らせない', () => {
   request('beginTrans', { sync: true });
   request('upsert').finish();
-  const commit = new XHR();
-  commit.open('GET', '/procedure/BigData/commit/?transId=77', false);
-  commit.send = function () {
-    this.status = 200;
-    this.responseText = '{"status":"error","message":"x"}';
-  };
-  commit.send();
+  SYNC_REPLY.commit = '{"status":"error","message":"x"}';
+  request('commit', { sync: true, query: 'transId=77' });
   expect(saved).toBe(0);
+});
+
+test('ページが、最後の書き込みの返事を受けてすぐ確定・取り消しを送っても、確定したときだけ1回知らせる', () => {
+  // ページの処理（onreadystatechange）が、アプリの見張りより先に走り、その中で同期の確定を送る
+  request('beginTrans', { sync: true });
+  request('upsert', { then: () => request('rollBack', { sync: true, query: 'transId=77' }) }).finish();
+  expect(saved).toBe(0);
+  request('beginTrans', { sync: true });
+  request('upsert', { then: () => request('commit', { sync: true, query: 'transId=77' }) }).finish();
+  expect(saved).toBe(1);
 });
 
 test('トランザクションを使わない保存（登録を押してからの書き込み）: 通信が止んでから知らせる', async () => {
@@ -112,6 +128,36 @@ test('トランザクションを使わない保存（登録を押してから�
   request('insert').finish();
   expect(saved).toBe(0);
   await wait(1100); // 通信が止んで 1 秒（SAVE_WATCH_JS）
+  expect(saved).toBe(1);
+});
+
+test('トランザクションを使わない保存で、書き込みの返事がエラーなら、知らせない（失敗として終わる）', async () => {
+  (dom.window.document.querySelector('#ins a') as HTMLElement).click();
+  request('insert').finish('{"status":"error","message":"x"}');
+  await wait(1100);
+  expect(saved).toBe(0);
+  expect(events).toContain('saveEnd');
+});
+
+test('トランザクションを使わない保存のすぐあとにページが閉じたら、閉じる前に保存を終わりにして知らせる', () => {
+  (dom.window.document.querySelector('#ins a') as HTMLElement).click();
+  request('insert').finish();
+  // EZCraft が書き込みのすぐあとに閉じる（BRIDGE_JS がアプリへの「閉じて」に替えてある）
+  (dom.window as unknown as { eval: (js: string) => unknown }).eval('window.close()');
+  expect(events.filter((e) => ['saveEnd', 'saved', 'close'].includes(e))).toEqual(['saveEnd', 'saved', 'close']);
+});
+
+test('アプリがあきらめた保存は、ページの中も終わりにする（あとの保存を、終わらない保存の続きとして数えない）', () => {
+  request('beginTrans', { sync: true });
+  request('upsert').finish();
+  (dom.window as unknown as { __myappSaveGiveUp: () => void }).__myappSaveGiveUp();
+  expect(dom.window.document.documentElement.classList.contains('myapp-saving')).toBe(false);
+  expect(events.filter((e) => e === 'saveEnd')).toEqual([]); // アプリには、もう知らせない
+  // 次の保存は、新しい保存として数えて、確定したら知らせる
+  SYNC_REPLY.beginTrans = '{"status":"success","meta":{"transID":"78"},"data":[]}';
+  request('beginTrans', { sync: true });
+  request('upsert').finish();
+  request('commit', { sync: true, query: 'transId=78' });
   expect(saved).toBe(1);
 });
 
