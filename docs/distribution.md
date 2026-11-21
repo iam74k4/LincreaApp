@@ -1,117 +1,91 @@
-# 登録した iPhone に配る（EAS のリンク）
+# TestFlight で配る（develop に入ったら自動で）
 
-登録した iPhone だけに、リンクから LINCREA を入れてもらう（Apple の Ad Hoc 配布。EAS の「社内配布」）。
-App Store の審査は通さない。コマンドは、このフォルダ（LincreaApp）で打つ。
+LINCREA は TestFlight で配る。develop にプルリクエストをマージすると、GitHub Actions が Xcode で版を作り、TestFlight に出す。
+使う人は、iPhone の TestFlight アプリから入れる。**デベロッパモードも、iPhone の登録（UDID）も要らない。**
+版を作るのも送るのも GitHub の中だけで行う（Expo のクラウド・EAS は使わない。eas.json もない）。
 
-## 1. 新しい人の iPhone を登録する（1台につき1回）
+## 流れ
 
-1. Mac で、登録用のリンクを作る
-
-   ```bash
-   npx eas-cli@latest device:create
-   ```
-
-   「Website」を選ぶと、リンクと QR コードが出る。
-
-2. 相手に、そのリンクを **iPhone の Safari** で開いてもらう
-   - 「構成プロファイルのダウンロードを許可しますか？」→「許可」
-   - 設定アプリを開き、上に出る「プロファイルがダウンロードされました」→「インストール」→ パスコード
-   - 画面に iPhone の番号（UDID）が出たら、登録は済み。プロファイルは「設定 → 一般 → VPN とデバイス管理」から消してよい
-
-3. 登録した iPhone は、次に作る版から入れられる（すでに配った版には入らない。下の 2. で作り直す）
-
-登録できるのは、iPhone で **1年に100台まで**。消しても、枠が戻るのは開発者の会員を更新したとき。
-
-## 2. 版を作って配る
-
-```bash
-npx eas-cli@latest build --platform ios --profile preview
+```
+作業ブランチ ──プルリクエスト（チェック。check.yml）──▶ develop にマージ
+                                                    │
+                  GitHub Actions「TestFlight に出す」（.github/workflows/testflight.yml。macOS 26・Xcode 26）
+                                                    │ 1. チェック（型・lint・テスト・ページのスクリプト）
+                                                    │ 2. ビルド番号を決める（作った日時。例 261121.1830）
+                                                    │ 3. ios フォルダを作る（npx expo prebuild）→ CocoaPods
+                                                    │ 4. Xcode で作る（署名は Xcode が API キーで自動で用意）
+                                                    │ 5. App Store Connect に送る
+                                                    ▼ 20〜40 分
+                  App Store Connect（Apple の処理に 10〜30 分）→ TestFlight → 使う人の iPhone
 ```
 
-- Expo のクラウドで作る（15〜30分ほど）。登録した iPhone を選ぶ画面が出たら、配る相手の iPhone を選ぶ
-- 終わると、入れるためのリンクと QR コードが出る（expo.dev のビルドのページにも出る）
-- 相手は、そのリンクを **iPhone の Safari** で開いて「インストール」を押す。ホーム画面に LINCREA が出る
-- iPhone（iOS 16 以降）では、入れたあとに **デベロッパモード** をオンにしないと開けない（設定 → プライバシーとセキュリティ → デベロッパモード。iPhone が再起動する。1台につき1回）。
-  Expo の説明: https://docs.expo.dev/guides/ios-developer-mode/ 。デベロッパモードなしで使ってもらうには、TestFlight で配る（下の「App Store・TestFlight に出すとき」）
-- 作った版は **1年で使えなくなる**。その前に作り直して、入れ直してもらう
-- 無料の枠では、iOS は15回まで作れる
+- 手順書だけの変更（`docs/`・`*.md`）では、版を作らない
+- 続けてマージしたときは、前のが終わってから次を作る
+- 進み具合は GitHub の「Actions」、できあがりは App Store Connect の「TestFlight」で見る
+- 手で始めることもできる（Actions →「TestFlight に出す」→「Run workflow」）
+  - develop を選び「TestFlight に送る」をつけたまま → いつもと同じく出す
+  - ほかのブランチ、または「TestFlight に送る」を外す → 署名せずに作れるかだけを確かめる（送らない）。Xcode を上げるときなどに使う
 
-リンクは、知っている人なら誰でもダウンロードできる（動くのは登録した iPhone だけ）。会社の人にだけ渡す。
+## ブランチの役割（develop と main）
 
-## 3. 直しを送る（作り直さずに）
-
-画面や文言、EZCraft のページに入れるスクリプト（src/webview/）など、JavaScript だけの直しは、作り直さずに送れる。
-
-```bash
-npx eas-cli@latest update --channel preview --environment preview --message "直した内容"
-```
-
-- アプリは、開いたときに新しい直しを裏で受け取り、**次に開いたとき** に切り替わる
-- 送る前に、`npm test`・`npx tsc --noEmit`・`npx expo lint`・`npm run check:pages` を通す
-- どの直しで動いているかは、ログイン画面とマイアプリのいちばん下に出る（例: `v1.0.0 · preview · 11/19 14:05 更新（a1b2c3d4）`。
-  まだ直しを受け取っていなければ「組み込み」）。問い合わせのときは、ここを見てもらう
-
-### まずい直しを送ってしまったとき
-
-前の直しに戻す（新しい版を作らずに、すぐ戻せる）:
-
-```bash
-npx eas-cli@latest update:rollback --platform ios --message "戻した理由"
-```
-
-- 一覧から、戻したい直し（いちばん新しいもの）を選ぶ。その前の直しが、もう一度送られる（前がなければ、配った版に入っていた中身に戻る）
-- 戻したあと、利用者はアプリを2回開き直すと切り替わる（1回目で受け取り、2回目で切り替わる）
-- 送った直しの一覧は expo.dev のプロジェクトの「Updates」で見られる
-
-### 作り直しが要るとき
-
-次のような、アプリの中の仕組み（ネイティブ）を変えたときは、2. で作り直して入れ直してもらう。
-
-- パッケージを足した・上げた（`npx expo install …`）
-- app.json の plugins・権限・アイコン・名前を変えた
-- modules/ や patches/ を変えた
-
-作り直しが要る変更かどうかは、自動で見分ける（app.json の `runtimeVersion` が `fingerprint`）。
-作り直しが要る変更の後に送った直しは、古い版のアプリには届かない（届いて壊れることはない）。
-
-## Mac なしで（スマホから）
-
-2. と 3. は、GitHub の Actions からも始められる。スマホの GitHub アプリ（またはブラウザ）で、
-LincreaApp →「Actions」→ 下のどちらかを選ぶ →「Run workflow」。
-
-| Actions の名前 | すること | ファイル |
+| ブランチ | 役割 | 入ると起きること |
 | --- | --- | --- |
-| iPhone に配る版を作る | 2. と同じ。登録した iPhone を、新しいものも含めて全部入れて作る。develop の中身を、チェックが通ったら作る | .github/workflows/eas-preview-build.yml |
-| 直しを送る | 3. と同じ。develop にある今の中身を、チェックが通ったら送る。「直した内容」を書いて始める | .github/workflows/eas-update.yml |
-| チェック | develop への push とプルリクエストのたびに、自動で動く（型・lint・テスト・ページのスクリプト） | .github/workflows/check.yml |
+| `claude/…` などの作業ブランチ | 直しを作る場所 | プルリクエストを出すと、チェック（check.yml）が動く |
+| **develop** | 直しをまとめる場所。**TestFlight の版の元** | マージするたびに、新しい版が TestFlight に出る（社内の人が使っている版） |
+| **main** | **App Store に公開した版の記録**（いまはまだない） | 何も自動では起きない。App Store に出すと決めたときに作る |
 
-- 「Run workflow」で develop 以外のブランチを選ぶと、配る版も直しも作らずに止まる（作りかけの直しを、配った iPhone に送らないため）
+- いまは App Store には出していない。使う人には TestFlight で配っている（develop が、そのまま使われている版）
+- App Store に公開するときは:
+  1. TestFlight で確かめた develop を、main にマージする（main には直接 push しない）
+  2. App Store Connect で、その TestFlight の版（同じビルド番号）を選んで、審査に出す。版は作り直さない（TestFlight の版と App Store の版は同じもの）
+- main は「お客さんに出した版」、develop は「社内で試している版」。直しは、いつも develop に入れてから main へ
 
-- 「iPhone に配る版を作る」は、EAS に作業を頼んだら終わる。できあがりは、expo.dev のプロジェクトの「Builds」で見る（15〜30分ほど）。
-  そのビルドのページのリンクを、相手に送る
-- 新しい人の iPhone は、1. で作った登録用のリンクを送れば登録できる（リンクに期限はない）。
-  登録が済んだら「iPhone に配る版を作る」を押す。同じリンクで登録できなかったときは、Mac で 1. をやり直して新しいリンクを作る
+## 使う人に入れてもらう（TestFlight）
 
-### 最初に一度だけ（済んでいなければ）
+1. iPhone に **TestFlight**（App Store にある Apple のアプリ）を入れる
+2. 招待のメールか、公開リンクを開いて「インストール」
+3. TestFlight アプリの LINCREA の画面で「自動アップデート」をオンにしておく（新しい版が出ると、勝手に入れ替わる）
 
-1. **App Store Connect の API キーを EAS に預ける**（Mac で。新しい iPhone を、ビルドのたびに自動で入れるため）
+| テスター | 人数 | 何が要るか |
+| --- | --- | --- |
+| 内部テスター | 100 人まで | App Store Connect のユーザーとして招く（「ユーザとアクセス」）。Apple の審査なし。版ができたらすぐ届く |
+| 外部テスター | 10,000 人まで | メールか公開リンクで招く（App Store Connect のアカウントは要らない）。版ごとに Apple の簡単な審査（ふつう 1 日以内） |
 
-   ```bash
-   npx eas-cli@latest credentials --platform ios
-   ```
+- TestFlight の版は **90 日で使えなくなる**。develop にマージするたびに新しい版ができるので、ふだんは気にしなくてよい
+- 前の配り方（EAS のリンク・Ad Hoc。版10 まで）で入れていた人は、TestFlight から入れ直す（同じアプリなので上書きされ、ログインの情報も残る）
 
-   「preview」→「App Store Connect: Manage your API Key」→ 新しいキーを作る（Apple ID でログインする）。
-   キーは Expo のサーバーに暗号化して置かれる。Admin の権限なので、要らなくなったら App Store Connect の「ユーザとアクセス → 統合」で取り消す
-2. **Expo のアクセストークンを GitHub に預ける**（スマホでもできる）
-   - expo.dev → アカウントの設定 →「Access tokens」→ 新しいトークンを作る
-   - GitHub の LincreaApp →「Settings」→「Secrets and variables」→「Actions」→「New repository secret」。
-     名前は `EXPO_TOKEN`、値は作ったトークン
+## 版の名前と番号
 
-## App Store・TestFlight に出すとき
+- 表に出る版（1.0.0）は app.json の `version`。上げるときは app.json を書き換えて develop へ
+- ビルド番号は、Actions が作った日時で決める（日本時間の「年月日.時分」。例 `261121.1830`）。app.json には書かない
+- アプリのログイン画面とマイアプリのいちばん下に `v1.0.0（261121.1830）` と出る。問い合わせのときは、ここを見てもらう
 
-`eas.json` の `production` を使う（版の番号は EAS が上げる）。
+## 直しを届ける
 
-```bash
-npx eas-cli@latest build --platform ios --profile production
-npx eas-cli@latest submit --platform ios --profile production
-```
+直しは、いつも develop にマージして、TestFlight の新しい版で届ける（作り直さずに送る仕組み・eas update はやめた）。
+急ぐときも同じ（マージから iPhone に届くまで、1 時間ほど）。
+
+## 最初に一度だけ
+
+1. **App Store Connect にアプリを作る**
+   - App Store Connect →「アプリ」→「＋」→「新規アプリ」。プラットフォーム iOS、名前 LINCREA、言語 日本語、
+     バンドル ID `com.iam74k4.LincreaApp`、SKU は自由（`lincrea` など）
+2. **App Store Connect の API キーを作って、GitHub に預ける**（署名の用意と、送るのに使う）
+   - App Store Connect →「ユーザとアクセス」→「統合」→「App Store Connect API」→「チームキー」→「＋」。アクセスは **Admin**
+     （Xcode が配布用の証明書を用意するのに要る）。キーのファイル（AuthKey_XXXX.p8）は一度しかダウンロードできない
+   - GitHub の LincreaApp →「Settings」→「Secrets and variables」→「Actions」→「New repository secret」で、3つ入れる
+     | 名前 | 中身 |
+     | --- | --- |
+     | `ASC_KEY_ID` | キー ID（10 文字） |
+     | `ASC_ISSUER_ID` | 発行者 ID（App Store Connect の同じ画面の上に出る） |
+     | `ASC_KEY_P8` | AuthKey_XXXX.p8 の中身（`-----BEGIN PRIVATE KEY-----` から最後の行まで） |
+   - リポジトリは Public だが、Secrets は外から見えない（プルリクエストの Actions にも渡らない。送るのは develop だけ）
+3. **Apple の契約**: App Store Connect の上に契約の知らせが出ているときは、アカウント保持者が「ビジネス」で同意する（同意していないと、送れないことがある）
+
+### もう使わないもの
+
+- 版を作る・送るのに、Expo のクラウド（EAS）は使わなくなった。GitHub の Secret `EXPO_TOKEN`、EAS に預けた App Store Connect の
+  API キー（[Expo] EAS Submit …）、前のプロジェクト @iam74k4/login-demo は、消してよい（それぞれの画面で消す）
+- Expo のプロジェクト @iam74k4/lincrea（app.json の `owner`・`extra.eas.projectId`）は、Expo Go を外のネットワーク
+  （Tailscale・トンネル）から開くときだけ使う（docs/device-testing.md）。それも使わないなら、プロジェクトと app.json の2つを消してよい
+- Expo の仕組み（Expo SDK・Expo Router・`npx expo prebuild` など）は、アプリの土台なので、そのまま使う

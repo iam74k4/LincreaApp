@@ -1,0 +1,129 @@
+# develop に入ったら（プルリクエストをマージしたら）、TestFlight に出す（docs/distribution.md）。
+#   チェック（型・lint・テスト・ページに入れるスクリプト）→ ios フォルダを作る（expo prebuild）→ Xcode で作る（署名して archive）
+#   → App Store Connect に送る（TestFlight）。GitHub の macOS の実行環境で、全部 GitHub の中で行う（Expo のクラウド・EAS は使わない）。
+# リポジトリが Public なので、macOS の実行環境は無料。作り終わるまで 20〜40 分ほど。そのあと Apple の処理に 10〜30 分。
+# 手順書だけの変更（docs/・*.md）では作らない。
+#
+# 手で始める（Actions のページの「Run workflow」）こともできる:
+#   - develop を選び「TestFlight に送る」をつけたまま → いつもと同じく TestFlight に出す
+#   - ほかのブランチ、または「TestFlight に送る」を外す → 署名せずに作れるかだけを確かめる（送らない。API キーも使わない）
+#
+# 要るもの（GitHub の Settings → Secrets and variables → Actions）:
+#   ASC_KEY_ID・ASC_ISSUER_ID・ASC_KEY_P8 … App Store Connect の API キー（Admin）。署名（Xcode が自動で用意）と、送るのに使う
+name: TestFlight に出す
+
+on:
+  push:
+    branches: [develop]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: TestFlight に送る（develop のときだけ。外すと、作れるかだけを確かめる）
+        type: boolean
+        default: true
+
+# 続けてマージしたときは、前のが終わってから次を作る（順番を入れ替えない・同じ番号で2つ作らない）
+concurrency:
+  group: testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # 送るのは develop のときだけ（作りかけのブランチの版を、使っている人に届けない）
+  UPLOAD: ${{ github.ref == 'refs/heads/develop' && (github.event_name == 'push' || inputs.upload) }}
+
+jobs:
+  testflight:
+    # macOS 26（Xcode 26）。Xcode を上げるときは、ここを書き換えて「送る」を外した手動の実行で確かめる
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx tsc --noEmit
+      - run: npx expo lint
+      - run: npm test -- --ci
+      - run: npm run check:pages
+
+      - name: Xcode の版
+        run: xcodebuild -version
+
+      # ビルド番号は、作った日時（日本時間の「年月日.時分」。例 261121.1830）。いつも前より大きくなる。
+      # app.json の ios.buildNumber に入れてから ios フォルダを作る（アプリの下に出る版の名前にも使う。src/appVersion.ts）
+      - name: ビルド番号を決める
+        run: |
+          BUILD_NUMBER=$(TZ=Asia/Tokyo date +%y%m%d.%H%M)
+          node -e 'const fs = require("fs"); const a = JSON.parse(fs.readFileSync("app.json", "utf8")); a.expo.ios.buildNumber = process.argv[1]; fs.writeFileSync("app.json", JSON.stringify(a, null, 2) + "\n");' "$BUILD_NUMBER"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "ビルド番号: $BUILD_NUMBER"
+
+      - name: ios フォルダを作る
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: 作れるかだけを確かめる（署名しない）
+        if: env.UPLOAD != 'true'
+        run: >
+          xcodebuild build
+          -workspace ios/LINCREA.xcworkspace -scheme LINCREA -configuration Release
+          -destination 'generic/platform=iOS'
+          CODE_SIGNING_ALLOWED=NO
+
+      - name: App Store Connect の API キーを置く
+        if: env.UPLOAD == 'true'
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey.p8"
+
+      # 署名は Xcode に任せる（API キーで、配布用の証明書とプロファイルを Apple から用意する。証明書を GitHub に置かない）
+      - name: 作る（署名して archive）
+        if: env.UPLOAD == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: >
+          xcodebuild archive
+          -workspace ios/LINCREA.xcworkspace -scheme LINCREA -configuration Release
+          -destination 'generic/platform=iOS'
+          -archivePath "$RUNNER_TEMP/LINCREA.xcarchive"
+          -allowProvisioningUpdates
+          -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey.p8"
+          -authenticationKeyID "$ASC_KEY_ID"
+          -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          CODE_SIGN_STYLE=Automatic
+
+      - name: TestFlight に送る
+        if: env.UPLOAD == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: >
+          xcodebuild -exportArchive
+          -archivePath "$RUNNER_TEMP/LINCREA.xcarchive"
+          -exportPath "$RUNNER_TEMP/export"
+          -exportOptionsPlist .github/testflight/ExportOptions.plist
+          -allowProvisioningUpdates
+          -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey.p8"
+          -authenticationKeyID "$ASC_KEY_ID"
+          -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: API キーを消す
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"

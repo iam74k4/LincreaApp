@@ -2,7 +2,7 @@ This is an Expo/React Native mobile application. Prioritize mobile-first pattern
 
 ## Expo has changed — do not trust your training data
 
-Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:
+Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo or React Native API:
 
 1. Read the major version of the `expo` package in `package.json`.
 2. Fetch the matching versioned docs: `https://docs.expo.dev/versions/v<major>.0.0/`
@@ -31,13 +31,17 @@ Run lint, typecheck, `npm test` and `npm run check:pages` before declaring any t
 - Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
 - Docs: https://docs.expo.dev/router/introduction.md
 
-## Building with EAS
+## Building and distributing (TestFlight via GitHub Actions — no EAS)
 
-Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.
-Docs: https://docs.expo.dev/eas/index.md
+This project does not use EAS (no `eas.json`, no `eas build` / `eas submit` / `eas update`, no `expo-updates`).
+Every push to `develop` (a merged pull request) runs `.github/workflows/testflight.yml` on a GitHub-hosted macOS runner:
+checks → `npx expo prebuild --platform ios` → `xcodebuild archive` (automatic signing with the App Store Connect API key in Secrets) → upload to TestFlight.
+The build number is set by the workflow (date and time); do not add `ios.buildNumber` to `app.json`.
+`develop` is what testers run via TestFlight; `main` (when it exists) records what was released on the App Store. Details: `docs/distribution.md`.
+To ship a fix, merge it into `develop` — there are no over-the-air updates.
 
 ## Rules
 
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
-- Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
+- Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios` locally (the simulator needs no signing).
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
