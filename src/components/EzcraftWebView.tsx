@@ -17,6 +17,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import { pathOf } from '../api/http';
+import type { Biometry } from '../auth/faceId';
+import {
+  declinePayslipFaceId,
+  enablePayslipFaceId,
+  payslipBiometry,
+  payslipBiometryToOffer,
+  readPayslipPassword,
+  renewPayslipPassword,
+} from '../auth/payslipPassword';
 import { noteAttendanceDays } from '../attendanceReminder';
 import { SERVER_URL } from '../config';
 import { fileName, openFile, saveIncoming } from '../files';
@@ -37,6 +46,8 @@ import {
   openerStubJs,
   parseBridgeMessage,
   prefillJs,
+  pwBioJs,
+  pwFillJs,
   restoreScrollJs,
   safeAreaJs,
   SAVE_WATCH_JS,
@@ -136,7 +147,7 @@ function dimmed(hex: string): string {
 }
 
 export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = null, prefill = null, sheet = false }: Props) {
-  const { signOut, reauthenticate } = useSession();
+  const { session, signOut, reauthenticate } = useSession();
   const c = useColors();
   const insets = useSafeAreaInsets(); // 画面の下の、ホームに戻るバーの高さ。ページの下に固定するものを、その上に置く
   const expiredShown = useRef(false);
@@ -537,6 +548,71 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     reloadPage();
   }, [samePageSaving, reloadPage]);
 
+  // 給与・賞与明細: パスワードを Face ID で入れる（src/auth/payslipPassword.ts。ページの側は appStyles.ts の L_Payslip）。
+  //   - Face ID で開けるなら、ページに伝える（ダイアログを開くと、ページが Face ID を頼んでくる）
+  //   - 頼まれたら、Face ID で本人か確かめて、覚えておいたパスワードを欄に入れて開く
+  //   - 手で入れて明細が開けたら、次から Face ID を使うか聞く（使っていれば、覚えているパスワードを入れ替える）
+  const payslip = appId === PAYSLIP_APP;
+  const username = session?.username ?? '';
+  const [pwBio, setPwBio] = useState<Biometry | null>(null);
+  /** 手で入れて「開く」を押したパスワードと、その時刻（明細が届いたら、正しかったと分かる） */
+  const typedPassword = useRef<{ value: string; at: number } | null>(null);
+  useEffect(() => {
+    if (!payslip || !username) return;
+    let alive = true;
+    payslipBiometry(username).then((kind) => {
+      if (alive) setPwBio(kind);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [payslip, username]);
+  const tellPwBio = useCallback((kind: Biometry | null) => {
+    webRef.current?.injectJavaScript(`${pwBioJs(kind)}window.__myappAppUpdate && window.__myappAppUpdate(); true;`);
+  }, []);
+  useEffect(() => {
+    if (payslip) tellPwBio(pwBio);
+  }, [payslip, pwBio, tellPwBio]);
+  const fillPassword = async () => {
+    typedPassword.current = null; // 前に手で入れたもの（違っていたかもしれない）は使わない
+    const result = await readPayslipPassword(username);
+    webRef.current?.injectJavaScript(pwFillJs(result.ok ? result.password : null));
+    if (result.ok || result.reason === 'cancel') return;
+    const kind = pwBio ?? 'Face ID';
+    setPwBio(null);
+    if (result.reason === 'reset') {
+      Alert.alert(`${kind} の登録が変わりました`, `パスワードを入れて開いてください。開けたら、また ${kind} を使えるようにできます。`);
+    }
+  };
+  /** 明細が届いた（パスワードが正しかった）。手で入れたものなら、Face ID で覚えるか聞く */
+  const afterPayslipOpened = async () => {
+    const typed = typedPassword.current;
+    typedPassword.current = null;
+    if (!typed || !username || Date.now() - typed.at > 60_000) return;
+    if (await payslipBiometry(username)) {
+      await renewPayslipPassword(username, typed.value);
+      return;
+    }
+    const kind = await payslipBiometryToOffer(username);
+    if (!kind) return;
+    const use = await new Promise<boolean>((resolve) =>
+      Alert.alert(
+        `次から ${kind} で開きますか？`,
+        `パスワードを、この iPhone に ${kind} 付きで覚えておきます。次からはパスワードを入れずに明細を開けます。`,
+        [
+          { text: '使わない', style: 'cancel', onPress: () => resolve(false) },
+          { text: `${kind} を使う`, onPress: () => resolve(true) },
+        ],
+        { cancelable: false },
+      ),
+    );
+    if (!use) {
+      await declinePayslipFaceId(username);
+      return;
+    }
+    if (await enablePayslipFaceId(username, typed.value, kind)) setPwBio(kind);
+  };
+
   // ページが作った PDF・CSV・Excel を受け取り、一時的な場所に置いて見せる。PDF はアプリの画面、ほかは iPhone の標準のプレビュー
   // （どちらも共有のボタンから「ファイル」に保存・プリントなどができる。src/files.ts）
   const receiveFile = async (base64: string, name: string, mime: string) => {
@@ -547,6 +623,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     const saved = fileName(name, mime, `${screenName}_${stamp}`);
     try {
       const file = await saveIncoming(base64, saved);
+      if (payslip) await afterPayslipOpened();
       // PDF は、アプリの画面で見せる（左上で戻れる。src/app/(app)/file.tsx）。ほかは iPhone の標準のプレビューで
       if (mime === 'application/pdf' || /\.pdf$/i.test(saved)) {
         router.push({ pathname: '/file', params: { uri: file.uri, title: saved.replace(/\.pdf$/i, ''), mime: 'application/pdf' } });
@@ -696,7 +773,12 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             // アプリごとの知らせ（歩数・申請・勤務表の状態）は、そのアプリの画面からだけ受け付ける（bridge の allowedFrom）
             const message = parsed && allowedFrom(parsed, appId) ? parsed : null;
             if (message?.type === 'scroll') scroll.current = { y: message.y, target: message.target };
-            if (message?.type === 'ready') setShown(true);
+            if (message?.type === 'ready') {
+              setShown(true);
+              if (payslip) tellPwBio(pwBio);
+            }
+            if (message?.type === 'pwFaceId') fillPassword();
+            if (message?.type === 'pwTyped') typedPassword.current = { value: message.value, at: Date.now() };
             if (message?.type === 'modal') setModalOpen(message.open);
             // 時刻のダイヤルを回したときの、カチッという小さな手ごたえ（iOS の時刻の選び方と同じ）
             if (message?.type === 'tick') Haptics.selectionAsync().catch(() => {});
@@ -878,6 +960,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
 
 /** ヘルスケアから歩数を読めるか（開発ビルドで、ヘルスケアのある端末） */
 const HEALTH = healthAvailable();
+/** 給与・賞与明細のアプリケーション ID（パスワードを Face ID で入れる） */
+const PAYSLIP_APP = 'L_Payslip';
 
 /** 読み込めなかったときに出すもの */
 type LoadFailure = { symbol: 'wifi.slash' | 'exclamationmark.icloud'; title: string; message: string };

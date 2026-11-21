@@ -892,8 +892,32 @@ export const APP_SKINS: Record<string, AppSkin> = {
         return kind + (date ? '_' + date : '');
       };
       // パスワードのダイアログ: スマホには「Enter キー」がないので、「開く」のボタンを置く（押すと、欄で Enter を押したのと同じ）。
-      // キーボードの右下も「開く」にする。パスワードが空のあいだは押せない。パスワードはアプリでは覚えない（欄に入れるだけ）
+      // キーボードの右下も「開く」にする。パスワードが空のあいだは押せない。
+      // Face ID: アプリが使えると伝えてきたら（window.__myappPwBio。bridge の pwBioJs）、ダイアログを開いたときに Face ID を頼み、
+      // アプリが読んだパスワード（pwFillJs → __myappPwFill）を欄に入れて開く。やめたら手で入れられる。「Face ID で開く」で頼み直せる。
+      // 手で入れて「開く」を押したら、そのパスワードをアプリに渡す（明細が開けたら、アプリが Face ID で覚えるか聞く）
       var pwWasOpen = false;
+      var pwPost = function (message) { try { window.ReactNativeWebView.postMessage(JSON.stringify(message)); } catch (e) {} };
+      var pwPress = function (input) {
+        ['keydown', 'keyup'].forEach(function (type) {
+          jQuery(input).trigger(jQuery.Event(type, { keyCode: 13, which: 13, key: 'Enter' }));
+        });
+      };
+      // 手で入れたパスワードを、開く前にアプリへ（Face ID で入れたものは渡さない）
+      var pwTyped = function (input) {
+        if (input.value && !input.__myappBioFilled) pwPost({ type: 'pwTyped', value: input.value });
+      };
+      window.__myappPwFill = function (password) {
+        var input = document.querySelector('#LP_password_txt_password input');
+        var body = document.getElementById('LP_password_blank1_body');
+        if (body) body.classList.remove('myapp-pw-asking');
+        if (!input || !password) return;
+        input.value = password;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.__myappBioFilled = true;
+        pwPress(input);
+      };
       window.__myappAppUpdate = function () {
         var body = document.getElementById('LP_password_blank1_body');
         var input = document.querySelector('#LP_password_txt_password input');
@@ -902,6 +926,7 @@ export const APP_SKINS: Record<string, AppSkin> = {
         if (pwWasOpen && !pwOpen) {
           document.querySelectorAll('#LP_main_grd_details tr.myapp-tapped').forEach(function (tr) { tr.classList.remove('myapp-tapped'); });
         }
+        var opened = pwOpen && !pwWasOpen;
         pwWasOpen = pwOpen;
         if (!body || !input) return;
         if (input.getAttribute('enterkeyhint') !== 'go') input.setAttribute('enterkeyhint', 'go');
@@ -916,14 +941,44 @@ export const APP_SKINS: Record<string, AppSkin> = {
           go.addEventListener('click', function (e) {
             e.preventDefault();
             if (!input.value) return;
-            ['keydown', 'keyup'].forEach(function (type) {
-              jQuery(input).trigger(jQuery.Event(type, { keyCode: 13, which: 13, key: 'Enter' }));
-            });
+            pwTyped(input);
+            pwPress(input);
           });
-          input.addEventListener('input', function () { go.disabled = !input.value; });
+          input.addEventListener('input', function () {
+            input.__myappBioFilled = false;
+            go.disabled = !input.value;
+          });
+          // キーボードの「開く」（Enter）で開いたときも、手で入れたパスワードをアプリへ
+          input.addEventListener('keydown', function (e) {
+            if (e.isTrusted && (e.key === 'Enter' || e.keyCode === 13)) pwTyped(input);
+          }, true);
           body.appendChild(go);
         }
         go.disabled = !input.value;
+        // Face ID で開く（アプリが使えると伝えてきたときだけ）
+        var kind = window.__myappPwBio;
+        var bio = body.querySelector(':scope > .myapp-pw-bio');
+        if (kind && !bio) {
+          bio = document.createElement('button');
+          bio.type = 'button';
+          bio.className = 'myapp-pw-bio';
+          bio.setAttribute('data-myapp-nodark', '');
+          bio.addEventListener('click', function (e) {
+            e.preventDefault();
+            body.classList.add('myapp-pw-asking');
+            pwPost({ type: 'pwFaceId' });
+          });
+          body.appendChild(bio);
+        }
+        if (bio && !kind) { bio.remove(); bio = null; }
+        if (bio && bio.textContent !== kind + ' で開く') bio.textContent = kind + ' で開く';
+        document.documentElement.classList.toggle('myapp-pw-hasbio', !!bio);
+        // ダイアログを開いたら、すぐに Face ID を頼む（パスワードが空のときだけ）
+        if (opened && bio && !input.value) {
+          input.blur();
+          body.classList.add('myapp-pw-asking');
+          pwPost({ type: 'pwFaceId' });
+        }
       };
     `,
     // パスワードのダイアログの説明（スマホには Enter キーがないので、「開く」を押すように）
@@ -1022,6 +1077,25 @@ ${fillInput('LP_password_txt_password')}
 .myapp-pw-go:active { transform: scale(0.97); }
 /* 入れる前（押せないとき）: 青いカプセルを薄くするだけ（ダークで、灰色の面に暗い青の文字の、読みにくい見た目にしない） */
 .myapp-pw-go:disabled { box-shadow: none; opacity: 0.4; background: var(--myapp-tint) !important; color: #FFFFFF !important; }
+/* Face ID で開く: 「開く」の下に、文字だけのボタン（Face ID が使えるときだけ。ダイアログもそのぶん高くする） */
+.myapp-pw-bio {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 174px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--myapp-accent);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+}
+.myapp-pw-bio:active { opacity: 0.5; }
+/* Face ID を待っているあいだは、押せないように薄く */
+.myapp-pw-asking > .myapp-pw-bio { opacity: 0.4; pointer-events: none; }
+html.myapp-pw-hasbio #LP_password { height: 290px !important; }
+html.myapp-pw-hasbio :is(#LP_password_body, #LP_password_R1, #LP_password_R1 > *, #LP_password_blank1, #LP_password_blank1_body) { height: 234px !important; }
 `,
   },
 

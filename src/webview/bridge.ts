@@ -58,6 +58,8 @@ export type BridgeMessage =
   | { type: 'skinMissing'; form: string; ids: string[] }
   | { type: 'steps'; id: string; day: string }
   | { type: 'attendanceDays'; month: string; days: string }
+  | { type: 'pwFaceId' }
+  | { type: 'pwTyped'; value: string }
   | { type: 'saveStart' }
   | { type: 'saveWait' }
   | { type: 'saveError'; text: string }
@@ -123,6 +125,12 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
     if (message.type === 'attendanceDays' && typeof message.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(message.month) && typeof message.days === 'string' && /^[uor-]{28,31}$/.test(message.days)) {
       return { type: 'attendanceDays', month: message.month, days: message.days };
     }
+    // 給与・賞与明細のパスワード: Face ID で入れてほしい（アプリは pwFillJs で答える）
+    if (message.type === 'pwFaceId') return { type: 'pwFaceId' };
+    // 給与・賞与明細のパスワード: 手で入れて「開く」を押した（明細が開けたら、Face ID で覚えるか聞く。src/auth/payslipPassword.ts）
+    if (message.type === 'pwTyped' && typeof message.value === 'string' && message.value.length > 0 && message.value.length <= 128) {
+      return { type: 'pwTyped', value: message.value };
+    }
     // 開発中だけ: 見た目の直しが名前で指している部品が、画面に見つからない（ezcraftSkin.ts の CHECK_JS）
     if (message.type === 'skinMissing' && typeof message.form === 'string' && Array.isArray(message.ids)) {
       const ids = message.ids.filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9_]{1,120}$/.test(id));
@@ -179,6 +187,9 @@ const ONLY_FROM: Partial<Record<BridgeMessage['type'], string>> = {
   steps: 'YIF_walk_the_talk',
   apply: 'L_Tims',
   applyQueue: 'L_Tims',
+  // 明細のパスワードは、給与・賞与明細の画面とだけやりとりする（ほかのアプリにパスワードを渡さない）
+  pwFaceId: 'L_Payslip',
+  pwTyped: 'L_Payslip',
   attendanceDays: 'L_Tims',
 };
 /** 歩数を答える日: 今日から、さかのぼって 62 日まで（Walk the Talk の歩数の登録は、今週と少し前の週だけ） */
@@ -775,6 +786,19 @@ export function healthFlagJs(available: boolean): string {
 /** ページが頼んだ歩数を返す（steps が null なら、読めなかった） */
 export function stepsReplyJs(id: string, steps: number | null): string {
   return `window.__myappStepsReply && window.__myappStepsReply(${JSON.stringify(id)}, ${steps === null ? 'null' : Math.max(0, Math.round(steps))}); true;`;
+}
+
+/**
+ * 給与・賞与明細: Face ID で明細を開けることを、ページに伝える（kind は「Face ID」などの名前。null なら使えない）。
+ * ページは、パスワードのダイアログに「Face ID で開く」を出し、開いたときに自分から頼む（appStyles.ts の L_Payslip）
+ */
+export function pwBioJs(kind: string | null): string {
+  return `window.__myappPwBio = ${JSON.stringify(kind)};\n`;
+}
+
+/** 給与・賞与明細: Face ID で読んだパスワードを、ページの欄に入れて開く（null なら、読めなかった） */
+export function pwFillJs(password: string | null): string {
+  return `window.__myappPwFill && window.__myappPwFill(${JSON.stringify(password)}); true;`;
 }
 
 /** 入力欄に入れておく値を、ページに渡す（ページが動き出す前に。値は短い文字だけ: src/launch.ts の shortValues） */
