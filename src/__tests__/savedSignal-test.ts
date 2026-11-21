@@ -46,6 +46,8 @@ function makeFakeXHR() {
 type FakeXHR = InstanceType<ReturnType<typeof makeFakeXHR>>;
 
 let dom: JSDOM;
+/** jsdom の本当の close（ページの window.close は、BRIDGE_JS がアプリへの「閉じて」に替える） */
+let closeDom: () => void;
 let XHR: ReturnType<typeof makeFakeXHR>;
 let saved: number;
 /** アプリに届いた知らせの種類（順に）。「保存した」はページの中の知らせなので saved として並べる */
@@ -75,6 +77,7 @@ beforeEach(() => {
   const w = dom.window as unknown as { ReactNativeWebView: unknown; XMLHttpRequest: unknown; eval: (js: string) => unknown };
   w.ReactNativeWebView = { postMessage: (json: string) => events.push((JSON.parse(json) as { type: string }).type) };
   w.XMLHttpRequest = XHR;
+  closeDom = dom.window.close.bind(dom.window);
   // ページに入れるのと同じ順（EzcraftWebView の afterLoadJs）
   w.eval(BRIDGE_JS);
   w.eval(SAVE_WATCH_JS);
@@ -85,7 +88,7 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
-  dom.window.close();
+  closeDom();
 });
 
 test('トランザクションの保存: 途中の書き込みでは知らせず、確定（commit）してから1回だけ知らせる', () => {
@@ -147,11 +150,31 @@ test('トランザクションを使わない保存のすぐあとにページ�
   expect(events.filter((e) => ['saveEnd', 'saved', 'close'].includes(e))).toEqual(['saveEnd', 'saved', 'close']);
 });
 
-test('アプリがあきらめた保存は、ページの中も終わりにする（あとの保存を、終わらない保存の続きとして数えない）', () => {
+test('書き込みの返事を受けたページの処理の中で閉じても、閉じる前に保存を終わりにして知らせる', async () => {
+  (dom.window.document.querySelector('#ins a') as HTMLElement).click();
+  const w = dom.window as unknown as { eval: (js: string) => unknown };
+  request('insert', { then: () => w.eval('window.close()') }).finish();
+  await wait(10);
+  expect(events.filter((e) => ['saveEnd', 'saved', 'close'].includes(e))).toEqual(['saveEnd', 'saved', 'close']);
+});
+
+test('アプリがあきらめた保存も見張り続け、続きの書き込みでは知らせず、自分の確定で知らせる（アプリには知らせない）', () => {
   request('beginTrans', { sync: true });
   request('upsert').finish();
   (dom.window as unknown as { __myappSaveGiveUp: () => void }).__myappSaveGiveUp();
   expect(dom.window.document.documentElement.classList.contains('myapp-saving')).toBe(false);
+  request('upsert').finish(); // あきらめたあとも、ページの保存は続いている
+  expect(saved).toBe(0);
+  request('rollBack', { sync: true, query: 'transId=77' });
+  expect(saved).toBe(0);
+  // あきらめる前の2歩（beginTrans と、1つめの upsert）だけ
+  expect(events.filter((e) => e === 'saveEnd' || e === 'saveStep')).toEqual(['saveStep', 'saveStep']);
+});
+
+test('アプリがあきらめた保存が終わらないまま、次の保存が始まったら、新しい保存として数える', () => {
+  request('beginTrans', { sync: true });
+  request('upsert').finish();
+  (dom.window as unknown as { __myappSaveGiveUp: () => void }).__myappSaveGiveUp();
   expect(events.filter((e) => e === 'saveEnd')).toEqual([]); // アプリには、もう知らせない
   // 次の保存は、新しい保存として数えて、確定したら知らせる
   SYNC_REPLY.beginTrans = '{"status":"success","meta":{"transID":"78"},"data":[]}';

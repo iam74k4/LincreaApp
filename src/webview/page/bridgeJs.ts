@@ -251,6 +251,8 @@ export const BRIDGE_JS = compactJs(`
         this.addEventListener('load', function () {
           if (this.status < 200 || this.status >= 300) return;
           if (this.__myappDb && this.__myappDb.save) return;
+          // 見張りが数えない書き込み（ほかの形の URL）でも、保存の途中なら知らせない（保存の終わりに見張りが知らせる）
+          if (document.documentElement.classList.contains('myapp-saving')) return;
           var head = '';
           try { head = String(this.responseText || '').slice(0, 300); } catch (e) {}
           if (!/"status"\\s*:\\s*"error"/.test(head)) window.dispatchEvent(new Event('myapp-saved'));
@@ -478,30 +480,49 @@ export const SAVE_WATCH_JS = compactJs(`
     document.documentElement.classList.add('myapp-saving');
     post({ type: 'saveStart' });
   }
-  // quiet: アプリがもうあきらめた保存（__myappSaveGiveUp）。アプリには知らせず、ページの中だけ片づける
-  function end(ok, quiet) {
+  function end(ok) {
     if (!saving) return;
     clearTimeout(saving.idle);
     var wrote = saving.wrote;
+    // アプリがもうあきらめた保存（quiet）は、アプリには知らせない（ページの中の知らせは、ふつうどおり）
+    var quiet = saving.quiet;
     if (!quiet) post({ type: 'saveEnd', ok: ok, steps: saving.steps, writes: saving.writes, ms: Date.now() - saving.at });
     saving = null;
     document.documentElement.classList.remove('myapp-saving');
-    try { window.dispatchEvent(new CustomEvent('myapp-save-end', { detail: { ok: ok } })); } catch (e) {}
+    // ページの中にも、保存が終わったと知らせる（失敗なら、登録を押して控えたものを捨てる。timsSkin.ts の dropOnFailedSave）。
+    // あきらめた保存は、結果が分からないので知らせない（次の保存の始まりで終わりにするとき、その保存の控えを捨てないように）
+    if (!quiet) { try { window.dispatchEvent(new CustomEvent('myapp-save-end', { detail: { ok: ok } })); } catch (e) {} }
     // 書き込んで、うまく終わった: ページの中に「保存した」と知らせる（BRIDGE_JS の 5。保存ごとに1回。残業申請を開くなど）
     if (ok && wrote) { try { window.dispatchEvent(new Event('myapp-saved')); } catch (e) {} }
     // 失敗したら、EZCraft が出したエラーの知らせの文を、少し待ってから知らせる（裏で保存していたとき、アプリが理由として出す）
     if (!ok && !quiet) setTimeout(function () { post({ type: 'saveError', text: errorText() }); }, 400);
   }
-  // アプリが、返事の来ない保存をあきらめた（src/components/EzcraftWebView/EzcraftWebView.tsx）。ページの中の見張りも終わりにする
-  // （終わりにしないと、このページのあとの保存を、終わらない保存の続きとして数え、「保存した」も知らせなくなる）
-  window.__myappSaveGiveUp = function () { end(false, true); };
+  // アプリが、返事の来ない保存をあきらめた（src/components/EzcraftWebView/EzcraftWebView.tsx）。
+  // 見張りは続ける（ページの保存は、まだ続いているかもしれない。続きの書き込みを保存の外とすると、確定の前に「保存した」が出る）が、
+  // アプリにはもう知らせない。この保存は、自分の確定・取り消しか、次の保存が始まったときに、終わりにする
+  window.__myappSaveGiveUp = function () {
+    if (!saving) return;
+    saving.quiet = true;
+    document.documentElement.classList.remove('myapp-saving');
+  };
   // トランザクションを使わない保存は、通信が止んで 1 秒で終わりにする。その前にページが閉じる（EZCraft は書き込みの
   // すぐあとに window.close を呼ぶことがある）なら、閉じる前に終わりにする（閉じたことより先に、保存の結果をアプリに届ける）
+  // 書き込みの返事を受けたページの処理（見張りより先に走る）の中で閉じたときは、まだ返事を数えていないので、
+  // 一度だけ少し待ってから（同じ返事の見張りの処理が済んでから）閉じる
   var closePage = window.close;
   window.close = function () {
-    if (saving && !saving.trans && saving.pending === 0) end(!saving.failed);
-    return closePage.apply(this, arguments);
+    closeAfterSave(this, arguments, false);
   };
+  function closeAfterSave(self, args, waited) {
+    if (saving && !saving.trans) {
+      if (saving.pending > 0 && !waited) {
+        setTimeout(function () { closeAfterSave(self, args, true); }, 0);
+        return;
+      }
+      if (saving.pending === 0) end(!saving.failed);
+    }
+    closePage.apply(self, args);
+  }
   function errorText() {
     var boxes = Array.prototype.filter.call(document.querySelectorAll('.tcc-msg-box, .tcc-modal'), function (b) { return b.offsetParent !== null; });
     var box = boxes[boxes.length - 1];
@@ -527,7 +548,7 @@ export const SAVE_WATCH_JS = compactJs(`
     if (db.cmd === 'beginTrans' || db.cmd === 'commit' || WRITE_CMD.test(db.cmd)) saving.writes += 1;
     if (WRITE_CMD.test(db.cmd) && !ok) saving.failed = true;
     if (db.cmd === 'beginTrans' && !saving.trans) saving.trans = (/"transID"\\s*:\\s*"?(\\d+)/.exec(head) || [])[1] || '';
-    post({ type: 'saveStep', cmd: db.cmd, ms: Date.now() - db.at, ok: ok, steps: saving.steps, writes: saving.writes });
+    if (!saving.quiet) post({ type: 'saveStep', cmd: db.cmd, ms: Date.now() - db.at, ok: ok, steps: saving.steps, writes: saving.writes });
     if ((db.cmd === 'commit' || db.cmd === 'rollBack') && (!saving.trans || db.trans === saving.trans)) {
       end(db.cmd === 'commit' && ok);
       return;
@@ -554,7 +575,11 @@ export const SAVE_WATCH_JS = compactJs(`
     var db = this.__myappDb;
     if (db) {
       try {
-        if (!saving && (db.cmd === 'beginTrans' || (WRITE_CMD.test(db.cmd) && Date.now() - armedAt < 5000))) start();
+        if ((!saving || saving.quiet) && (db.cmd === 'beginTrans' || (WRITE_CMD.test(db.cmd) && Date.now() - armedAt < 5000))) {
+          // あきらめた保存が残っていれば、うまくいかなかったとして終わりにしてから、新しい保存を数える
+          if (saving) end(false);
+          start();
+        }
         if (saving) {
           db.save = saving;
           db.at = Date.now();

@@ -2857,6 +2857,26 @@ ${REASONS_JS}
       return { label: one.length > 14 ? one.slice(0, 14) + '…' : one, run: function () { typeInto(area, t); } };
     }), indent);
   }
+  /**
+   * 登録を押して控えたもの（form[key]）を、その保存が失敗した（bridgeJs.ts の myapp-save-end の ok が false）ときと、
+   * ほかの書き込みのボタン（削除など）を押したときに捨てる。捨てないと、あとのほかの保存の「保存した」で、
+   * 失敗した登録の続き（残業申請を開く・理由と作成済みを覚える）が動いてしまう。buttonSel は、控えを作る登録のボタン
+   */
+  function dropOnFailedSave(form, key, buttonSel) {
+    var mark = '__myappDrop_' + key;
+    if (form[mark]) return;
+    form[mark] = true;
+    window.addEventListener('myapp-save-end', function (e) {
+      if (!(e.detail && e.detail.ok === true)) form[key] = null;
+    });
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest && e.target.closest('.tcc-btn');
+      // 同じ画面のほかのボタンだけ（登録のあとに出る確かめのダイアログ（承認者確認など）のボタンは、その登録の続き）
+      if (!b || b.matches(buttonSel) || !form.contains(b) || b.closest('.tcc-modal, .tcc-msg-box')) return;
+      var label = (b.textContent || '').replace(/\\s+/g, '');
+      if (/登録|削除|申請|更新|保存|取消|取り消|承認|却下|確定|送信/.test(label) && !/コピー|検索|クリア|閉じる|キャンセル|戻る/.test(label)) form[key] = null;
+    }, true);
+  }
   /** 登録を押したときの理由を控え、保存がうまく終わってから（bridgeJs.ts の myapp-saved）覚える。弾かれた・失敗・取り消しのときは覚えない */
   function rememberReasonOnSave(form, kind, areaSel, doneSel) {
     var done = document.querySelector(doneSel);
@@ -2867,6 +2887,7 @@ ${REASONS_JS}
         form.__myappReasonSubmit = { text: area ? area.value : '', at: Date.now() };
       }, true);
     }
+    dropOnFailedSave(form, '__myappReasonSubmit', doneSel);
     if (form.__myappReasonSaved) return;
     form.__myappReasonSaved = true;
     window.addEventListener('myapp-saved', function () {
@@ -2951,6 +2972,7 @@ ${REASONS_JS}
         form.__myappOtSubmit = { reason: reason && reason.value.trim(), date: date && date.value.trim(), at: Date.now() };
       }, true);
     }
+    dropOnFailedSave(form, '__myappOtSubmit', '#frmApply_zangyo_btnDone .tcc-btn');
     if (!form.__myappOtSaved) {
       form.__myappOtSaved = true;
       window.addEventListener('myapp-saved', function () {
@@ -3138,6 +3160,7 @@ ${OVERTIME_MATH_JS}
       // キーボードで打った（isTrusted）か、時刻のダイヤルで選んだ（__myappDialEdit。openDial）ときだけ数える
       input.addEventListener('input', function (e) { if (e.isTrusted || input.__myappDialEdit) form.__myappTimesEdited = true; });
     });
+    dropOnFailedSave(form, '__myappPendingApply', '#frmAttendanceDtl_btnIns .tcc-btn');
     var save = document.querySelector('#frmAttendanceDtl_btnIns .tcc-btn');
     if (save && !save.__myappOt) {
       save.__myappOt = true;
