@@ -402,6 +402,33 @@ ${DAY.status} .tcc-label-text { width: auto !important; font-size: 15px !importa
   color: var(--myapp-accent-text) !important;
 }
 #${A('rptWork')} .tcc-rpt-row[data-myapp-dupbadge] .ribon { display: none !important; }
+/* 申請の札の状況（JS が data-myapp-apply を付ける。EZCraft は地の色だけで分けている）。言葉で添え、承認済は緑に */
+#${A('rptWork')} .ribon span[data-myapp-apply]::after { margin-left: 4px; font-weight: 700; }
+#${A('rptWork')} .ribon span[data-myapp-apply="wait"]::after { content: '申請中'; }
+#${A('rptWork')} .ribon span[data-myapp-apply="ok"]::after { content: '承認済'; }
+#${A('rptWork')} .ribon span[data-myapp-apply="ok"] { background: var(--myapp-success-bg) !important; color: var(--myapp-success) !important; }
+/* 残業があるのに、残業申請の札がない日（JS が data-myapp-ot を付ける）: 右の「残業 0:30」の前に、まだ出していないことを出す。
+   この端末から出したばかりで、まだ札が届いていない日は「申請中」 */
+#${A('rptWork')} .tcc-rpt-row[data-myapp-ot] ${DAY.status} .tcc-label-text::before {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 8px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  vertical-align: 2px;
+}
+#${A('rptWork')} .tcc-rpt-row[data-myapp-ot="none"] ${DAY.status} .tcc-label-text::before {
+  content: '未申請';
+  color: var(--myapp-warn);
+  background: color-mix(in srgb, var(--myapp-warn) 14%, transparent);
+}
+#${A('rptWork')} .tcc-rpt-row[data-myapp-ot="sent"] ${DAY.status} .tcc-label-text::before {
+  content: '申請中';
+  color: var(--myapp-accent-text);
+  background: var(--myapp-tab-on);
+}
 /* L-SMART Holiday の札は、行の右上の肩に（左上の申請の札と同じ形）。
    行の真ん中に置くと、狭い画面（390pt 以下）で右の「残業 0:30」などとくっつくため */
 #${A('rptWork')} .lsmartHl {
@@ -1394,6 +1421,19 @@ ${areaBelow('lbl9', 'reason', 216)}
 ${areaBelow('lbl10', 'remarks', 340)}
 ${scoped('#frmApply_yukyu[data-myapp-hourly]', areaBelow('lbl9', 'reason', 316))}
 ${scoped('#frmApply_yukyu[data-myapp-hourly]', areaBelow('lbl10', 'remarks', 440))}
+/* よく使う理由の札（JS が理由の欄のすぐ後ろに入れ、data-myapp-reasons を付ける）。1行に並べ、入りきらなければ横に流す。
+   札を出したときは、備考とその下を 44px 下げる */
+#${Y('blank2_body')} > .myapp-chips { position: absolute; left: 16px; top: 332px; width: calc(100% - 28px); flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+#${Y('blank2_body')} > .myapp-chips::-webkit-scrollbar { display: none; }
+#frmApply_yukyu[data-myapp-hourly] #${Y('blank2_body')} > .myapp-chips { top: 432px; }
+#frmApply_yukyu[data-myapp-notitle] #${Y('blank2_body')} > .myapp-chips { transform: translateY(-36px); }
+#frmApply_yukyu:not([data-myapp-reasons]) #${Y('blank2_body')} > .myapp-chips { display: none !important; }
+${scoped('#frmApply_yukyu[data-myapp-reasons]', areaBelow('lbl10', 'remarks', 384))}
+${scoped('#frmApply_yukyu[data-myapp-reasons][data-myapp-hourly]', areaBelow('lbl10', 'remarks', 484))}
+#frmApply_yukyu[data-myapp-reasons] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 508px !important; }
+#frmApply_yukyu[data-myapp-reasons][data-myapp-hourly] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 608px !important; }
+#frmApply_yukyu[data-myapp-reasons][data-myapp-notitle] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 472px !important; }
+#frmApply_yukyu[data-myapp-reasons][data-myapp-notitle][data-myapp-hourly] :is(#${Y('R2')}, #${Y('R2')} > *, #${Y('blank2')}) { height: 572px !important; }
 /* 「?」は黒く目立たせず、灰色に */
 #${Y('lbl35')} .tcc-label, #${Y('lbl35')} .tcc-label-text { width: 100% !important; height: 100% !important; font-size: 20px !important; justify-content: center !important; text-align: center !important; }
 #${Y('lbl35')} i { color: var(--myapp-text2) !important; }
@@ -1831,6 +1871,64 @@ const TIME_DIALS: Record<string, string> = {
 };
 
 /**
+ * 勤務表の日の申請の札（EZCraft の .ribon span）が、申請中か承認済などか（ページの中の SCRIPT に入れる）。
+ * EZCraft は札の地の色だけで分けているので、その色を読む。ここだけ分けてテストする（src/__tests__/applyState-test.ts）
+ */
+export const APPLY_STATE_JS = `
+  // EZCraft が申請の札に付ける地の色のうち、申請中のもの（残業 #8ecaa6・休暇 #ff9999・遅刻早退 #969696）。ほかは承認済など
+  var APPLY_WAIT_COLORS = ['142,202,166', '255,153,153', '150,150,150'];
+  function applyState(span) {
+    if (!(span.textContent || '').trim() || span.style.visibility === 'hidden') return '';
+    var m = /rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/.exec(span.style.backgroundColor || '');
+    if (!m) return '';
+    if (APPLY_WAIT_COLORS.indexOf(m[1] + ',' + m[2] + ',' + m[3]) >= 0) return 'wait';
+    // 知らない色は明るさで分ける（EZCraft は申請中を薄い色にしている）
+    return (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) / 255 > 0.55 ? 'wait' : 'ok';
+  }
+`;
+
+/**
+ * よく使う理由（残業申請・有給休暇申請）を覚えて選ぶ（ページの中の SCRIPT に入れる）。
+ * localStorage のほかに頼らないので、ここだけ分けてテストする（src/__tests__/reasons-test.ts）
+ */
+export const REASONS_JS = `
+  // よく使う理由（残業申請: overtime・有給休暇申請: leave）。登録できた理由を、使った回数と最後に使った時と一緒に、
+  // この端末に覚えておく（REASONS_KEEP 件まで）。新しい申請の理由の欄の下に、最後に使ったもの、
+  // そのあとに使った回数の多いものを、合わせて3つまで札で出す。押すと、その理由が欄に入る
+  var REASONS_KEEP = 20;
+  function reasonList(kind) {
+    var list = [];
+    try { list = JSON.parse(localStorage.getItem('myapp.reasons.' + kind) || '[]'); } catch (e) {}
+    if (!Array.isArray(list)) list = [];
+    list = list.filter(function (r) { return r && typeof r.t === 'string' && r.t.trim(); });
+    // 前の版が覚えていた「前回の理由」（残業申請）も、はじめの1つとして使う
+    if (kind === 'overtime' && list.length === 0) {
+      var last = '';
+      try { last = localStorage.getItem('myapp.overtime.lastReason') || ''; } catch (e) {}
+      if (last.trim()) list = [{ t: last.trim(), n: 1, at: 0 }];
+    }
+    return list;
+  }
+  function rememberReason(kind, text) {
+    text = (text || '').trim();
+    if (!text) return;
+    var list = reasonList(kind);
+    var hit = list.filter(function (r) { return r.t === text; })[0];
+    if (hit) { hit.n = (hit.n || 0) + 1; hit.at = Date.now(); } else list.push({ t: text, n: 1, at: Date.now() });
+    // 覚えておく数を超えたら、長く使っていないものから忘れる
+    list.sort(function (a, b) { return b.at - a.at; });
+    try { localStorage.setItem('myapp.reasons.' + kind, JSON.stringify(list.slice(0, REASONS_KEEP))); } catch (e) {}
+  }
+  function pickReasons(kind) {
+    var list = reasonList(kind);
+    if (list.length === 0) return [];
+    var recent = list.slice().sort(function (a, b) { return b.at - a.at; })[0];
+    var rest = list.filter(function (r) { return r !== recent; }).sort(function (a, b) { return (b.n || 0) - (a.n || 0) || b.at - a.at; });
+    return [recent].concat(rest).slice(0, 3).map(function (r) { return r.t; });
+  }
+`;
+
+/**
  * 残業の計算（ページの中の SCRIPT に入れる）。時刻の読み書きと、残業の時間帯の始まり。
  * ページのほかの部分に頼らない計算だけなので、ここだけ分けてテストする（src/__tests__/overtime-test.ts）
  */
@@ -2023,14 +2121,43 @@ const SCRIPT = `
       });
     });
   }
-  // 勤務表の日の行: 左肩の申請の札（有休など）が、右の状態（有休）と同じ言葉なら、二重になるので札は出さない（CSS）。
+  // 勤務表の日の行の札:
+  //   - 左肩の申請の札（残業・有休など）に、申請中か承認済かを言葉で添える（data-myapp-apply。CSS）。
+  //     EZCraft は札の地の色だけで分けていて（申請中は薄い色）、アプリは札の色をそろえていたので、どちらか分からなかった
+  //   - 残業があるのに残業申請の札がない日は、右の「残業 0:30」の前に「未申請」を出す（data-myapp-ot。CSS）。
+  //     この端末から出したばかりで、まだ札が届いていない日は「申請中」
+  //   - 状況が分からない札で、右の状態（有休）と同じ言葉なら、二重になるので札は出さない（CSS）
   // LSmart Holiday の札は、お知らせと同じ「L-SMART Holiday」と書く
+${APPLY_STATE_JS}
   function dayBadges() {
+    var rpt = document.getElementById('frmAttendance_rptWork');
+    var ym = ((rpt && rpt.querySelector('.tcc-rpt-title')) || {}).textContent || '';
+    ym = ym.match(/(\\d{4})年/);
+    var sent = appliedDates();
+    var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
     document.querySelectorAll('#frmAttendance_rptWork .tcc-rpt-row').forEach(function (row) {
       var rib = row.querySelector('.ribon span');
       var status = row.querySelector('[id^="frmAttendance_biko"]');
-      var dup = !!rib && !!status && (rib.textContent || '').trim() !== '' && (status.textContent || '').indexOf((rib.textContent || '').trim()) >= 0;
+      var state = rib ? applyState(rib) : '';
+      if (rib && (rib.getAttribute('data-myapp-apply') || '') !== state) {
+        if (state) rib.setAttribute('data-myapp-apply', state);
+        else rib.removeAttribute('data-myapp-apply');
+      }
+      var dup = !state && !!rib && !!status && (rib.textContent || '').trim() !== '' && (status.textContent || '').indexOf((rib.textContent || '').trim()) >= 0;
       if (row.hasAttribute('data-myapp-dupbadge') !== dup) row.toggleAttribute('data-myapp-dupbadge', dup);
+      // 残業の申請: 札に「残業」があれば、札が状況を出す。なければ、残業のある日に「未申請」か「申請中」（この端末から出した日）
+      var ot = '';
+      var o = ((status && status.textContent) || '').match(/残業\\s*(\\d{1,2}):(\\d{2})/);
+      var hasOtBadge = !!state && /残業/.test((rib && rib.textContent) || '');
+      if (o && +o[1] * 60 + +o[2] > 0 && !hasOtBadge) {
+        var d = ((row.querySelector('[id^="frmAttendance_dispDt"]') || {}).textContent || '').trim().match(/^(\\d{1,2})\\/(\\d{1,2})/);
+        var date = ym && d ? ym[1] + '/' + p2(+d[1]) + '/' + p2(+d[2]) : '';
+        ot = date && sent.indexOf(date) >= 0 ? 'sent' : 'none';
+      }
+      if ((row.getAttribute('data-myapp-ot') || '') !== ot) {
+        if (ot) row.setAttribute('data-myapp-ot', ot);
+        else row.removeAttribute('data-myapp-ot');
+      }
       var hl = row.querySelector('.lsmartHl');
       if (hl && /LSmart/i.test(hl.textContent || '')) {
         var w = document.createTreeWalker(hl, NodeFilter.SHOW_TEXT);
@@ -2474,6 +2601,12 @@ const SCRIPT = `
     if (form.hasAttribute('data-myapp-notitle') !== noTitle) form.toggleAttribute('data-myapp-notitle', noTitle);
     var hourly = !!document.querySelector('#frmApply_yukyu_apply_tp_2 input:checked');
     if (form.hasAttribute('data-myapp-hourly') !== hourly) form.toggleAttribute('data-myapp-hourly', hourly);
+    // よく使う理由の札（新しい申請のときだけ。札の置き場所と、備考を下げるのは CSS の data-myapp-reasons）
+    var reasonEl = document.getElementById('frmApply_yukyu_reason');
+    var reasonArea = reasonEl && reasonEl.querySelector('textarea');
+    var withReasons = !!(isNew && reasonEl && reasonArea && reasonChips('leave', reasonEl, reasonArea, false));
+    if (form.hasAttribute('data-myapp-reasons') !== withReasons) form.toggleAttribute('data-myapp-reasons', withReasons);
+    rememberReasonOnSave(form, 'leave', '#frmApply_yukyu_reason textarea', '#frmApply_yukyu_btnDone .tcc-btn');
   }
 
   // ---- 申請画面（共通）: 入力欄を1行ずつ並べ直す。パソコン向けの座標（style の left・top）から、
@@ -2677,6 +2810,35 @@ const SCRIPT = `
   // 勤怠実績登録から開いたとき（アプリが window.__myappPrefill に日付と時刻を入れてくる）は、その日付と時刻を入れておく
   var LAST_REASON = 'myapp.overtime.lastReason';
   var OT_APPLIED = 'myapp.overtime.applied'; // この端末から残業申請を出した日（勤怠実績登録で「作成済み」と出すため）
+
+${REASONS_JS}
+  /** 理由の札を、after のすぐ後ろに出す（覚えている理由がなければ出さずに null） */
+  function reasonChips(kind, after, area, indent) {
+    var list = pickReasons(kind);
+    if (list.length === 0) return null;
+    return chips(after, list.map(function (t) {
+      var one = t.replace(/\\s+/g, ' ');
+      return { label: one.length > 14 ? one.slice(0, 14) + '…' : one, run: function () { typeInto(area, t); } };
+    }), indent);
+  }
+  /** 登録を押したときの理由を控え、書き込みがうまくいってから（bridge.ts の myapp-saved）覚える。弾かれた・失敗したときは覚えない */
+  function rememberReasonOnSave(form, kind, areaSel, doneSel) {
+    var done = document.querySelector(doneSel);
+    if (done && !done.__myappReasonHook) {
+      done.__myappReasonHook = true;
+      done.addEventListener('click', function () {
+        var area = document.querySelector(areaSel);
+        form.__myappReasonSubmit = { text: area ? area.value : '', at: Date.now() };
+      }, true);
+    }
+    if (form.__myappReasonSaved) return;
+    form.__myappReasonSaved = true;
+    window.addEventListener('myapp-saved', function () {
+      var s = form.__myappReasonSubmit;
+      form.__myappReasonSubmit = null;
+      if (s && Date.now() - s.at < 60000) rememberReason(kind, s.text);
+    });
+  }
   function appliedDates() {
     try { return JSON.parse(localStorage.getItem(OT_APPLIED) || '[]'); } catch (e) { return []; }
   }
@@ -2730,13 +2892,11 @@ const SCRIPT = `
       { label: '今日', run: function () { typeInto(date, ymd(0)); } },
       { label: '明日', run: function () { typeInto(date, ymd(1)); } },
     ], true);
+    // 理由の下に、よく使う理由の札（最後に使ったものと、使った回数の多いもの。3つまで）
     var reason = document.querySelector('#frmApply_zangyo_reason textarea');
     var reasonRow = reason && reason.closest('.myapp-row');
-    var last = '';
-    try { last = localStorage.getItem(LAST_REASON) || ''; } catch (e) {}
-    if (reasonRow && last && isNew) chips(reasonRow, [
-      { label: '前回の理由: ' + last.replace(/\\s+/g, ' ').slice(0, 24), run: function () { typeInto(reason, last); } },
-    ], false);
+    if (reasonRow && isNew) reasonChips('overtime', reasonRow, reason, false);
+    rememberReasonOnSave(form, 'overtime', '#frmApply_zangyo_reason textarea', '#frmApply_zangyo_btnDone .tcc-btn');
     // 登録を押したら、理由と日付を覚えておき、書き込みがうまくいってから（bridge.ts の myapp-saved）この端末に記録する
     // （次の申請の「前回の理由」と、勤怠実績登録の「作成済み」のため）。
     // 押しただけでは記録しない。理由が空で弾かれた・サーバーで失敗した・確かめでやめたときに「作成済み」になり、

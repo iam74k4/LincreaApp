@@ -21,6 +21,7 @@ import {
   childClosedJs,
   healthFlagJs,
   joinScripts,
+  NET_TRACE_JS,
   openerStubJs,
   prefillJs,
   restoreScrollJs,
@@ -28,7 +29,7 @@ import {
   SAVE_WATCH_JS,
   stepsReplyJs,
 } from '../src/webview/bridge';
-import { initAppJs } from '../src/webview/initApp';
+import { initAppJs, refModeJs } from '../src/webview/initApp';
 
 // \ が落ちた正規表現によくある形（前の文字が \ でない d{ や s* など）
 const LOST_ESCAPE = /[^\\a-zA-Z](?:d\{\d|d\+\)|s\*\[|d日)|\|d\+\)|\^d\{|\^s\*|\(d\{|[^\\]s\*\$|[^\\]s\+\/|\[s\]/g;
@@ -41,9 +42,12 @@ const scripts: [string, string][] = [
   ...apps.map((id): [string, string] => [`skin ${id || '(アプリごとの調整なし)'}`, buildSkinScript(id)]),
   ['bridge', BRIDGE_JS],
   ['save-watch', SAVE_WATCH_JS],
+  ['net-trace', NET_TRACE_JS],
   ['boot', bootJs('#ffffff')],
   ['show-page', SHOW_PAGE_JS],
   ['initApp（控えなし）', initAppJs(null)],
+  ['refMode（控えなし）', refModeJs({})],
+  ['refMode（控えあり）', refModeJs({ 'POST appId=L_Tims': { text: '{"refMode":"0"}', type: 'application/json; charset=utf-8' } })],
   ['initApp（控えあり）', initAppJs({ app: 'L_Tims', form: 'frmAttendance', id: 'abc=', text: '/*<![CDATA[*/ var x = "</script> "; /*]]>*/' })],
   ['opener', openerStubJs(handoff)],
   ['autoClick', autoClickJs('frmLTiMSTop_btnAttendance', 'LOGIN_USER')],
@@ -59,7 +63,7 @@ const scripts: [string, string][] = [
     `WebView に入れる形 ${id || '(なし)'}`,
     joinScripts([safeAreaJs(34), BRIDGE_JS, SAVE_WATCH_JS, buildSkinScript(id), autoClickJs('b1', 'K'), restoreScrollJs(position)]),
   ]),
-  ['WebView に入れる形（読み込みの前）', joinScripts([bootJs('#000000'), openerStubJs(handoff), prefillJs({ a: 'b' }), initAppJs(null), healthFlagJs(true)])],
+  ['WebView に入れる形（読み込みの前）', joinScripts([bootJs('#000000'), openerStubJs(handoff), prefillJs({ a: 'b' }), initAppJs(null), refModeJs({}), healthFlagJs(true)])],
 ];
 
 let failed = 0;

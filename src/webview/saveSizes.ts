@@ -5,6 +5,8 @@
 // 段の数は、入力によって少し変わる（プロジェクトの行が多いと増える）。最後に保存できたときの数を使う。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { clockOf } from '../clock';
+
 export type SaveSize = {
   /** 書き込みの段の数（トランザクションの始め・書き込み・確定）。「保存しています（3/9）」の 9 */
   writes: number;
@@ -93,4 +95,14 @@ export function describeSave(
     `[保存] ${form}「${label || '?'}」 ${end.ok ? '' : '失敗・取り消し '}${sec(end.ms)}・通信 ${end.steps} 回（書き込み ${end.writes}）` +
     (slow.length > 0 ? `・時間のかかった通信: ${slow.join('、')}` : '')
   );
+}
+
+/** 開発中に Metro に出す、ページの通信1回ぶんの1行（bridge の NET_TRACE_JS）。始めた時刻・かかった時間・パス・大きさ */
+export function describeNet(
+  net: { method: string; path: string; keys: string; at: number; ms: number; status: number; sent: number; received: number; hint: string },
+  screen: string,
+): string {
+  const query = net.keys ? `?${net.keys}` : '';
+  const size = `送${net.sent}B 受${net.received}B`;
+  return `[通信] ${clockOf(net.at)} ${(net.ms / 1000).toFixed(2)}秒 ${net.method} ${net.path}${query} ${net.status} ${size}${net.hint ? ` ${net.hint}` : ''}（${screen}）`;
 }

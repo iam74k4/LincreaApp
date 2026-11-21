@@ -1,7 +1,7 @@
 # 登録した iPhone に配る（EAS のリンク）
 
 登録した iPhone だけに、リンクから LINCREA を入れてもらう（Apple の Ad Hoc 配布。EAS の「社内配布」）。
-App Store の審査は通さない。コマンドは、このフォルダ（login-demo）で打つ。
+App Store の審査は通さない。コマンドは、このフォルダ（LincreaApp）で打つ。
 
 ## 1. 新しい人の iPhone を登録する（1台につき1回）
 

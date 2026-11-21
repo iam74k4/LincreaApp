@@ -1,7 +1,7 @@
 // サーバーとの通信の道具（src/api/http.ts）: 待ちすぎ・つながらないときの失敗と、画面に出す文。
 import { fetch as expoFetch } from 'expo/fetch';
 
-import { describeError, NetworkError, serverFetch, SessionExpiredError, TimeoutError } from '../api/http';
+import { CanceledError, describeError, NetworkError, serverFetch, SessionExpiredError, TimeoutError } from '../api/http';
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 const mockedFetch = expoFetch as jest.MockedFunction<typeof expoFetch>;
@@ -27,6 +27,28 @@ test('待ちすぎたら、取りやめて TimeoutError', async () => {
   const pending = serverFetch('https://example.com/', {}, 1000);
   jest.advanceTimersByTime(1000);
   await expect(pending).rejects.toBeInstanceOf(TimeoutError);
+});
+
+test('呼んだ側が止めたら（signal）、取りやめて CanceledError（待ちすぎの TimeoutError とは分ける）', async () => {
+  mockedFetch.mockImplementation(
+    (_url, init) =>
+      new Promise((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      }),
+  );
+  const controller = new AbortController();
+  const pending = serverFetch('https://example.com/', { signal: controller.signal });
+  controller.abort();
+  await expect(pending).rejects.toBeInstanceOf(CanceledError);
+});
+
+test('はじめから止められていたら、すぐ CanceledError', async () => {
+  mockedFetch.mockImplementation(
+    (_url, init) => (init?.signal?.aborted ? Promise.reject(new Error('aborted')) : new Promise(() => {})),
+  );
+  const controller = new AbortController();
+  controller.abort();
+  await expect(serverFetch('https://example.com/', { signal: controller.signal })).rejects.toBeInstanceOf(CanceledError);
 });
 
 test('返事が来れば、そのまま返す', async () => {

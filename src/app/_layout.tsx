@@ -17,6 +17,7 @@ import { setStatusBarStyle, StatusBar } from 'expo-status-bar';
 
 import { SessionProvider, useSession } from '../session/SessionContext';
 import { useColors } from '../theme';
+import { useAutoUpdate } from '../useAutoUpdate';
 
 export default function RootLayout() {
   const scheme = useColorScheme();
@@ -73,6 +74,8 @@ export default function RootLayout() {
 function RootNavigator() {
   const { session, restoring } = useSession();
   const c = useColors();
+  // 直し（eas update）を、前に出てきたときにも確かめて受け取り、開いてすぐマイアプリにいれば切り替える（src/useAutoUpdate.ts）
+  useAutoUpdate(c.background);
   return (
     <>
       <Stack screenOptions={{ headerShown: false }}>

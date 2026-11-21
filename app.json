@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "LINCREA",
-    "slug": "login-demo",
+    "slug": "lincrea",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,7 +10,7 @@
       "policy": "fingerprint"
     },
     "updates": {
-      "url": "https://u.expo.dev/e12d22b0-a737-471c-bd39-fbc16f03f1eb"
+      "url": "https://u.expo.dev/0b7b8a00-dbbd-41ce-b7ac-11bbedbb0c26"
     },
     "ios": {
       "supportsTablet": false,
@@ -74,7 +74,7 @@
         }
       },
       "eas": {
-        "projectId": "e12d22b0-a737-471c-bd39-fbc16f03f1eb"
+        "projectId": "0b7b8a00-dbbd-41ce-b7ac-11bbedbb0c26"
       }
     },
     "owner": "iam74k4"

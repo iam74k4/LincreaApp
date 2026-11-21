@@ -1,6 +1,8 @@
 // サーバーとの通信で、どこからでも使う小さな道具。
 import { fetch as expoFetch } from 'expo/fetch';
 
+import { clockOf } from '../clock';
+
 /** ログインが切れている（サーバーにログイン画面へ戻された）ときの失敗 */
 export class SessionExpiredError extends Error {
   constructor() {
@@ -22,6 +24,13 @@ export class TimeoutError extends NetworkError {
   }
 }
 
+/** 呼んだ側が止めた（init.signal）。画面に出すものではない */
+export class CanceledError extends Error {
+  constructor() {
+    super('止めました');
+  }
+}
+
 /** 返事を待つ長さ（ふつう）。iOS の通信の決まりの 60 秒は、起動やログアウトで待たせるには長すぎる */
 export const DEFAULT_TIMEOUT_MS = 20_000;
 
@@ -34,13 +43,24 @@ type FetchInit = NonNullable<Parameters<typeof expoFetch>[1]>;
 export async function serverFetch(url: string, init: FetchInit = {}, timeoutMs: number = DEFAULT_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // 呼んだ側が止めたとき（init.signal）も止める。待ちすぎたときの止め方と同じ仕組みにまとめる
+  const outer = init.signal ?? null;
+  const stop = () => controller.abort();
+  if (outer?.aborted) controller.abort();
+  else outer?.addEventListener('abort', stop);
+  const at = Date.now();
   try {
-    return await expoFetch(url, { ...init, signal: controller.signal });
+    const res = await expoFetch(url, { ...init, signal: controller.signal });
+    // 開発中だけ: アプリが自分でする通信も、ページの通信（[通信]）と同じ形で出す（保存の遅さを調べるため）
+    if (__DEV__) console.log(`[通信:アプリ] ${clockOf(at)} ${((Date.now() - at) / 1000).toFixed(2)}秒 ${init.method ?? 'GET'} ${pathOf(url)} ${res.status}`);
+    return res;
   } catch {
+    if (outer?.aborted) throw new CanceledError();
     if (controller.signal.aborted) throw new TimeoutError();
     throw new NetworkError();
   } finally {
     clearTimeout(timer);
+    outer?.removeEventListener('abort', stop);
   }
 }
 

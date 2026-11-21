@@ -43,6 +43,7 @@ import {
   childClosedJs,
   healthFlagJs,
   joinScripts,
+  NET_TRACE_JS,
   openerStubJs,
   parseBridgeMessage,
   prefillJs,
@@ -58,9 +59,10 @@ import { bootJs, buildSkinScript, SHOW_PAGE_JS } from '../webview/ezcraftSkin';
 import { CAN_PARK, Parkable } from '../webview/savePark';
 import { appDataKeyOfUrl, rememberAppData } from '../webview/appDataCache';
 import { depositHandoff, type Handoff } from '../webview/handoff';
-import { initAppJs } from '../webview/initApp';
+import { initAppJs, refModeJs } from '../webview/initApp';
 import { isServerUrl, mayNavigate, mayOpenOutside } from '../webview/origin';
 import { initAppFormOfUrl, recallInitApp, rememberInitApp } from '../webview/initAppCache';
+import { recallRefModes, rememberRefMode } from '../webview/refModeCache';
 import {
   attachApply,
   backgroundSavePendingFor,
@@ -74,7 +76,10 @@ import {
   updateSave,
   type PendingApply,
 } from '../webview/backgroundSaves';
-import { describeSave, loadSaveSizes, rememberSaveSize, saveKey, saveSizeOf, savingText, type SaveSize } from '../webview/saveSizes';
+import { Directory, File, Paths } from 'expo-file-system';
+
+import { clockOf } from '../clock';
+import { describeNet, describeSave, loadSaveSizes, rememberSaveSize, saveKey, saveSizeOf, savingText, type SaveSize } from '../webview/saveSizes';
 import { noteClosedByPage, noteWrite, takeChildResult, writeCount } from '../webview/writes';
 
 type Props = {
@@ -124,6 +129,19 @@ const ERROR_WAIT_MS = 2000;
 const PARK_FALLBACK_MS = 1000;
 
 /** 保存（登録・削除など）のいま（bridge の 9） */
+/** 開発中だけ: ページから受け取った画面の定義の写しを、端末のファイルに書く（シミュレーターなら Mac から読める） */
+function saveTraceFile(name: string, text: string) {
+  try {
+    const folder = new Directory(Paths.document, 'ezcraft-trace');
+    folder.create({ intermediates: true, idempotent: true });
+    const file = new File(folder, `${name}.js`);
+    file.write(text);
+    console.log(`[写し] ${file.uri}（${text.length} 文字）`);
+  } catch (e) {
+    console.log(`[写し] 書けなかった: ${String(e)}`);
+  }
+}
+
 type SaveRun = {
   /** 画面と押したボタン（src/webview/saveSizes.ts） */
   key: string;
@@ -161,11 +179,18 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // ページの中でダイアログが開いているか（bridge の 8）。開いているあいだは、‹ やスワイプで戻らず、まずダイアログを閉じる
   const [modalOpen, setModalOpen] = useState(false);
   const allowModalRemove = usePreventRemove(modalOpen, () => {
+    if (__DEV__) console.log(`[閉じる] ${clockOf(Date.now())} 戻る操作で、ページのダイアログを閉じる（usePreventRemove）`);
     webRef.current?.injectJavaScript('window.__myappCloseModal && window.__myappCloseModal(); true;');
   });
   // この画面の定義（initApp）の控え。あれば、ページは読まずにこれを使う（src/webview/initAppCache.ts）。
   // 開いたとき（と読み直すとき）に決めて、そのあいだは変えない（変えると、ページに入れるスクリプトが入れ替わる）
   const [initApp, setInitApp] = useState(() => cachedInitApp(uri));
+  // ログインした人の「参照モード」の返事の控え（src/webview/refModeCache.ts）。開いたとき（と読み直すとき）に決める
+  const [refModes, setRefModes] = useState(() => recallRefModes());
+  // 開発中だけ: 申請の画面を控えから開いたときも、画面の定義の写しを書く（ページは読み直さないので、写しが届かないため）
+  useEffect(() => {
+    if (__DEV__ && initApp && /^frmApply_/.test(initApp.form)) saveTraceFile(`app-${initApp.form}`, initApp.text);
+  }, [initApp]);
   // ページが整ったか。整うまでは中身を隠し（bootJs）、読み込み中の印を出しておく（整える前の見た目が一瞬見えないように）
   const [shown, setShown] = useState(false);
   // ページを読み込めなかったときに出す文（通信できない・サーバーが答えない）。「もう一度読み込む」で消す
@@ -234,6 +259,13 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     leaveAfterStartTimer.current = null;
   }, []);
   const leaveDuringSave = useCallback(() => {
+    // 保存の途中で、ページが確かめのダイアログ（承認者確認フォームなど）を開いて答えを待っている。
+    // 戻る代わりにダイアログを閉じる（ページが保存を取り消す）。裏へ回すと、見えないダイアログが答えを待ったまま止まるため
+    if (savingRef.current && modalOpen) {
+      if (__DEV__) console.log(`[閉じる] ${clockOf(Date.now())} 保存の途中の ‹ で、ページのダイアログを閉じる（leaveDuringSave）`);
+      webRef.current?.injectJavaScript('window.__myappCloseModal && window.__myappCloseModal(); true;');
+      return;
+    }
     if (savingRef.current) {
       if (canLeave && moveToBackground()) return;
       updateSaving((run) => ({ ...run, backAfter: true }));
@@ -245,7 +277,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     }
     // 保存も待ちもない（保存が終わった直後に、まだ出ていた ‹ を押した）: ふつうに戻る
     if (navigation.canGoBack()) navigation.goBack();
-  }, [canLeave, moveToBackground, navigation, requestLeaveAfterStart, updateSaving, waitingSave]);
+  }, [canLeave, modalOpen, moveToBackground, navigation, requestLeaveAfterStart, updateSaving, waitingSave]);
   // 保存のあいだと、前の保存を待っているあいだは、iOS の戻る動き（‹ とスワイプ）を止める（途中で画面が消えると、保存が切れる）。
   // 裏で続けられるときは、‹ を同じ見た目のボタンに替え、スワイプは保存の知らせの上で受けて、アプリが自分で戻る
   // （iOS の戻る動きを止めると、iOS がいったん動きを取り消すので、画面が一瞬戻ってから去って見える。2026-11-18、実機）。
@@ -438,6 +470,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     setFailure(null);
     setShown(false);
     setInitApp(cachedInitApp(uri));
+    setRefModes(recallRefModes());
     setReloadKey((k) => k + 1);
   }, [uri]);
   // データだけの読み直しを頼んで、返事を待っているあいだのタイマー（返事がなければ、丸ごと読み直す）
@@ -718,8 +751,18 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // 1本ずつ囲んでつなぐ（1本が例外を出しても、ほかは動く。bridge の joinScripts）
   const background = c.background;
   const beforeLoadJs = useMemo(
-    () => joinScripts([bootJs(background), openerStubJs(handoff), prefillJs(prefill), initAppJs(initApp), healthFlagJs(HEALTH)]),
-    [background, handoff, prefill, initApp],
+    () =>
+      joinScripts([
+        // 開発中だけ: ページの通信を1回ずつ Metro のログに出す（保存の遅さを調べるため。bridge の NET_TRACE_JS）
+        __DEV__ ? NET_TRACE_JS : '',
+        bootJs(background),
+        openerStubJs(handoff),
+        prefillJs(prefill),
+        initAppJs(initApp),
+        refModeJs(refModes),
+        healthFlagJs(HEALTH),
+      ]),
+    [background, handoff, prefill, initApp, refModes],
   );
   const firstStep = autoClick && autoClick.steps.length > 0 ? autoClick.steps[0] : null;
   const readyKey = autoClick?.ready ?? '';
@@ -779,7 +822,12 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             }
             if (message?.type === 'pwFaceId') fillPassword();
             if (message?.type === 'pwTyped') typedPassword.current = { value: message.value, at: Date.now() };
-            if (message?.type === 'modal') setModalOpen(message.open);
+            if (message?.type === 'modal') {
+              setModalOpen(message.open);
+              // 保存の途中でページが開いた確かめのダイアログ（残業申請の「承認者確認フォーム」など）に答えた:
+              // 保存はここから続くので、「保存しています」を出し直す（ダイアログを開いていた時間は数えない）
+              if (!message.open && savingRef.current) updateSaving((run) => ({ ...run, startedAt: Date.now(), lastAt: Date.now() }));
+            }
             // 時刻のダイヤルを回したときの、カチッという小さな手ごたえ（iOS の時刻の選び方と同じ）
             if (message?.type === 'tick') Haptics.selectionAsync().catch(() => {});
             if (message?.type === 'file') receiveFile(message.base64, message.name, message.mime);
@@ -809,8 +857,15 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
               ownWrites.current += 1;
               if (message.label) lastWriteLabel.current = message.label;
             }
+            if (message?.type === 'net' && __DEV__) console.log(describeNet(message, heading || title || pageTitle || uri));
+            if (message?.type === 'pageLog' && __DEV__) console.log(`[ページ:${message.level}] ${message.text}`);
+            if (message?.type === 'netBody' && __DEV__) saveTraceFile(message.name, message.text);
+            if (__DEV__ && (message?.type === 'saveStep' || message?.type === 'saveEnd' || message?.type === 'saveWait' || message?.type === 'saveError' || message?.type === 'modal')) {
+              console.log(`[保存:知らせ] ${clockOf(Date.now())} ${JSON.stringify(message)}`);
+            }
             // 保存の進み具合（bridge の 9）
             if (message?.type === 'saveStart') {
+              if (__DEV__) console.log(`[保存] 始まった ${clockOf(Date.now())}「${lastWriteLabel.current}」`);
               const key = saveKey(uri, lastWriteLabel.current);
               const at = Date.now();
               const size = saveSizeOf(key);
@@ -838,7 +893,11 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             if (message?.type === 'close') close();
             if (message?.type === 'open') openWindow(message.url, message.handoff);
             if (message?.type === 'apply') apply(message.form, message.prefill, message.auto);
-            if (message?.type === 'initApp') rememberInitApp({ app: message.app, form: message.form }, message.id, message.text);
+            if (message?.type === 'refMode') rememberRefMode(message.key, { text: message.text, type: message.contentType });
+            if (message?.type === 'initApp') {
+              rememberInitApp({ app: message.app, form: message.form }, message.id, message.text);
+              if (__DEV__ && /^frmApply_/.test(message.form)) saveTraceFile(`app-${message.form}`, message.text);
+            }
             if (message?.type === 'attendanceDays') noteAttendanceDays(message.month, message.days);
             if (message?.type === 'applyQueue' && startApplyQueue(message.form, message.items)) {
               // 申請して戻ってきたら、この画面（勤務表）を読み直す
@@ -903,9 +962,13 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           }}
         />
       </Parkable>
-      {/* 置き場へ移したあと（裏で続けている保存）は、上の知らせが進み具合を出すので、ここでは出さない */}
+      {/* 置き場へ移したあと（裏で続けている保存）は、上の知らせが進み具合を出すので、ここでは出さない。
+          保存の途中でページがダイアログを開いたとき（残業申請の「承認者確認フォーム」など）も出さない。
+          ページはダイアログの答え（「申請」など）を待っていて、この知らせはページを押せなくするので、
+          出したままだと答えられず、EZCraft が 1 分ほどで保存を取り消すまで「保存しています」のまま止まる（2026-11-21 に測った） */}
       {saving ? (
-        !parked && (
+        !parked &&
+        !modalOpen && (
           <SaveProgress
             startedAt={saving.startedAt}
             writes={saving.writes}

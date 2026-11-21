@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { landedOnLogin, serverFetch as fetch } from '../api/http';
 import { SERVER_URL } from '../config';
+import { forgetRefModes } from './refModeCache';
 
 const MAX_AGE_MS = 30 * 60 * 1000; // 30 分
 const RECENT_KEY = 'initApp.recent';
@@ -62,11 +63,13 @@ export function rememberInitApp(form: InitAppForm, id: string, text: string): vo
 /** ログインしたとき: 控えの中身を捨てる（前のログインの記録が入っているため）。裏で読む画面の覚え書きは残す */
 export function forgetInitAppTexts(): void {
   store.clear();
+  forgetRefModes(); // 参照モードの返事の控えも、ログインした人のもの（src/webview/refModeCache.ts）
 }
 
 /** ログアウトしたとき: 控えも覚え書きも捨てる */
 export function forgetAllInitApps(): void {
   store.clear();
+  forgetRefModes();
   AsyncStorage.removeItem(RECENT_KEY).catch(() => {});
 }
 
@@ -92,17 +95,21 @@ function noteRecent(entry: RecentForm): void {
     .catch(() => {});
 }
 
-let running: Promise<void> | null = null;
+let running: { promise: Promise<void>; controller: AbortController } | null = null;
 
 /**
  * よく使う画面の定義を、裏で1つずつ読んでおく（まだ控えがないものだけ）。
- * 失敗しても何もしない（そのときは、ページがふつうに読む）
+ * 失敗しても何もしない（そのときは、ページがふつうに読む）。
+ * 1つ読めなくても（EZCraft で画面を出し直して、覚えていた ID が古くなったときなど。サーバーは 500 を返す）、次の画面は読む。
+ * ログインが切れていた・通信できない・止めた（stopPrefetchInitApps）ときは、そこでやめる
  */
 export function prefetchInitApps(): Promise<void> {
-  if (running) return running;
-  running = (async () => {
+  if (running) return running.promise;
+  const controller = new AbortController();
+  const promise = (async () => {
     const list = (await readRecent()).sort((a, b) => b.usedAt - a.usedAt).slice(0, PREFETCH_MAX);
     for (const f of list) {
+      if (controller.signal.aborted) return;
       if (recallInitApp(f)?.id === f.id) continue;
       try {
         const query = `appid=${encodeURIComponent(f.app)}&formid=${encodeURIComponent(f.form)}&id=${encodeURIComponent(f.id)}&_=${Date.now()}`;
@@ -113,16 +120,26 @@ export function prefetchInitApps(): Promise<void> {
             'X-Requested-With': 'XMLHttpRequest',
             Accept: 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
           },
+          signal: controller.signal,
         });
-        if (!res.ok || landedOnLogin(res)) return; // ログインが切れているなど。続けても同じなのでやめる
+        if (landedOnLogin(res)) return; // ログインが切れている。続けても同じなのでやめる
+        if (!res.ok) continue; // この画面は読めなかった。次の画面へ
         const text = await res.text();
+        if (controller.signal.aborted) return;
         if (looksLikeInitApp(text)) store.set(keyOf(f), { id: f.id, text, savedAt: Date.now() });
       } catch {
-        return; // 通信できない。次の機会に
+        return; // 通信できない・止めた。次の機会に
       }
     }
   })().finally(() => {
-    running = null;
+    if (running?.promise === promise) running = null;
   });
-  return running;
+  running = { promise, controller };
+  return promise;
+}
+
+/** 裏で読むのをやめる（マイアプリから離れたとき。開いた画面が自分で読む定義と、通信を取り合わないように） */
+export function stopPrefetchInitApps(): void {
+  running?.controller.abort();
+  running = null;
 }
