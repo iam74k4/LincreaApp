@@ -3908,8 +3908,15 @@ ${OVERTIME_MATH_JS}
     var d = new Date();
     return Math.min(23 * 60 + 55, d.getHours() * 60 + Math.round(d.getMinutes() / 5) * 5);
   }
-  // 回す列を1つ作る。values は [{ label, value }]。真ん中に来た値が変わるたびに onPick を呼ぶ
+  // 回す列を1つ作る。values は [{ label, value }]。真ん中に来た値が変わるたびに onPick を呼ぶ。
+  // 列は端で止まらず、ぐるぐる回る（分なら 59 の下に 00、00 の上に 59。iOS の時刻の選び方と同じ）。
+  // 同じ並びを何回も続けて置き、回し終わったら（指を離して止まったら）真ん中の並びの同じ値へ、見た目を変えずに移る
   function dialWheel(values, start, name, onPick) {
+    var n = values.length;
+    // 並びの数は奇数。強くはじいても端に着かない長さ（20000px）にする
+    var copies = Math.max(5, Math.ceil(20000 / (n * DIAL_ROW))) | 1;
+    var mid = Math.floor(copies / 2) * n; // 真ん中の並びの、最初の行
+    var total = copies * n;
     var wheel = document.createElement('div');
     wheel.className = 'myapp-dial-wheel';
     wheel.setAttribute('aria-label', name);
@@ -3917,23 +3924,27 @@ ${OVERTIME_MATH_JS}
     wheel.setAttribute('role', 'slider');
     wheel.setAttribute('tabindex', '0');
     wheel.setAttribute('aria-valuemin', String(values[0].value));
-    wheel.setAttribute('aria-valuemax', String(values[values.length - 1].value));
+    wheel.setAttribute('aria-valuemax', String(values[n - 1].value));
     var list = document.createElement('div');
     list.className = 'myapp-dial-list';
-    values.forEach(function (v, i) {
-      // 止まる位置は行（div）で決め、筒の形に見せる変形は中の文字（span）にだけかける（行を変形すると、止まる位置がずれる）
-      var item = document.createElement('div');
-      item.className = 'myapp-dial-item';
-      item.setAttribute('aria-hidden', 'true'); // 読み上げは、回している列（slider）の値で
-      var face = document.createElement('span');
-      face.textContent = v.label;
-      item.appendChild(face);
-      // 上下の値を押したら、それを真ん中まで回す
-      item.addEventListener('click', function () { wheel.scrollTo({ top: i * DIAL_ROW, behavior: 'smooth' }); });
-      list.appendChild(item);
-    });
+    for (var c = 0; c < copies; c++) {
+      values.forEach(function (v, k) {
+        var row = c * n + k;
+        // 止まる位置は行（div）で決め、筒の形に見せる変形は中の文字（span）にだけかける（行を変形すると、止まる位置がずれる）
+        var item = document.createElement('div');
+        item.className = 'myapp-dial-item';
+        item.setAttribute('aria-hidden', 'true'); // 読み上げは、回している列（slider）の値で
+        var face = document.createElement('span');
+        face.textContent = v.label;
+        item.appendChild(face);
+        // 上下の値を押したら、それを真ん中まで回す
+        item.addEventListener('click', function () { wheel.scrollTo({ top: row * DIAL_ROW, behavior: 'smooth' }); });
+        list.appendChild(item);
+      });
+    }
     wheel.appendChild(list);
-    var index = -1;
+    var index = -1; // 真ん中にある行（並び全体での番号）
+    var picked = -1; // 選ばれている値（values の番号）
     var queued = false;
     var lastTick = 0;
     function paint() {
@@ -3941,45 +3952,68 @@ ${OVERTIME_MATH_JS}
       var center = wheel.scrollTop / DIAL_ROW;
       var items = list.children;
       // 真ん中から離れた行ほど、筒の奥へ回りこむように縮めて寄せる
-      for (var i = Math.max(0, Math.floor(center) - 4); i < Math.min(items.length, Math.ceil(center) + 5); i++) {
+      for (var i = Math.max(0, Math.floor(center) - 4); i < Math.min(total, Math.ceil(center) + 5); i++) {
         var d = i - center;
         var th = Math.max(-80, Math.min(80, d * 20)) * Math.PI / 180;
         var y = DIAL_R * Math.sin(th) - d * DIAL_ROW;
         items[i].firstChild.style.transform = 'translateY(' + y.toFixed(1) + 'px) scaleY(' + Math.cos(th).toFixed(3) + ')';
       }
-      var now = Math.max(0, Math.min(values.length - 1, Math.round(center)));
+      var now = Math.max(0, Math.min(total - 1, Math.round(center)));
       if (now === index) return;
-      if (index >= 0 && Date.now() - lastTick > 35) {
-        lastTick = Date.now();
-        try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tick' })); } catch (e) {}
-      }
       if (index >= 0) items[index].classList.remove('myapp-dial-on');
       items[now].classList.add('myapp-dial-on');
       index = now;
-      wheel.setAttribute('aria-valuenow', String(values[now].value));
-      wheel.setAttribute('aria-valuetext', values[now].label + name);
-      onPick(values[now].value);
+      // 真ん中の並びへ移っただけ（値は同じ）なら、手ごたえも知らせもしない
+      var v = now % n;
+      if (v === picked) return;
+      if (picked >= 0 && Date.now() - lastTick > 35) {
+        lastTick = Date.now();
+        try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tick' })); } catch (e) {}
+      }
+      picked = v;
+      wheel.setAttribute('aria-valuenow', String(values[v].value));
+      wheel.setAttribute('aria-valuetext', values[v].label + name);
+      onPick(values[v].value);
     }
+    // 止まったら、真ん中の並びの同じ値へ移る（並びの長さのぶんだけ動かすので、見た目は変わらない）
+    var touching = false;
+    var settle = 0;
+    function recenter() {
+      if (touching || index < 0) return;
+      var want = mid + (index % n);
+      if (want === index) return;
+      wheel.scrollTop += (want - index) * DIAL_ROW;
+      paint();
+    }
+    function later() {
+      clearTimeout(settle);
+      settle = setTimeout(recenter, 160);
+    }
+    wheel.addEventListener('touchstart', function () { touching = true; clearTimeout(settle); }, { passive: true });
+    wheel.addEventListener('touchend', function () { touching = false; later(); }, { passive: true });
+    wheel.addEventListener('touchcancel', function () { touching = false; later(); }, { passive: true });
     // 1 つずつ動かす（VoiceOver の上下のスワイプ・キーボードの ↑ ↓）
     function nudge(step) {
-      var next = Math.max(0, Math.min(values.length - 1, (index < 0 ? 0 : index) + step));
+      var next = Math.max(0, Math.min(total - 1, (index < 0 ? mid : index) + step));
       wheel.scrollTop = next * DIAL_ROW;
       paint();
+      recenter();
     }
     wheel.addEventListener('keydown', function (e) {
       if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); nudge(-1); }
       else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); nudge(1); }
     });
     wheel.addEventListener('scroll', function () {
+      later(); // 回っているあいだ（指を離したあとの惰性も）は、止まるまで待つ
       if (queued) return;
       queued = true;
       requestAnimationFrame(paint);
     }, { passive: true });
-    // シートを画面に置いてから、始めの値を真ん中に
+    // シートを画面に置いてから、始めの値を、真ん中の並びで真ん中に
     wheel.__start = function () {
-      var i = 0;
-      values.forEach(function (v, k) { if (v.value === start) i = k; });
-      wheel.scrollTop = i * DIAL_ROW;
+      var k = 0;
+      values.forEach(function (v, j) { if (v.value === start) k = j; });
+      wheel.scrollTop = (mid + k) * DIAL_ROW;
       paint();
     };
     return wheel;

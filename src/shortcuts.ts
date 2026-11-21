@@ -10,7 +10,7 @@ import type { SymbolViewProps } from 'expo-symbols';
 
 export type Shortcut = {
   key: string;
-  /** 近道の名前と、その下の説明 */
+  /** 近道の名前と、その説明（説明は画面には出さず、読み上げのヒントに使う） */
   title: string;
   subtitle: string;
   symbol: SymbolViewProps['name'];

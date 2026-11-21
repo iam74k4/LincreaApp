@@ -282,7 +282,8 @@ export default function MyAppsScreen() {
                       onPress={() => openShortcut(shortcut)}
                       style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}
                       accessibilityRole="button"
-                      accessibilityLabel={`${shortcut.title}、${shortcut.subtitle}`}
+                      accessibilityLabel={shortcut.title}
+                      accessibilityHint={shortcut.subtitle}
                     >
                       <View style={[styles.shortcutIcon, { backgroundColor: shortcut.color }]}>
                         {pending?.key === shortcut.key ? (
@@ -291,14 +292,10 @@ export default function MyAppsScreen() {
                           <SymbolView name={shortcut.symbol} size={18} weight="semibold" tintColor="#FFFFFF" />
                         )}
                       </View>
-                      <View style={styles.shortcutText}>
-                        <Text style={styles.shortcutTitle} numberOfLines={1}>
-                          {shortcut.title}
-                        </Text>
-                        <Text style={styles.shortcutSubtitle} numberOfLines={1}>
-                          {shortcut.subtitle}
-                        </Text>
-                      </View>
+                      {/* 見出しだけ（説明は画面に出さず、読み上げのヒントにだけ使う） */}
+                      <Text style={styles.shortcutTitle} numberOfLines={1}>
+                        {shortcut.title}
+                      </Text>
                     </Pressable>
                   ))}
                 </View>
@@ -409,7 +406,7 @@ function createStyles(c: Colors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
-      minHeight: 64,
+      minHeight: 56,
       paddingHorizontal: 14,
       paddingVertical: 12,
       borderRadius: sizes.cardRadius,
@@ -418,18 +415,11 @@ function createStyles(c: Colors) {
     pressed: {
       opacity: 0.6,
     },
-    shortcutText: {
-      flex: 1,
-      gap: 2,
-    },
     shortcutTitle: {
+      flex: 1,
       fontSize: 17,
       fontWeight: '600',
       color: c.text,
-    },
-    shortcutSubtitle: {
-      fontSize: 13,
-      color: c.textSecondary,
     },
     // 行の間の線。カードの地の上に、アイコンの右（文字の頭）から引く
     separatorRow: {

@@ -8,7 +8,7 @@ import type { SymbolViewProps } from 'expo-symbols';
 import type { MyApp } from './api/myApps';
 
 export type KnownApp = {
-  /** 一覧に出す名前と、その下の一言 */
+  /** 一覧に出す名前と、その一言（一言は画面には出さず、読み上げのヒントに使う） */
   name: string;
   subtitle: string;
   symbol: SymbolViewProps['name'];
