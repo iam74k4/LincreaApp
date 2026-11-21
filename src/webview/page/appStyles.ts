@@ -1297,6 +1297,7 @@ ${row('LPJZ_Main_lbl_kome', 90, 32)}
         var agency = document.getElementById('MC_result_Input_1_agency_name');
         var agencyLabel = document.getElementById('MC_result_Input_1_agency_name_reserv_label');
         if (agency && agencyLabel && agency.__myappReqLabel !== agencyLabel) {
+          if (agency.__myappReqLabel) agency.__myappReqLabel.classList.remove('myapp-required');
           agency.__myappReqLabel = agencyLabel;
           agency.__myappReqLabelFixed = true;
         }

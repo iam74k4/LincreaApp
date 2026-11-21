@@ -25,10 +25,11 @@ let run: { msgBoxes: () => void; errorFields: () => string[] };
 function load(body: string) {
   dom = new JSDOM(`<!doctype html><html><body>${body}</body></html>`);
   doc = dom.window.document;
-  run = new Function('window', 'document', 'getComputedStyle', `${MSG_BOX_JS}; return { msgBoxes: msgBoxes, errorFields: errorFields };`)(
+  run = new Function('window', 'document', 'getComputedStyle', 'setTimeout', `${MSG_BOX_JS}; return { msgBoxes: msgBoxes, errorFields: errorFields };`)(
     dom.window,
     doc,
     dom.window.getComputedStyle.bind(dom.window),
+    dom.window.setTimeout.bind(dom.window),
   );
 }
 afterEach(() => dom.window.close());
@@ -158,13 +159,13 @@ test('アプリが足した案内の行にはしるしを付ける（保存の�
   expect(doc.querySelector('.myapp-msg-lead')?.textContent).toBe('赤い枠の欄を直してください。');
 });
 
-test('エラーの欄の印がダイアログより遅れて付いても、あとから一覧を出す（3 秒までは整え直すたびに見る）', () => {
+test('エラーの欄の印がダイアログより遅れて付いても、あとから一覧を出す（3 秒までは 0.3 秒ごとに自分で見直す）', async () => {
   load(errorBox());
   run.msgBoxes();
   expect(text()).toBe('入力した内容を確かめてください。');
-  // EZCraft が少しあとにエラーの欄に印を付けた
+  // EZCraft が少しあとにエラーの欄に印を付けた（整え直しは起きない。自分の見直しだけで一覧が出る）
   doc.body.insertAdjacentHTML('beforeend', FIELDS);
-  run.msgBoxes();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 350));
   expect(items()).toEqual(['開始時間と終了時間の整合性エラー', '実績時間外に休憩時間が入力されています', '勤務時間とプロジェクトの総時間数が一致していません']);
   expect(doc.querySelector('.myapp-msg-lead')?.textContent).toBe('赤い枠の欄を直してください。');
   // 一覧を出したら、もう触らない

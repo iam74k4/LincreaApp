@@ -141,6 +141,8 @@ export const MSG_BOX_JS = `
       // エラーの欄の印（赤い地）は、EZCraft がダイアログより少しあとに付けることがある。マウスで見る案内のダイアログは、
       // エラーの欄が見つかるか、3 秒たつまで、整え直すたびに一覧を出し直す
       if (!st.hover || errors.length || Date.now() - st.at > 3000) box.__myappMsgBox = 'done';
+      // 待っているあいだは、自分で 0.3 秒ごとに見直す（EZCraft が欄に印を付けるのは style だけの変化で、整え直しが起きない）
+      else if (!st.timer) st.timer = setTimeout(function () { st.timer = null; msgBoxes(); }, 300);
     });
   }
 `;

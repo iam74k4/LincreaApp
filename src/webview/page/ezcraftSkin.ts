@@ -848,7 +848,11 @@ const GENERIC_JS = `
       // 見出しを決めてある欄（アプリの見た目の直しが __myappReqLabelFixed を付けたもの）は探さない
       if (field.__myappReqWas !== required) {
         field.__myappReqWas = required;
-        if (!field.__myappReqLabelFixed) field.__myappReqLabel = undefined;
+        if (!field.__myappReqLabelFixed) {
+          // 探し直す前に、前の見出しの ＊ を外す（必須でなくなった欄の見出しに ＊ が残らないように）
+          if (field.__myappReqLabel) field.__myappReqLabel.classList.remove('myapp-required');
+          field.__myappReqLabel = undefined;
+        }
       }
       var label = field.__myappReqLabel;
       if (required && label === undefined) {
