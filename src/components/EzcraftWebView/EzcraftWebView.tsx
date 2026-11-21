@@ -696,17 +696,23 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       // 裏で続けられるときは、保存の知らせの上で右へなぞると戻る（SaveProgress の onLeave）
       gestureEnabled: !busy,
       // 裏で続けられるときは、保存のあいだの ‹ を、同じ見た目のボタンに替える（押したら、アプリが自分で戻る）。
-      // 保存が終わったら、いつもの ‹ に戻す（options は前の値に重ねられるので、undefined で消す）
-      headerLeft:
-        busy && canLeave
-          ? () => (
-              <Pressable onPress={leaveDuringSave} accessibilityRole="button" accessibilityLabel="戻る" hitSlop={8}>
-                <Icon name="back" size={20} weight="semibold" tintColor={c.text} />
-              </Pressable>
-            )
-          : undefined,
+      // 保存が終わったら、いつもの ‹ に戻す（options は前の値に重ねられるので、undefined で消す）。
+      // シートでは headerLeft を渡さない: 渡すと（undefined でも）、レイアウトが決めた左上の ×（まとめて申請の残りもやめる）を
+      // 消してしまい、iOS では閉じるボタンがなくなっていた（2026-11-22。src/app/(app)/_layout.tsx の sheet/[app]/[form]）
+      ...(sheet
+        ? {}
+        : {
+            headerLeft:
+              busy && canLeave
+                ? () => (
+                    <Pressable onPress={leaveDuringSave} accessibilityRole="button" accessibilityLabel="戻る" hitSlop={8}>
+                      <Icon name="back" size={20} weight="semibold" tintColor={c.text} />
+                    </Pressable>
+                  )
+                : undefined,
+          }),
     }),
-    [heading, title, pageTitle, modalOpen, c, busy, canLeave, leaveDuringSave],
+    [heading, title, pageTitle, modalOpen, c, busy, canLeave, leaveDuringSave, sheet],
   );
 
   // ページに入れるスクリプト（合わせて 700KB ほどになる）。中身が変わるときだけ作り直す。
