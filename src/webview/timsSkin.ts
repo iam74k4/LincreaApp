@@ -1,7 +1,7 @@
 // £-TiMS 勤怠管理（アプリケーション ID: L_Tims）の見た目と動き。
 //
 // 画面は3つ:
-//   frmLTiMSTop      … メニュー（勤怠管理・勤怠申請・システム設定）とお知らせ
+//   frmLTiMSTop      … お知らせとメニュー（勤怠管理・勤怠申請・システム設定）
 //   frmAttendance    … 勤務表。パソコン向けの月のカレンダーを、スマホでは縦の一覧にする
 //                      （上に「今日」と「過ぎたのに未登録の日」を集め、その下にほかの日を日付の順に）
 //   frmAttendanceDtl … 勤怠実績登録（1日分の入力）。入力欄をスマホの幅に並べ直す
@@ -11,8 +11,13 @@ import type { AppSkin } from './appStyles';
 import { cardGrid, fillButton, fillInput, fillLabel, fullWidth, listToBottom, place, row, scoped, searchBox, searchField, sheetDialog, text } from './layout';
 
 // ---------------------------------------------------------------------------
-// メニュー（frmLTiMSTop）: メニューのカード → お知らせ → 各種申請。タイトル・ロゴ・時計は出さない
+// メニュー（frmLTiMSTop）: 名前 → お知らせ → メニューのカード → 各種申請。タイトル・ロゴ・時計は出さない
+//   EZCraft では、名前とカードが上の段（R1）、お知らせと各種申請が下の段（R2）にある。
+//   お知らせをカードの上に出すため、上の段にお知らせの場所を空けて、お知らせ（R2 の中の部品）をそこへ上げる。
+//   下の段の部品は、下の段の上の端（= 上の段の下の端）からの位置で置くので、上の段の高さのぶんだけ上にずらす。
 // ---------------------------------------------------------------------------
+/** 上の段（名前・お知らせの場所・カード）の高さ。お知らせの行の高さ（--myapp-ann）で変わる */
+const TOP_R1 = (extra: number) => `calc(${extra}px + var(--myapp-ann, 150px))`;
 const TOP_CSS = `
 ${fullWidth('frmLTiMSTop')}
 #frmLTiMSTop,
@@ -20,8 +25,8 @@ ${fullWidth('frmLTiMSTop')}
 #frmLTiMSTop_R2 { height: auto !important; }
 #frmLTiMSTop .tcc-tile.col { float: none !important; }
 
-/* メニュー */
-#frmLTiMSTop_R1_C2, #frmLTiMSTop_blank3 { height: 228px !important; }
+/* 上の段: 名前（12〜36）・お知らせの場所（48〜76＋お知らせ）・カード2枚 */
+#frmLTiMSTop_R1_C2, #frmLTiMSTop_blank3 { height: ${TOP_R1(252)} !important; }
 ${place('frmLTiMSTop_lblUser', '16px', 12, 'calc(100% - 32px)', 24)}
 #frmLTiMSTop_lblUser .tcc-label-text { text-align: left !important; }
 #frmLTiMSTop_lblUser * { font-size: 15px !important; font-weight: 400 !important; color: var(--myapp-text2) !important; }
@@ -30,23 +35,19 @@ ${place('frmLTiMSTop_lblUser', '16px', 12, 'calc(100% - 32px)', 24)}
 /* 名前の行も、小見出し（お知らせ・各種申請）と同じく、画面の左から 20pt に */
 #frmLTiMSTop_lblUser .tcc-label { padding-left: 0 !important; border-left-width: 0 !important; }
 #frmLTiMSTop_lblUser .tcc-label-text { padding-left: 4px !important; }
-${row('frmLTiMSTop_btnAttendance', 48, 76)}
-/* 説明は、見出しの文字（色の付いた印の右）の下にそろえる */
-${place('frmLTiMSTop_lbl1', '88px', 86, 'calc(100% - 136px)', 20)}
-${row('frmLTiMSTop_btnApply', 136, 76)}
-${place('frmLTiMSTop_lbl5', '88px', 174, 'calc(100% - 136px)', 20)}
-${text('frmLTiMSTop_lbl1', 13, { muted: true })}
-${text('frmLTiMSTop_lbl5', 13, { muted: true })}
-#frmLTiMSTop_lbl1 .tcc-label, #frmLTiMSTop_lbl5 .tcc-label, #frmLTiMSTop_lbl1 .tcc-label-text, #frmLTiMSTop_lbl5 .tcc-label-text { padding: 0 !important; margin: 0 !important; text-indent: 0 !important; }
+/* カードは見出しだけ（説明の lbl1・lbl5 は出さない）。お知らせの下に並べる */
+${row('frmLTiMSTop_btnAttendance', 96, 64)}
+#frmLTiMSTop #frmLTiMSTop_btnAttendance { top: ${TOP_R1(96)} !important; }
+${row('frmLTiMSTop_btnApply', 172, 64)}
+#frmLTiMSTop #frmLTiMSTop_btnApply { top: ${TOP_R1(172)} !important; }
 /* メニューのカード: マイアプリ・勤怠申請の一覧と同じく、左に色の付いた四角の印（白い線の絵）。EZCraft の小さな印は出さない */
 #frmLTiMSTop_btnAttendance .tcc-btn > i, #frmLTiMSTop_btnApply .tcc-btn > i { display: none !important; }
 /* fillButton（余白 0）より強く書く */
 #frmLTiMSTop #frmLTiMSTop_btnAttendance .tcc-btn, #frmLTiMSTop #frmLTiMSTop_btnApply .tcc-btn {
   position: relative !important;
   justify-content: flex-start !important;
-  align-items: flex-start !important;
-  /* 題名は上から 14px、その下（説明のラベル）に1行ぶん空ける */
-  padding: 14px 16px 0 72px !important;
+  align-items: center !important;
+  padding: 0 16px 0 72px !important;
   font-size: 17px !important;
   line-height: 22px !important;
   color: var(--myapp-text) !important;
@@ -64,14 +65,16 @@ ${text('frmLTiMSTop_lbl5', 13, { muted: true })}
 ${fillButton('frmLTiMSTop_btnAttendance')}
 ${fillButton('frmLTiMSTop_btnApply')}
 
-/* お知らせと各種申請。お知らせのカードは、お知らせの行の高さに合わせる（JS の topAnnouncement が --myapp-ann に入れる。
-   1件だけのときに、下に空の白い面が残らないように）。その下の「各種申請」も、それに合わせて上下する */
-#frmLTiMSTop_R2_C1, #frmLTiMSTop_blank2 { height: calc(290px + var(--myapp-ann, 150px)) !important; }
-${place('frmLTiMSTop_lbl_announcement_title', '16px', 8, '160px', 24)}
+/* お知らせ。カードは、お知らせの行の高さに合わせる（JS の topAnnouncement が --myapp-ann に入れる。
+   1件だけのときに、下に空の白い面が残らないように）。その下のメニューのカードも、それに合わせて上下する。
+   お知らせは下の段（R2）の部品なので、上の段の高さ（TOP_R1(252)）のぶん上へ: 見出しは全体の 48、表は 76 から */
+#frmLTiMSTop_R2, #frmLTiMSTop_R2_C1, #frmLTiMSTop_blank2, #frmLTiMSTop_blank2_body { overflow: visible !important; }
+${place('frmLTiMSTop_lbl_announcement_title', '16px', 48 - 252, '160px', 24)}
+#frmLTiMSTop #frmLTiMSTop_lbl_announcement_title { top: calc(-204px - var(--myapp-ann, 150px)) !important; }
 /* 小見出し（お知らせ・各種申請）は、ほかの画面の小見出しと同じく文字だけに（ベル・紙の印は、文字にくっついて見える） */
 #frmLTiMSTop_lbl_announcement_title i, #frmLTiMSTop_lbl12 i { display: none !important; }
-${row('frmLTiMSTop_grdAnnouncement', 36, 150)}
-#frmLTiMSTop #frmLTiMSTop_grdAnnouncement { height: var(--myapp-ann, 150px) !important; }
+${row('frmLTiMSTop_grdAnnouncement', 76 - 252, 150)}
+#frmLTiMSTop #frmLTiMSTop_grdAnnouncement { top: calc(-176px - var(--myapp-ann, 150px)) !important; height: var(--myapp-ann, 150px) !important; }
 ${cardGrid('frmLTiMSTop_grdAnnouncement', [[3], [1, 2]])}
 /* お知らせの、中身のない行（区切りの線だけが出る）は出さない。最後の行の下には線を引かない */
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr:not(:has(> td.frmLTiMSTop_grdAnnouncement_tdCol3:not([data-myapp-blank]))) { display: none !important; }
@@ -79,15 +82,15 @@ ${cardGrid('frmLTiMSTop_grdAnnouncement', [[3], [1, 2]])}
 /* お知らせは読むだけ。押しても選んだ色を残さない（選ぶ意味のない表なので、青く光ったままにしない） */
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr.myapp-tapped,
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll tr.myapp-tapped > td { background-color: transparent !important; }
-${place('frmLTiMSTop_lbl12', '16px', 204, '160px', 24)}
-#frmLTiMSTop #frmLTiMSTop_lbl12 { top: calc(54px + var(--myapp-ann, 150px)) !important; }
-${row('frmLTiMSTop_grdApply', 232, 196)}
-#frmLTiMSTop #frmLTiMSTop_grdApply { top: calc(82px + var(--myapp-ann, 150px)) !important; }
+/* 各種申請: 下の段に残るのはこれだけ（下の段の上の端から） */
+#frmLTiMSTop_R2_C1, #frmLTiMSTop_blank2 { height: 248px !important; }
+${place('frmLTiMSTop_lbl12', '16px', 8, '160px', 24)}
+${row('frmLTiMSTop_grdApply', 36, 196)}
 ${cardGrid('frmLTiMSTop_grdApply', [[3], [2, 1], [5, 6]])}
 /* 申請中のものがないときは、「ありません」の一行ぶんの高さに */
 #frmLTiMSTop_grdApply.myapp-empty { height: 72px !important; }
 #frmLTiMSTop_R2:has(#frmLTiMSTop_grdApply.myapp-empty) #frmLTiMSTop_R2_C1,
-#frmLTiMSTop_R2:has(#frmLTiMSTop_grdApply.myapp-empty) #frmLTiMSTop_blank2 { height: calc(170px + var(--myapp-ann, 150px)) !important; }
+#frmLTiMSTop_R2:has(#frmLTiMSTop_grdApply.myapp-empty) #frmLTiMSTop_blank2 { height: 124px !important; }
 `;
 
 // ---------------------------------------------------------------------------
@@ -4420,9 +4423,6 @@ export const TIMS_SKIN: AppSkin = {
   ],
   relabel: {
     ...Object.fromEntries(APPLY_KINDS.map(({ note, text: label }) => [AP(note), label])),
-    // メニューのカードの説明（「〜を行います」）を、短い言い方に
-    frmLTiMSTop_lbl1: '毎日の出退勤と作業の登録',
-    frmLTiMSTop_lbl5: '残業・休暇などの申請と状況',
     // 代休の注意書き: 全角のかっこで囲んだ文を、ふつうの1文に
     frmApply_daikyu_lbl30: '代休を取ると、給与から控除されます。',
   },
@@ -4448,11 +4448,12 @@ export const TIMS_SKIN: AppSkin = {
     frmAttendance_grdPrj: 'データはありません',
   },
   cards: [
-    { button: 'frmLTiMSTop_btnAttendance', subtitle: 'frmLTiMSTop_lbl1' },
-    { button: 'frmLTiMSTop_btnApply', subtitle: 'frmLTiMSTop_lbl5' },
+    { button: 'frmLTiMSTop_btnAttendance' },
+    { button: 'frmLTiMSTop_btnApply' },
   ],
   sections: ['frmLTiMSTop_lbl_announcement_title', 'frmLTiMSTop_lbl12'],
-  hidden: ['frmLTiMSTop_R1_C1', 'frmLTiMSTop_lblQuit', 'frmLTiMSTop_lblYser', 'frmLTiMSTop_btnSettings'],
+  // カードの説明（lbl1・lbl5）は出さない。見出しだけで分かる
+  hidden: ['frmLTiMSTop_R1_C1', 'frmLTiMSTop_lbl1', 'frmLTiMSTop_lbl5', 'frmLTiMSTop_lblQuit', 'frmLTiMSTop_lblYser', 'frmLTiMSTop_btnSettings'],
   script: SCRIPT,
   layout: [TOP_CSS, scoped(':root.myapp-att-list', ATT_FRAME_CSS + LIST_CSS), scoped(':root.myapp-att-tab', ATT_FRAME_CSS + ATT_TABS_CSS), DTL_CSS, scoped(':root.myapp-apply-new', APPLY_FRAME_CSS + APPLY_CSS), scoped(':root.myapp-apply-tab', APPLY_FRAME_CSS + APPLY_TABS_CSS), YUKYU_CSS, ...APPLY_FORMS.map(applyFormCss), DAIKYU_CSS, REFLOW_CSS, PROJECT_SELECT_CSS, EMPLOYEE_SELECT_CSS, PICK_CSS].join('\n'),
 };
