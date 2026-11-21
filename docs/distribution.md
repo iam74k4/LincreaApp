@@ -66,6 +66,16 @@ LINCREA は TestFlight で配る。develop にプルリクエストをマージ�
 直しは、いつも develop にマージして、TestFlight の新しい版で届ける（作り直さずに送る仕組み・eas update はやめた）。
 急ぐときも同じ（マージから iPhone に届くまで、1 時間ほど）。
 
+## 止まったとき
+
+- GitHub の「Actions」→ 赤くなった実行 → 赤い段のログを見る
+- 「TestFlight に送る」で Apple に断られたときは、ログに `code = 90683` のような番号と、理由の文が出る
+  - **90683（Missing purpose string）**: Info.plist に、使い道の説明（`NS…UsageDescription`）が足りない。
+    使っていない機能でも、部品が触れていれば要る（例: ヘルスケアは読むだけだが、書く説明 `NSHealthUpdateUsageDescription` も要った）。
+    app.json の `ios.infoPlist` に足して、develop へ
+- **Xcode を上げる時期**: 2027 年 4 月からは iOS 27 SDK（Xcode 27）で作った版しか送れない（いまは Xcode 26。Apple の警告）。
+  それまでに testflight.yml の `runs-on` を Xcode 27 の環境にし、「送る」を外した手動の実行で作れるかを確かめてから切り替える
+
 ## 最初に一度だけ
 
 1. **App Store Connect にアプリを作る**
