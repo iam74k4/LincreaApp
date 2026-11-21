@@ -40,7 +40,7 @@ ${row('frmLTiMSTop_btnAttendance', 96, 64)}
 #frmLTiMSTop #frmLTiMSTop_btnAttendance { top: ${TOP_R1(96)} !important; }
 ${row('frmLTiMSTop_btnApply', 172, 64)}
 #frmLTiMSTop #frmLTiMSTop_btnApply { top: ${TOP_R1(172)} !important; }
-/* メニューのカード: マイアプリ・勤怠申請の一覧と同じく、左に色の付いた四角の印（白い線の絵）。EZCraft の小さな印は出さない */
+/* メニューのカード: マイアプリ・勤怠申請の一覧と同じく、左に薄い青の四角の印（青い線の絵）。EZCraft の小さな印は出さない */
 #frmLTiMSTop_btnAttendance .tcc-btn > i, #frmLTiMSTop_btnApply .tcc-btn > i { display: none !important; }
 /* fillButton（余白 0）より強く書く */
 #frmLTiMSTop #frmLTiMSTop_btnAttendance .tcc-btn, #frmLTiMSTop #frmLTiMSTop_btnApply .tcc-btn {
@@ -56,8 +56,8 @@ ${row('frmLTiMSTop_btnApply', 172, 64)}
 #frmLTiMSTop_btnAttendance .tcc-btn::before, #frmLTiMSTop_btnApply .tcc-btn::before {
   content: ''; position: absolute; left: 16px; top: 50%; width: 40px; height: 40px; margin-top: -20px; border-radius: 10px;
 }
-#frmLTiMSTop_btnAttendance .tcc-btn::before { background: #007AFF ${iconImage('M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4')} center / 24px no-repeat; }
-#frmLTiMSTop_btnApply .tcc-btn::before { background: #5856D6 ${iconImage('M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M14 3v5h5 M9 13h6 M9 17h6')} center / 24px no-repeat; }
+${iconTile('#frmLTiMSTop_btnAttendance .tcc-btn::before', 'M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4', '24px')}
+${iconTile('#frmLTiMSTop_btnApply .tcc-btn::before', 'M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M14 3v5h5 M9 13h6 M9 17h6', '24px')}
 /* お知らせの題名が2行になるときは、行の長さをそろえて折り返す（2行目が「す！」だけにならないように） */
 #frmLTiMSTop_grdAnnouncement .TccGridBodyScroll td { text-wrap: balance; }
 /* システム設定は、管理する人の仕事（パソコンで使う）。ふつうの人が押すと「権限がありません」になるので、スマホでは出さない */
@@ -1137,22 +1137,30 @@ ${place(D('remarks'), '16px', 36, 'calc(100% - 32px)', 88)}
 // ---------------------------------------------------------------------------
 const AP = (id: string) => `frmApply_${id}`;
 /**
- * 申請の種類（よく使う順に）: ボタン・名前・説明の部品と、アイコン（色・24×24 の線の SVG の path）・短い説明。
+ * 申請の種類（よく使う順に）: ボタン・名前・説明の部品と、アイコン（24×24 の線の SVG の path。色はどれも同じ: iconTile）・短い説明。
  * 説明は Web 版の「〜する場合に使用」を、いつ使うかが分かる短い言葉にする（relabel）
  */
 const APPLY_KINDS = [
-  { button: 'zangyo', title: 'lbl20', note: 'lbl39', color: '#FF9500', icon: 'M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18z M12 7v5l3.5 2', text: '残業・深夜勤務をするとき' },
-  { button: 'yukyu', title: 'lbl19', note: 'lbl38', color: '#34C759', icon: 'M12 8a4 4 0 1 1 0 8a4 4 0 1 1 0-8z M12 2.5v2 M12 19.5v2 M2.5 12h2 M19.5 12h2 M5.3 5.3l1.4 1.4 M17.3 17.3l1.4 1.4 M5.3 18.7l1.4-1.4 M17.3 6.7l1.4-1.4', text: '有給休暇を取るとき' },
-  { button: 'chikokuSotai', title: 'lbl22', note: 'lbl41', color: '#FF2D55', icon: 'M12 6a7 7 0 1 1 0 14a7 7 0 1 1 0-14z M12 9.5V13l2 1.5 M5 4 3 6 M19 4l2 2', text: '遅刻・早退をするとき' },
-  { button: 'kyuzitu', title: 'lbl17', note: 'lbl36', color: '#5856D6', icon: 'M5 8h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 20H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 8z M9 8V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V8', text: '休日に出勤するとき' },
-  { button: 'daikyu', title: 'lbl16', note: 'lbl35', color: '#30B0C7', icon: 'M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4 M9 15l2 2 4-4', text: '休日出勤のかわりに休むとき' },
-  { button: 'hurikyu', title: 'lbl18', note: 'lbl37', color: '#007AFF', icon: 'M4 8h13 M14 4.5 17.5 8 14 11.5 M20 16H7 M10 12.5 6.5 16l3.5 3.5', text: '休日と出勤日を入れ替えるとき' },
-  { button: 'tokkyu', title: 'lbl21', note: 'lbl40', color: '#AF52DE', icon: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z', text: '慶弔などの特別休暇を取るとき' },
+  { button: 'zangyo', title: 'lbl20', note: 'lbl39', icon: 'M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18z M12 7v5l3.5 2', text: '残業・深夜勤務をするとき' },
+  { button: 'yukyu', title: 'lbl19', note: 'lbl38', icon: 'M12 8a4 4 0 1 1 0 8a4 4 0 1 1 0-8z M12 2.5v2 M12 19.5v2 M2.5 12h2 M19.5 12h2 M5.3 5.3l1.4 1.4 M17.3 17.3l1.4 1.4 M5.3 18.7l1.4-1.4 M17.3 6.7l1.4-1.4', text: '有給休暇を取るとき' },
+  { button: 'chikokuSotai', title: 'lbl22', note: 'lbl41', icon: 'M12 6a7 7 0 1 1 0 14a7 7 0 1 1 0-14z M12 9.5V13l2 1.5 M5 4 3 6 M19 4l2 2', text: '遅刻・早退をするとき' },
+  { button: 'kyuzitu', title: 'lbl17', note: 'lbl36', icon: 'M5 8h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 20H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 8z M9 8V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V8', text: '休日に出勤するとき' },
+  { button: 'daikyu', title: 'lbl16', note: 'lbl35', icon: 'M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M4 10h16 M8 3v4 M16 3v4 M9 15l2 2 4-4', text: '休日出勤のかわりに休むとき' },
+  { button: 'hurikyu', title: 'lbl18', note: 'lbl37', icon: 'M4 8h13 M14 4.5 17.5 8 14 11.5 M20 16H7 M10 12.5 6.5 16l3.5 3.5', text: '休日と出勤日を入れ替えるとき' },
+  { button: 'tokkyu', title: 'lbl21', note: 'lbl40', icon: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z', text: '慶弔などの特別休暇を取るとき' },
 ];
 /** アイコンを、色の付いた四角に白い線で描いた画像（CSS の背景）にする */
-function iconImage(path: string): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+function iconImage(path: string, stroke: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+/**
+ * アイコンの四角: マイアプリのアイコンと同じ「薄い青の地に青い線」（src/theme.ts の iconTile・iconGlyph）。
+ * 線の色は絵の中に書くので、ライトとダークで別の絵にする（ダークは :root[data-myapp-theme="dark"]）
+ */
+function iconTile(selector: string, path: string, size: string): string {
+  return `${selector} { background: var(--myapp-icon-tile) ${iconImage(path, '#007AFF')} center / ${size} no-repeat; }
+:root[data-myapp-theme="dark"] ${selector} { background-image: ${iconImage(path, '#409CFF')}; }`;
 }
 const APPLY_CARD = 76;
 const APPLY_GAP = 12;
@@ -1198,7 +1206,7 @@ const APPLY_CSS = `
 ${['lbl2', 'lbl3', 'lbl4', 'lbl5', 'lbl6', 'lbl7', 'lbl8', 'lin3', 'lin4', 'lin5', 'lin6', 'lin7', 'lin8', 'lin9']
   .map((id) => `#${AP(id)}`)
   .join(',\n')} { display: none !important; }
-${APPLY_KINDS.map(({ button, title, note, color, icon }, i) => {
+${APPLY_KINDS.map(({ button, title, note, icon }, i) => {
   const top = 16 + i * (APPLY_CARD + APPLY_GAP);
   return `
 ${row(AP(button), top, APPLY_CARD)}
@@ -1218,8 +1226,8 @@ ${fillButton(AP(button))}
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: ${color} ${iconImage(icon)} center / 22px 22px no-repeat;
 }
+${iconTile(`#${AP(button)} .tcc-btn::before`, icon, '22px 22px')}
 #${AP(button)} .tcc-btn::after {
   content: '›';
   position: absolute;

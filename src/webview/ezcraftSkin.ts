@@ -1818,6 +1818,8 @@ html.myapp-quiet-refresh #loadingIcon { display: none !important; }
   --myapp-field-border: rgba(60, 60, 67, 0.14);
   --myapp-accent-text: #0062D6; /* 薄い青の地に置く、差し色の文字 */
   --myapp-tab-on: rgba(0, 122, 255, 0.13);
+  /* アイコンの薄い青の地（マイアプリのアイコンと同じ。src/theme.ts の iconTile） */
+  --myapp-icon-tile: rgba(0, 122, 255, 0.12);
   /* Liquid Glass（浮かせる操作の部品だけに使う。下の GLASS_CSS） */
   --myapp-glass: linear-gradient(180deg, rgba(255, 255, 255, 0.80), rgba(255, 255, 255, 0.58));
   --myapp-glass-border: rgba(255, 255, 255, 0.92);
@@ -1852,6 +1854,7 @@ html.myapp-quiet-refresh #loadingIcon { display: none !important; }
   --myapp-field-border: #3A3A3C;
   --myapp-accent-text: #6CB4FF;
   --myapp-tab-on: rgba(10, 132, 255, 0.28);
+  --myapp-icon-tile: rgba(10, 132, 255, 0.18);
   --myapp-glass: linear-gradient(180deg, rgba(92, 92, 98, 0.55), rgba(50, 50, 54, 0.50));
   --myapp-glass-border: rgba(255, 255, 255, 0.16);
   --myapp-glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -1px 0 rgba(255, 255, 255, 0.05);
