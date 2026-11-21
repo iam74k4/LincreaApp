@@ -155,9 +155,17 @@ describe('loginWithFaceId: Face ID でログインし直す', () => {
     refresh.mockResolvedValue({ session: { username: 'taro' }, refreshToken: TOKEN });
     expect(await loginWithFaceId()).toEqual({ ok: true, session: { username: 'taro' } });
     expect(store.getItemAsync).toHaveBeenCalledWith('refreshToken', expect.objectContaining({ requireAuthentication: true }));
-    expect(refresh).toHaveBeenCalledWith('taro', TOKEN, true);
+    expect(refresh).toHaveBeenCalledWith('taro', TOKEN, true, null);
     // 鍵が変わっていなければ、入れ直さない（入れ直すと、もう一度 Face ID が要る）
     expect(store.setItemAsync).not.toHaveBeenCalled();
+  });
+
+  test('起動したときの確かめで読めた Cognito の設定を渡されたら、それでログインする（ログイン画面を読み直さない）', async () => {
+    store.getItemAsync.mockResolvedValue(TOKEN);
+    refresh.mockResolvedValue({ session: { username: 'taro' }, refreshToken: TOKEN });
+    const pool = { userPoolId: 'ap-northeast-1_abc', clientId: 'client1' };
+    expect((await loginWithFaceId(pool)).ok).toBe(true);
+    expect(refresh).toHaveBeenCalledWith('taro', TOKEN, true, pool);
   });
 
   test('Cognito が新しい鍵をくれたら、入れ替える', async () => {

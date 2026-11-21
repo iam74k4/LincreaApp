@@ -1,5 +1,5 @@
 // マイアプリ一覧（ログイン後の最初の画面）。Web 版の /main/#/application/ にあたる。
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,7 +25,8 @@ import { useSession } from '../../session/SessionContext';
 import { SHORTCUTS, type Shortcut } from '../../shortcuts';
 import { appDataKey, recallAppData, useAppDataVersion } from '../../webview/appDataCache';
 import { savesSnapshot } from '../../webview/backgroundSaves';
-import { prefetchInitApps } from '../../webview/initAppCache';
+import { prefetchInitApps, stopPrefetchInitApps } from '../../webview/initAppCache';
+import { loadCachedApps, saveCachedApps } from '../../api/myAppsCache';
 import { openShortcutDirect, openShortcutThroughMenu } from '../../openShortcut';
 import { sizes, useColors, type Colors } from '../../theme';
 
@@ -43,9 +44,30 @@ export default function MyAppsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
 
-  // ② 一覧を読み込む
+  // ② 一覧を読み込む。
+  // 起動してすぐは、前回の一覧（端末の控え。src/api/myAppsCache.ts）を出しておき、サーバーの返事が来たら入れ替える
+  // （サーバーに聞き終わるまで、一覧が空のまま待たせない）。聞けなかったときは、控えの一覧は引っ込めて、失敗を出す
+  const username = session?.username ?? '';
+  const fresh = useRef(false); // サーバーから読んだ一覧を出したか（出したあとは、控えで上書きしない）
+  const fromCache = useRef(false); // いま出している一覧が、控えか
+  useEffect(() => {
+    let active = true;
+    loadCachedApps(username).then((cached) => {
+      if (!active || !cached || fresh.current) return;
+      fromCache.current = true;
+      setApps((current) => current ?? cached);
+    });
+    return () => {
+      active = false;
+    };
+  }, [username]);
   const handleError = useCallback(
     (e: unknown) => {
+      // 控えの一覧を出していたら引っ込める（つながらないことを、空の一覧の「もう一度読み込む」で伝える）
+      if (fromCache.current) {
+        fromCache.current = false;
+        setApps(null);
+      }
       if (e instanceof SessionExpiredError) {
         Alert.alert('ログインが切れました', e.message);
         signOut(); // 守り役がログイン画面へ戻す
@@ -73,8 +95,11 @@ export default function MyAppsScreen() {
           result = await fetchMyApps();
         }
         if (isActive()) {
+          fresh.current = true;
+          fromCache.current = false;
           setApps(result);
           setError(null);
+          saveCachedApps(username, result);
         }
       } catch (e) {
         if (isActive()) handleError(e);
@@ -82,7 +107,7 @@ export default function MyAppsScreen() {
         loadingRef.current = false;
       }
     },
-    [handleError, reauthenticate],
+    [handleError, reauthenticate, username],
   );
 
   // この画面が前に出るたびに読み直す。
@@ -90,16 +115,6 @@ export default function MyAppsScreen() {
   //   - アプリ（WebView）から戻ってきたとき
   //   - ホーム画面などから、このアプリに戻ってきたとき（この画面が出ている間だけ見張る）
   // Web で追加・変更されたアプリが、開き直さなくても反映される。
-  // よく使う画面の定義（initApp）を、マイアプリを見ているあいだに裏で読んでおく（src/webview/initAppCache.ts）。
-  // 一覧の読み込みと取り合わないよう、少し待ってから
-  useFocusEffect(
-    useCallback(() => {
-      const timer = setTimeout(() => {
-        prefetchInitApps();
-      }, 1500);
-      return () => clearTimeout(timer);
-    }, []),
-  );
   const [focused, setFocused] = useState(true);
   const [prefetchFailed, setPrefetchFailed] = useState(false); // 近道の下準備がうまくいかなかった（下の ④）
   const [pending, setPending] = useState<Shortcut | null>(null); // 下準備を待っている近道
@@ -158,6 +173,23 @@ export default function MyAppsScreen() {
     [menu, appDataVersion],
   );
   const prefetching = menu !== null && focused && !menuReady && !prefetchFailed;
+  // よく使う画面の定義（initApp）を、マイアプリを見ているあいだに裏で読んでおく（src/webview/initAppCache.ts）。
+  //   - 一覧の読み込みと取り合わないよう、少し待ってから
+  //   - 近道の下準備（AppDataPrefetch）が終わってから。下準備のページもメニューの定義を読んで控えに入れるので、
+  //     同時に始めると、同じ定義を2回読む
+  //   - マイアプリから離れたら、やめる（開いた画面が自分で読む定義と、通信を取り合わないように）
+  useFocusEffect(
+    useCallback(() => {
+      if (prefetching) return;
+      const timer = setTimeout(() => {
+        prefetchInitApps();
+      }, 1500);
+      return () => {
+        clearTimeout(timer);
+        stopPrefetchInitApps();
+      };
+    }, [prefetching]),
+  );
 
   const openShortcut = (shortcut: Shortcut) => {
     const appData = recallAppData(appDataKey(shortcut.app, shortcut.form));

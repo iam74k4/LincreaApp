@@ -258,13 +258,21 @@ const REVEAL_JS = `
 // ---------------------------------------------------------------------------
 const GENERIC_JS = `
   function byId(id) { return document.getElementById(id); }
+  // 部品（id）の中の要素。部品を先に ID で引いてから、その中だけを探す。
+  // document.querySelector('#id input') は、その部品がないページでは、ページ全体を探してしまう（WebKit。1回 30µs ほど）。
+  // 整え直すたびに何十回も呼ぶので、打つたびの重さになっていた（2026-11-21 に測った）
+  function inside(id, selector) { var c = byId(id); return c ? c.querySelector(selector) : null; }
+  // アプリが作った帯（下のボタンの帯・下のタブの帯）。ページ全体から探さずにすむように、作ったものを覚えておく
+  var bars = {};
+  var navs = {};
+  function kept(map, key) { var el = map[key]; return el && el.isConnected ? el : null; }
   function hidden(el) { return !el || (el.getAttribute('style') || '').indexOf('visibility: hidden') >= 0; }
 
   // 下に固定するボタン: ボタンの部品を、画面（またはダイアログ）の下の帯に移す。見えているうちの最後を主なボタンにする
   function bottomBars() {
     Object.keys(CONFIG.bottomBars).forEach(function (formId) {
       var form = byId(formId);
-      var bar = document.querySelector('.myapp-bottom-bar[data-form="' + formId + '"]');
+      var bar = kept(bars, formId);
       if (!form) { if (bar) bar.remove(); return; }
       var modal = form.closest('.tcc-modal');
       var host = modal ? modal.querySelector('.tcc-modal-content') || modal : document.body;
@@ -275,6 +283,7 @@ const GENERIC_JS = `
         bar.setAttribute('data-form', formId);
         bar.setAttribute('data-myapp-nodark', '');
         host.appendChild(bar);
+        bars[formId] = bar;
       }
       var visible = [];
       CONFIG.bottomBars[formId].forEach(function (id) {
@@ -294,14 +303,17 @@ const GENERIC_JS = `
       });
       bar.classList.toggle('myapp-empty-bar', visible.length === 0);
     });
-    var pageBar = document.querySelector('body > .myapp-bottom-bar:not(.myapp-empty-bar)');
-    root.classList.toggle('myapp-has-bar', !!pageBar);
+    var pageBar = Object.keys(bars).some(function (k) {
+      var b = kept(bars, k);
+      return !!b && b.parentElement === document.body && !b.classList.contains('myapp-empty-bar');
+    });
+    if (root.classList.contains('myapp-has-bar') !== pageBar) root.classList.toggle('myapp-has-bar', pageBar);
   }
 
   // 数字だけを入れる欄は、数字のキーボードにする
   function numericInputs() {
     CONFIG.numeric.forEach(function (id) {
-      var input = document.querySelector('#' + id + ' input');
+      var input = inside(id, 'input');
       if (input && input.getAttribute('inputmode') !== 'numeric') input.setAttribute('inputmode', 'numeric');
     });
   }
@@ -322,7 +334,7 @@ const GENERIC_JS = `
   // 打つたびに検索する（打ち終わって少し待ってから）
   function liveSearch() {
     var list = CONFIG.liveSearch.map(function (l) {
-      return { input: document.querySelector('#' + l.input + ' input'), go: function () { var b = document.querySelector('#' + l.button + ' .tcc-btn'); if (b) b.click(); } };
+      return { input: inside(l.input, 'input'), go: function () { var b = inside(l.button, '.tcc-btn'); if (b) b.click(); } };
     });
     document.querySelectorAll('.tcc-modal[id$="_mdl"] #txtSearch').forEach(function (box) {
       list.push({ input: box.querySelector('input'), go: function () {
@@ -354,7 +366,7 @@ const GENERIC_JS = `
       grid.__myappOpens = true;
       grid.addEventListener('click', function (e) {
         if (!e.target.closest || !e.target.closest('.TccGridBodyScroll tr')) return;
-        setTimeout(function () { var b = document.querySelector('#' + r.button + ' .tcc-btn'); if (b) b.click(); }, 120);
+        setTimeout(function () { var b = inside(r.button, '.tcc-btn'); if (b) b.click(); }, 120);
       }, true);
     });
   }
@@ -417,7 +429,7 @@ const GENERIC_JS = `
 
   function placeholders() {
     Object.keys(CONFIG.placeholders).forEach(function (id) {
-      var input = document.querySelector('#' + id + ' input');
+      var input = inside(id, 'input');
       if (input && input.placeholder !== CONFIG.placeholders[id]) input.placeholder = CONFIG.placeholders[id];
     });
   }
@@ -545,7 +557,7 @@ const GENERIC_JS = `
     var any = false;
     Object.keys(CONFIG.tabBars).forEach(function (tabId) {
       var tab = byId(tabId);
-      var nav = document.querySelector('.myapp-tabbar[data-tab="' + tabId + '"]');
+      var nav = kept(navs, tabId);
       var lis = tab ? Array.prototype.filter.call(tab.querySelectorAll(':scope > ul.tcc-tab-head > li'), function (li) {
         return getComputedStyle(li).display !== 'none';
       }) : [];
@@ -566,6 +578,7 @@ const GENERIC_JS = `
           nav.setAttribute('role', 'tablist');
           nav.setAttribute('data-myapp-nodark', '');
           document.body.appendChild(nav);
+          navs[tabId] = nav;
         }
         nav.__key = key;
         nav.textContent = '';
@@ -617,8 +630,9 @@ const GENERIC_JS = `
         }
       });
     });
-    document.querySelectorAll('.myapp-tabbar').forEach(function (nav) {
-      if (!byId(nav.getAttribute('data-tab'))) nav.remove();
+    Object.keys(navs).forEach(function (tabId) {
+      var nav = kept(navs, tabId);
+      if (nav && !byId(tabId)) nav.remove();
     });
     if (root.classList.contains('myapp-has-tabbar') !== any) root.classList.toggle('myapp-has-tabbar', any);
   }
@@ -1014,10 +1028,47 @@ const DARK_JS = `
     var width = Math.min(r.right, innerWidth) - left;
     var stack = document.elementsFromPoint(left + Math.min(width / 2, 8), (top + bottom) / 2);
     for (var i = 0; i < stack.length; i++) {
-      var c = parse(getComputedStyle(stack[i]).backgroundColor);
+      var c = bgOf(stack[i]);
       if (c && c.a > 0.5) return c;
     }
     return { r: 255, g: 255, b: 255, a: 1 };
+  }
+  // 地の色は、1回の塗り直しのあいだは変わらない（文字の色だけを変える）ので、同じ部品は1回だけ調べる
+  var passNo = 0;
+  function bgOf(el) {
+    if (el.__myappBgPass !== passNo) {
+      el.__myappBgPass = passNo;
+      el.__myappBgVal = parse(getComputedStyle(el).backgroundColor);
+    }
+    return el.__myappBgVal;
+  }
+  // 文字の色を決める要るものか: 自分の文字を持つもの・中に部品のないもの（文字・印・アイコン）・入力欄とボタン。
+  // 文字を持たない入れ物は決めなくてよい（中の文字の部品が、それぞれ決める）。決めるたびに重なりを調べるので、数を減らす
+  function showsText(el) {
+    if (!el.firstElementChild || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(el.tagName)) return true;
+    for (var n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3 && n.nodeValue.trim()) return true;
+    return false;
+  }
+  // 画面の外にある部品は、見えてきたときに知らせてもらい、そのとき色を決める（IntersectionObserver）。
+  // それまでは、塗り直しのたびに位置を測り直さない（ページ全体を毎回測ると、1回 3〜4ms かかっていた。2026-11-21 に測った）
+  var ioTimer = null;
+  var io = window.IntersectionObserver ? new IntersectionObserver(function (entries) {
+    var shown = false;
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      io.unobserve(e.target);
+      e.target.__myappIO = false;
+      shown = true;
+    });
+    if (shown && media.matches) {
+      clearTimeout(ioTimer);
+      ioTimer = setTimeout(function () { step(darken); }, 50);
+    }
+  }) : null;
+  function waitUntilShown(el) {
+    if (!io || el.__myappIO) return;
+    el.__myappIO = true;
+    io.observe(el);
   }
 
   function remember(el, prop) {
@@ -1055,12 +1106,18 @@ const DARK_JS = `
       });
       el.__myappBgSig = sigOf(el);
     }
+    passNo++;
     for (var j = 0; j < all.length; j++) {
       var t = all[j];
+      // 画面の外で、見えてくるのを待っているもの（waitUntilShown）は、まだ調べない
+      if (t.__myappIO) continue;
       // 決めたあとに EZCraft がクラスや style を変えたもの（使い回した部品など）は、もう一度決める
-      if (t.__myappDone === sigOf(t) || t.closest('[data-myapp-nodark], .tcc-msg-bar-back')) continue;
-      // 画面の外にあるものは、見えている地の色が分からないので、スクロールして見えてから決める
-      if (!inViewport(t.getBoundingClientRect())) continue;
+      if (t.__myappDone === sigOf(t) || !showsText(t) || t.closest('[data-myapp-nodark], .tcc-msg-bar-back')) continue;
+      // 画面の外にあるものは、見えている地の色が分からないので、見えてから決める
+      if (!inViewport(t.getBoundingClientRect())) {
+        waitUntilShown(t);
+        continue;
+      }
       var fg = parse(getComputedStyle(t).color);
       if (fg && lum(backdrop(t)) < 0.3) {
         if (isNeutral(fg) && lum(fg) < 0.45) {
@@ -1084,7 +1141,8 @@ const DARK_JS = `
       el.__myappOrig = null;
     });
     changed = [];
-    if (document.body) document.body.querySelectorAll('*').forEach(function (el) { el.__myappDone = null; el.__myappBgSig = null; });
+    if (io) io.disconnect();
+    if (document.body) document.body.querySelectorAll('*').forEach(function (el) { el.__myappDone = null; el.__myappBgSig = null; el.__myappIO = false; });
   }
 
   // 画面より広いダイアログ（スマホ向けに作り直していないもの）にしるしを付ける（CSS で画面の幅に収める）。
@@ -1183,10 +1241,17 @@ const DARK_JS = `
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(function () { step(darken); }, 120);
   }
-  // 中身が変わるたびに、少し（0.06 秒）まとめてから整え直す（続けて描き直されるあいだに、何度も整え直さないように）
+  // 中身が変わるたびに、少し（0.06 秒）まとめてから整え直す（続けて描き直されるあいだに、何度も整え直さないように）。
+  // 打っているあいだ（最後に打ってから 0.4 秒以内）は、打ち終わるまで（0.25 秒）待ってからにする。
+  // 1文字ごとに整え直すと、打つのが重くなる（整え直しは iPhone で 1回 10〜45ms ほど。2026-11-21 に測った）
+  var typedAt = 0;
   function update() {
     clearTimeout(timer);
-    timer = setTimeout(restyle, 60);
+    timer = setTimeout(restyle, Date.now() - typedAt < 400 ? 250 : 60);
+  }
+  function typed() {
+    typedAt = Date.now();
+    update();
   }
   // すぐに整え直す。描き直した一覧を、整える前の見た目で一度も見せたくないときに使う（bridge.ts の childClosedJs）
   window.__myappRestyleNow = restyle;
@@ -1204,7 +1269,7 @@ const DARK_JS = `
   }).observe(root, { childList: true, subtree: true });
   if (window.ResizeObserver && document.body) new ResizeObserver(update).observe(document.body);
   document.addEventListener('click', function () { setTimeout(update, 300); }, true);
-  document.addEventListener('input', update, true);
+  document.addEventListener('input', typed, true);
   document.addEventListener('change', update, true);
   window.addEventListener('scroll', scrolled, true);
   window.addEventListener('load', update);

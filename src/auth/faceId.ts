@@ -14,7 +14,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
-import { loginWithRefreshToken, RefreshExpiredError, type LoginResult, type Session } from './api';
+import { loginWithRefreshToken, RefreshExpiredError, type CognitoPool, type LoginResult, type Session } from './api';
 import { loadRememberedUsername } from './rememberedUsername';
 
 /** 鍵を入れる場所。Face ID なしの値とは分ける（同じ場所だと Face ID 付きがうまく動かない） */
@@ -108,7 +108,7 @@ export type FaceIdLogin =
   | { ok: false; reason: 'off' | 'cancel' | 'reset' | 'expired' | 'failed'; message?: string };
 
 /** Face ID で本人か確かめて、保存しておいた鍵でログインし直す */
-export async function loginWithFaceId(): Promise<FaceIdLogin> {
+export async function loginWithFaceId(knownPool: CognitoPool | null = null): Promise<FaceIdLogin> {
   const username = await faceIdUser();
   if (!username || !(await biometry())) return { ok: false, reason: 'off' };
 
@@ -126,7 +126,7 @@ export async function loginWithFaceId(): Promise<FaceIdLogin> {
   let result: LoginResult;
   try {
     const remember = (await loadRememberedUsername()) !== null;
-    result = await loginWithRefreshToken(username, token, remember);
+    result = await loginWithRefreshToken(username, token, remember, knownPool);
   } catch (e) {
     if (e instanceof RefreshExpiredError) {
       await disableFaceId();

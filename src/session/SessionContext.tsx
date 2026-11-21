@@ -9,6 +9,7 @@
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { forgetCsrf } from '../api/http';
+import { forgetCachedApps } from '../api/myAppsCache';
 import { forgetAttendanceReminders } from '../attendanceReminder';
 import type { Session } from '../auth/api';
 import { forgetCognitoTokens, loadCognitoStorage } from '../auth/cognitoStorage';
@@ -47,7 +48,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       let restored: Session | null = result.status === 'valid' ? result.session : result.status === 'offline' ? result.saved : null;
       // サーバーのログインが切れていたら、Face ID で入り直す（使っていなければ、何も出さずにログイン画面へ）
       if (!restored && result.status === 'expired' && active) {
-        const faceId = await loginWithFaceId();
+        // 確かめたときに着いたログイン画面から、Cognito の設定を読めていれば、それを使う（ログイン画面を読み直さない）
+        const faceId = await loginWithFaceId(result.pool);
         if (faceId.ok) {
           forgetAllAppData();
           forgetInitAppTexts();
@@ -79,6 +81,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     discardOld(true); // 受け取った明細などのファイルも残さない
     resetSaves(); // 裏で続けていた保存の知らせも消す
     forgetAttendanceReminders(); // 勤怠登録の通知の予約と、覚えていた勤務表の状態も消す
+    forgetCachedApps(); // マイアプリの一覧の控えも
     setSession(null);
     clearSavedSession();
   }, []);

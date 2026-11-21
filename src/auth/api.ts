@@ -72,9 +72,15 @@ export async function login(username: string, password: string, remember: boolea
  * Face ID のあとに、保存しておいた「更新用の鍵」でログインし直す（パスワードは使わない）。
  * 鍵が新しくなったら、新しいほうを返す（呼んだ側が保存し直す）
  */
-export async function loginWithRefreshToken(username: string, refreshToken: string, remember: boolean): Promise<LoginResult> {
+export async function loginWithRefreshToken(
+  username: string,
+  refreshToken: string,
+  remember: boolean,
+  /** 起動したときの確かめで、もうログイン画面を読んでいれば、その Cognito の設定（ログイン画面を読み直さない） */
+  knownPool: CognitoPool | null = null,
+): Promise<LoginResult> {
   startedAt = Date.now();
-  const pool = await openLoginPage();
+  const pool = knownPool ?? (await openLoginPage());
   await loadCognitoStorage(); // 鍵と一緒に、この端末の登録（deviceKey）を Cognito に渡す
   const tokens = await refreshWithCognito(pool.userPoolId, pool.clientId, username, refreshToken);
   done('Cognito で鍵を使って本人確認できた', 'ID トークンを受け取った');
@@ -82,22 +88,30 @@ export async function loginWithRefreshToken(username: string, refreshToken: stri
   return { session: { username }, refreshToken: tokens.refreshToken };
 }
 
+/** Cognito の設定（ログイン画面の meta に書かれている） */
+export type CognitoPool = { userPoolId: string; clientId: string };
+
+/** ログイン画面の HTML から、Cognito の設定を読む（読めなければ null） */
+export function cognitoPoolOf(html: string): CognitoPool | null {
+  const userPoolId = readMeta(html, 'userPoolId');
+  const clientId = readMeta(html, 'appClientId');
+  return userPoolId && clientId ? { userPoolId, clientId } : null;
+}
+
 /** 1. ログイン画面を開く（Web 版と同じく、ログイン後の行き先 r を付ける）。Cognito の設定値を読む */
-async function openLoginPage(): Promise<{ userPoolId: string; clientId: string }> {
+async function openLoginPage(): Promise<CognitoPool> {
   const loginPage = await fetch(`${SERVER_URL}/login?r=${encodeURIComponent(HOME_URL)}`, {
     credentials: 'include',
   });
   if (!loginPage.ok) {
     throw new Error(`ログイン画面を開けませんでした（HTTP ${loginPage.status}）`);
   }
-  const html = await loginPage.text();
-  const userPoolId = readMeta(html, 'userPoolId');
-  const clientId = readMeta(html, 'appClientId');
-  if (!userPoolId || !clientId) {
+  const pool = cognitoPoolOf(await loginPage.text());
+  if (!pool) {
     throw new Error('ログイン画面から Cognito の設定を読めませんでした。サイトの作りが変わった可能性があります。');
   }
   done('サーバーに届いた', `GET /login → HTTP ${loginPage.status}`);
-  return { userPoolId, clientId };
+  return pool;
 }
 
 /** 3・4. ID トークンをサーバーに渡してセッションを作り、ログインが要るページを開けるか確かめる */

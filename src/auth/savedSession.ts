@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { landedOnLogin, NetworkError, rememberCsrf, serverFetch } from '../api/http';
 import { SERVER_URL } from '../config';
-import type { Session } from './api';
+import { cognitoPoolOf, type CognitoPool, type Session } from './api';
 
 const KEY = 'session.username';
 /** 起動のときに待つ長さ（電波が弱いときに、くるくるのまま長く待たせない） */
@@ -46,17 +46,21 @@ async function savedSession(): Promise<Session | null> {
  *   expired … 切れている（Face ID で入り直すか、ログイン画面へ）
  *   offline … サーバーにつながらない。前にログインしていた人がいれば saved（その人の画面を出しておき、つながったら確かめる）
  */
-export type Restored = { status: 'valid'; session: Session } | { status: 'expired' } | { status: 'offline'; saved: Session | null };
+export type Restored =
+  | { status: 'valid'; session: Session }
+  // pool: 確かめたときにログイン画面へ戻され、その画面から読めた Cognito の設定（Face ID で入り直すときに使う。読めなければ null）
+  | { status: 'expired'; pool: CognitoPool | null }
+  | { status: 'offline'; saved: Session | null };
 
 export async function restoreSession(): Promise<Restored> {
   try {
     const res = await serverFetch(`${SERVER_URL}/main/`, { credentials: 'include' }, RESTORE_TIMEOUT_MS);
     const html = await res.text();
-    if (!res.ok || landedOnLogin(res)) return { status: 'expired' };
+    if (!res.ok || landedOnLogin(res)) return { status: 'expired', pool: res.ok ? cognitoPoolOf(html) : null };
     rememberCsrf(html); // マイアプリの一覧を聞くときに使う（/main/ をもう一度読まない）
     return { status: 'valid', session: (await savedSession()) ?? { username: '' } };
   } catch (e) {
     if (e instanceof NetworkError) return { status: 'offline', saved: await savedSession() };
-    return { status: 'expired' };
+    return { status: 'expired', pool: null };
   }
 }

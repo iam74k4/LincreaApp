@@ -3,7 +3,11 @@
 //
 // マイアプリを見ているあいだに裏で読むので、近道を押したときには、たいてい準備ができている。
 // メニューの画面は、読み込むときにデータを読むだけ（書き込まない）。
-import { useEffect, useRef } from 'react';
+//
+// 画面の定義（initApp。1MB ほど）と参照モードの返事は、見える画面と同じ控えを使い、なければ読んで控えに入れる
+// （src/webview/initAppCache.ts・src/webview/refModeCache.ts）。マイアプリが裏で読む画面の定義（prefetchInitApps）は、
+// この下準備が終わってから始めるので、同じメニューの定義を2回読まない（src/app/(app)/index.tsx）。
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
@@ -11,6 +15,10 @@ import { pathOf } from '../api/http';
 import { SERVER_URL } from '../config';
 import { isServerUrl, mayNavigate } from '../webview/origin';
 import { appDataKey, rememberAppData } from '../webview/appDataCache';
+import { joinScripts, parseBridgeMessage } from '../webview/bridge';
+import { initAppJs, refModeJs } from '../webview/initApp';
+import { recallInitApp, rememberInitApp } from '../webview/initAppCache';
+import { recallRefModes, rememberRefMode } from '../webview/refModeCache';
 
 type Props = {
   app: string;
@@ -39,17 +47,33 @@ export function AppDataPrefetch({ app, form, ready, onDone }: Props) {
     const timer = setTimeout(() => finish(false), GIVE_UP_MS);
     return () => clearTimeout(timer);
   }, []);
+  // ページが動き出す前に入れるもの。開いたときに決めて、そのあいだは変えない（変えると、入れ直しになる）
+  const [beforeLoadJs] = useState(() => {
+    const cached = recallInitApp({ app, form });
+    return joinScripts([initAppJs(cached ? { app, form, ...cached } : null), refModeJs(recallRefModes())]);
+  });
 
   return (
     <View style={styles.hidden} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <WebView
         source={{ uri: `${SERVER_URL}/runapp/${encodeURIComponent(app)}/${encodeURIComponent(form)}/` }}
         sharedCookiesEnabled
+        injectedJavaScriptBeforeContentLoaded={beforeLoadJs}
         injectedJavaScript={prefetchJs(ready)}
         // 会社のサイトのページだけを開き、そこからの知らせだけを受け付ける（src/webview/origin.ts）
         onShouldStartLoadWithRequest={(req) => mayNavigate(req.url, req.isTopFrame)}
         onMessage={(e) => {
           if (!isServerUrl(e.nativeEvent.url)) return;
+          // 読んだ画面の定義と参照モードの返事は、控えに入れる（見える画面と同じ。次に開くときに速い）
+          const parsed = parseBridgeMessage(e.nativeEvent.data);
+          if (parsed?.type === 'initApp') {
+            rememberInitApp({ app: parsed.app, form: parsed.form }, parsed.id, parsed.text);
+            return;
+          }
+          if (parsed?.type === 'refMode') {
+            rememberRefMode(parsed.key, { text: parsed.text, type: parsed.contentType });
+            return;
+          }
           try {
             const message = JSON.parse(e.nativeEvent.data) as { type?: string; data?: unknown };
             if (message.type !== 'appData') return;
