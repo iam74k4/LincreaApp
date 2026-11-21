@@ -578,7 +578,10 @@ export function openerStubJs(handoff: Handoff | null): string {
       _delCashedform: function () {}
     };
     var app = { data: data };
-    window.opener = { closed: false, App: app, FALCON: { apps: { procedure: { App: app, Forms: forms } } } };
+    // views は空にしておく: EZCraft の Runapp.js は、読み込みのときに opener.FALCON.views.RunApp を見て「いちばん元の窓」を探す
+    // （findMainWindow）。views がないとそこで止まり、読み込みのときの残りの準備（窓の登録など）がされなかった（2026-11-22）。
+    // 空なら、この画面がいちばん元の窓になる（開いた元は、本物の EZCraft の窓ではないので、それで合っている）
+    window.opener = { closed: false, App: app, FALCON: { apps: { procedure: { App: app, Forms: forms } }, views: {} } };
   } catch (e) {}
 })();
 true;
