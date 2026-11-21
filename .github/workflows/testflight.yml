@@ -4,6 +4,7 @@
 # リポジトリが Public なので、macOS の実行環境は無料。作り終わるまで 20〜40 分ほど。そのあと Apple の処理に 10〜30 分。
 # 手順書だけの変更（docs/・*.md）では作らない。
 #
+# プルリクエストでは、同じ手順で、署名せずに作れるかだけを確かめる（送らない）。
 # 手で始める（Actions のページの「Run workflow」）こともできる:
 #   - develop を選び「TestFlight に送る」をつけたまま → いつもと同じく TestFlight に出す
 #   - ほかのブランチ、または「TestFlight に送る」を外す → 署名せずに作れるかだけを確かめる（送らない。API キーも使わない）
@@ -15,6 +16,11 @@ name: TestFlight に出す
 on:
   push:
     branches: [develop]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  # プルリクエストでは、署名せずに作れるかだけを確かめる（送らない。Secrets も使わない）。マージする前に、作れなくなる直しに気づくため
+  pull_request:
     paths-ignore:
       - 'docs/**'
       - '**/*.md'

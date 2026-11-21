@@ -19,6 +19,7 @@ LINCREA は TestFlight で配る。develop にプルリクエストをマージ�
                   App Store Connect（Apple の処理に 10〜30 分）→ TestFlight → 使う人の iPhone
 ```
 
+- プルリクエストでも同じ手順が動くが、署名せずに作れるかだけを確かめる（送らない）。作れなくなる直しは、マージの前に分かる
 - 手順書だけの変更（`docs/`・`*.md`）では、版を作らない
 - 続けてマージしたときは、前のが終わってから次を作る
 - 進み具合は GitHub の「Actions」、できあがりは App Store Connect の「TestFlight」で見る
