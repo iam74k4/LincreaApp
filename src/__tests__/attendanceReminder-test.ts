@@ -3,7 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 
-import { forgetAttendanceReminders, noteAttendanceDays } from '../attendance/attendanceReminder';
+import { attendanceRemindersFor, forgetAttendanceReminders, noteAttendanceDays } from '../attendance/attendanceReminder';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-notifications', () => ({
@@ -70,4 +70,39 @@ test('予約を出す前に、通知のチャンネルを作ってから、許�
   } finally {
     jest.useRealTimers();
   }
+});
+
+test('別の人がログインしたら、前の人の通知の予約と、覚えていた勤務表の状態を消す（ログアウトを通らなかったときも）', async () => {
+  // 起動したとき: 端末に残っていたのは、前にログインしていた人（ログインが切れていて、入り直せなかった）
+  attendanceRemindersFor('user-a');
+  await settled();
+  await AsyncStorage.setItem('myapp.attendanceDays', '{}');
+  expect(notifications.cancelScheduledNotificationAsync).not.toHaveBeenCalled();
+  // ログイン画面から、別の人が入った
+  attendanceRemindersFor('user-b');
+  await settled();
+  expect(notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('attendance-reminder-2026-11-25');
+  expect(notifications.cancelScheduledNotificationAsync).not.toHaveBeenCalledWith('other-app-reminder');
+  expect(await AsyncStorage.getItem('myapp.attendanceDays')).toBeNull();
+  expect(await AsyncStorage.getItem('myapp.attendanceOwner')).toBe('user-b');
+});
+
+test('同じ人が入り直したとき（大文字・小文字の違いも）は、通知の予約を残す', async () => {
+  attendanceRemindersFor('user-a');
+  await settled();
+  attendanceRemindersFor('User-A');
+  await settled();
+  expect(notifications.cancelScheduledNotificationAsync).not.toHaveBeenCalled();
+});
+
+test('ログアウトしたら、だれの通知かも忘れる（次の人のときに、何も消さずに始める）', async () => {
+  attendanceRemindersFor('user-a');
+  forgetAttendanceReminders();
+  await settled();
+  expect(await AsyncStorage.getItem('myapp.attendanceOwner')).toBeNull();
+  jest.clearAllMocks();
+  attendanceRemindersFor('user-b');
+  await settled();
+  expect(notifications.cancelScheduledNotificationAsync).not.toHaveBeenCalled();
+  expect(await AsyncStorage.getItem('myapp.attendanceOwner')).toBe('user-b');
 });

@@ -19,6 +19,8 @@ import { daysInMonth, keepRecentMonths, planReminders, type AttendanceDays, type
 export const REMINDER_SHORTCUT = 'tims-attendance';
 
 const STORE_KEY = 'myapp.attendanceDays';
+/** 覚えている状態と予約が、だれのものか（ログインの名前） */
+const OWNER_KEY = 'myapp.attendanceOwner';
 const ID_PREFIX = 'attendance-reminder-';
 /** 覚えておく月の数（数えるのは、知らせる日の前の月から） */
 const KEEP_MONTHS = 3;
@@ -76,10 +78,29 @@ export function forgetAttendanceReminders(): void {
   if (settle) clearTimeout(settle);
   settle = null;
   run(async () => {
-    months = {};
-    // 先に予約を消す（覚えていた状態を消せなくても、前の人の通知は届かないように）
-    await cancel((await scheduledReminders()).map((n) => n.identifier));
-    await AsyncStorage.removeItem(STORE_KEY);
+    await forgetAll();
+    await AsyncStorage.removeItem(OWNER_KEY);
+  });
+}
+
+async function forgetAll(): Promise<void> {
+  months = {};
+  // 先に予約を消す（覚えていた状態を消せなくても、前の人の通知は届かないように）
+  await cancel((await scheduledReminders()).map((n) => n.identifier));
+  await AsyncStorage.removeItem(STORE_KEY);
+}
+
+/**
+ * いまこの端末を使う人を知らせる（起動したとき・ログインしたとき。src/session/SessionContext.tsx）。
+ * 覚えている状態と予約が別の人のものなら、消す。ログインが切れていて入り直せないまま、ログイン画面から別の人が入ったとき、
+ * ログアウトを通らないので、前の人の通知が届き続けていた
+ */
+export function attendanceRemindersFor(username: string): void {
+  run(async () => {
+    const owner = await AsyncStorage.getItem(OWNER_KEY);
+    if (owner !== null && owner.toLowerCase() === username.toLowerCase()) return;
+    if (owner !== null) await forgetAll();
+    await AsyncStorage.setItem(OWNER_KEY, username);
   });
 }
 
