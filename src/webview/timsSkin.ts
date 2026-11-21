@@ -2841,7 +2841,9 @@ const SCRIPT = `
   }
 
   // 勤怠実績登録: 残業。所定の時間（勤務体系ごと）を超えて働いたぶんを残業とし、その場で残業申請を作れるようにする。
-  //   - 「残業申請を作る」を押すと、日付と時刻（退勤から残業のぶんさかのぼった時刻〜退勤）を入れた残業申請の画面が開く
+  //   - 「残業申請を作る」を押すと、日付と時刻（その日に登録した出勤〜退勤。例: 9:00〜18:00）を入れた残業申請の画面が開く。
+  //     会社の決まりで、残業申請の時刻は残業の時間帯ではなく、その日の勤務の始まりから終わりまでを書く。
+  //     出勤の時刻が分からないときだけ、退勤から残業のぶんさかのぼった時刻を入れる
   //   - 時刻を入れ直して残業のある日を「登録」したら、登録が終わったところで、その画面を自動で開く（理由を入れて登録するだけ）。
   //     時刻を変えずに登録したとき（プロジェクトだけ直したときなど）は開かない
   //   この端末から残業申請を出した日は「作成済み」と出し、自動では開かない
@@ -2866,6 +2868,8 @@ ${OVERTIME_MATH_JS}
     return out;
   }
   function textOf(id) { var el = document.getElementById(id); return el ? (el.textContent || '').trim() : ''; }
+  // 時刻の欄に入れる形（9:00 → 09:00。EZCraft の時刻の欄と同じ、時を2けたに）
+  function clock(min) { var t = hhmm(min); return t.length === 4 ? '0' + t : t; }
   function overtimeOf() {
     var tp = textOf('frmAttendanceDtl_work_tp');
     var rule = STANDARD.filter(function (r) { return tp.indexOf(r.match) >= 0; })[0];
@@ -2880,13 +2884,14 @@ ${OVERTIME_MATH_JS}
     if (start !== null && end < start) end += 1440;
     var ot = work - rule.minutes;
     if (ot <= 0) return null;
-    var from = overtimeStart(end, ot, dtlBreaks(start));
+    // 申請の開始は出勤の時刻（分からなければ、退勤から残業のぶんさかのぼった時刻）
+    var from = start !== null ? start : overtimeStart(end, ot, dtlBreaks(start));
     if (from < 0) return null;
     var dm = /(\\d{4})\\D(\\d{1,2})\\D(\\d{1,2})/.exec(textOf('frmAttendanceDtl_lblDt'));
     if (!dm) return null;
     var p = function (n) { return ('0' + n).slice(-2); };
     var date = dm[1] + '/' + p(+dm[2]) + '/' + p(+dm[3]);
-    return { date: date, from: hhmm(from), to: hhmm(end), minutes: ot, standard: rule.minutes };
+    return { date: date, from: clock(from), to: clock(end), minutes: ot, standard: rule.minutes };
   }
   function postApply(ot, auto) {
     try {
@@ -3348,19 +3353,23 @@ ${OVERTIME_MATH_JS}
     for (var k in heads) if (pattern.test(heads[k])) return +k;
     return -1;
   }
-  // 「出力」タブの一覧から、日ごとの退勤と残業（日付 → { end: 分, ot: 分 }）。見ている月の分だけ
+  // 「出力」タブの一覧から、日ごとの出勤・退勤と残業（日付 → { start: 分 または null, end: 分, ot: 分 }）。見ている月の分だけ
   function attdTimes() {
     var map = {};
     var grid = document.getElementById('frmAttendance_grdAttd');
     if (!grid) return map;
+    var startCol = columnOf(grid, 10, /出勤|始業|開始/);
     var endCol = columnOf(grid, 11, /退勤|終業|終了/);
     var otCol = columnOf(grid, 29, /残業/);
     if (endCol < 0 || otCol < 0) return map;
     grid.querySelectorAll('.TccGridBodyScroll tbody tr').forEach(function (tr) {
       var date = (cellText(tr, 1).match(/\\d{4}\\/\\d{2}\\/\\d{2}/) || [])[0];
+      var start = startCol < 0 ? null : minutesOf(cellText(tr, startCol));
       var end = minutesOf(cellText(tr, endCol));
       var ot = minutesOf(cellText(tr, otCol));
-      if (date && end !== null && ot && end - ot >= 0) map[date] = { end: end, ot: ot };
+      // 退勤が出勤より前の時刻なら、日をまたいだ（1:00 は 25:00）
+      if (start !== null && end !== null && end < start) end += 1440;
+      if (date && end !== null && ot && end - ot >= 0) map[date] = { start: start, end: end, ot: ot };
     });
     return map;
   }
@@ -3398,7 +3407,9 @@ ${OVERTIME_MATH_JS}
     closePicker();
     var days = otDays().map(function (d) {
       var t = times[d.date];
-      return { date: d.date, label: d.label, applied: d.applied, from: t ? hhmm(t.end - t.ot) : '', to: t ? hhmm(t.end) : '', ot: t ? t.ot : 0 };
+      // 申請の時刻は、その日の出勤〜退勤（出勤が分からなければ、退勤から残業のぶんさかのぼった時刻〜退勤）
+      var from = t ? (t.start !== null ? t.start : t.end - t.ot) : null;
+      return { date: d.date, label: d.label, applied: d.applied, from: t ? clock(from) : '', to: t ? clock(t.end) : '', ot: t ? t.ot : 0 };
     }).filter(function (d) { return d.to; });
     var back = document.createElement('div');
     back.className = 'myapp-pick-back';
