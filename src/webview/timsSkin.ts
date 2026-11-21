@@ -3100,9 +3100,14 @@ ${OVERTIME_MATH_JS}
     if (!grid) return;
     var rows = grid.querySelectorAll('.TccGridBodyScroll tbody tr');
     if (!rows.length) return;
-    var key = rows.length + ':' + (grid.querySelector('.TccGridBodyScroll tbody').textContent || '').length;
-    if (grid.__myappHarvested === key) return;
-    grid.__myappHarvested = key;
+    // 一覧が描き直されたか（EZCraft は描き直すとき、行を新しく作る）。最初と最後の行と数が同じなら、同じ一覧
+    // （一覧の文字を全部読んで比べると、ページが変わるたびに重いため）
+    // （行を使い回して中身だけ書き換えることもあるので、最初と最後の行の文字も比べる）
+    var last = rows[rows.length - 1];
+    var seen = rows.length + '|' + (rows[0].textContent || '') + '|' + (last.textContent || '');
+    var h = grid.__myappHarvested;
+    if (h && h.first === rows[0] && h.last === last && h.seen === seen) return;
+    grid.__myappHarvested = { first: rows[0], last: last, seen: seen };
     var byMonth = {};
     Array.prototype.forEach.call(rows, function (tr) {
       var date = cellText(tr, 3);
@@ -3575,10 +3580,14 @@ ${OVERTIME_MATH_JS}
     var dialog = document.getElementById('frmSelProj');
     var query = document.querySelector('#frmSelProj_txtQuery input');
     if (!dialog || !dialog.offsetWidth || !query || query.value.trim()) return false;
-    var rows = gridData('frmSelProj_grdPrj1').concat(gridData('frmSelProj_grdPrj2'));
-    if (rows.length < 20) return false;
-    var key = rows.length + ':' + (rows[0] && rows[0].PRJ_NO);
+    var a = gridData('frmSelProj_grdPrj1');
+    var b = gridData('frmSelProj_grdPrj2');
+    if (a.length + b.length < 20) return false;
+    // 同じ一覧なら、つなぎ直さない（ダイアログが開いているあいだ、ページが変わるたびに呼ばれるため）
+    var first = a[0] || b[0];
+    var key = (a.length + b.length) + ':' + (first && first.PRJ_NO);
     if (harvestCatalog.key === key) return true;
+    var rows = a.concat(b);
     var list = [];
     rows.forEach(function (r) {
       var no = r && r.PRJ_NO != null ? String(r.PRJ_NO).trim() : '';
@@ -4108,13 +4117,19 @@ ${OVERTIME_MATH_JS}
     ];
     targets.forEach(function (t) {
       document.querySelectorAll(t[0]).forEach(function (el) {
-        var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-        var node;
-        while ((node = w.nextNode())) {
-          if (!/\\d日/.test(node.nodeValue)) continue;
-          var v = dayTime(node.nodeValue, t[1]);
-          if (v !== node.nodeValue) node.nodeValue = v;
+        // 前に見たときから文字が変わっていなければ、見直さない（ページのどこかが変わるたびに、全部のラベルを調べ直さない）
+        var text = el.textContent || '';
+        if (el.__myappDayText === text) return;
+        if (/\\d日/.test(text)) {
+          var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          var node;
+          while ((node = w.nextNode())) {
+            if (!/\\d日/.test(node.nodeValue)) continue;
+            var v = dayTime(node.nodeValue, t[1]);
+            if (v !== node.nodeValue) node.nodeValue = v;
+          }
         }
+        el.__myappDayText = el.textContent || '';
       });
     });
   }

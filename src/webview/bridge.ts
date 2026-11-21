@@ -39,6 +39,7 @@
 //    ページ（勤怠実績登録の残業など）が、申請の画面と、そこに入れておく値を知らせる。アプリは申請の画面をシートで重ねる。
 // 9. 保存の進み具合を知らせる（saveStart・saveStep・saveEnd。SAVE_WATCH_JS）
 import type { Handoff } from './handoff';
+import { compactJs } from './compact';
 
 /** ページからアプリへの知らせ */
 export type BridgeMessage =
@@ -203,7 +204,7 @@ export function stepsDayAllowed(day: string, now: Date = new Date()): boolean {
 }
 
 /** ページを読み込んだあとに入れる（1・2の開く側・3） */
-export const BRIDGE_JS = `
+export const BRIDGE_JS = compactJs(`
 (function () {
   if (window.__myappBridge) return;
   window.__myappBridge = true;
@@ -464,7 +465,7 @@ export const BRIDGE_JS = `
   }, 300);
 })();
 true;
-`;
+`);
 
 /**
  * 9. 保存の進み具合を、アプリに知らせる（ページを読み込んだあとに入れる）。
@@ -484,7 +485,7 @@ true;
  * window.__myappSaveBusy を立てる）は、書き込みのボタンを押しても EZCraft に渡さずに待たせ（saveWait）、
  * 終わったら（アプリが window.__myappSaveFree を呼ぶ）押し直す
  */
-export const SAVE_WATCH_JS = `
+export const SAVE_WATCH_JS = compactJs(`
 (function () {
   if (window.__myappSaveWatch) return;
   window.__myappSaveWatch = true;
@@ -600,7 +601,7 @@ export const SAVE_WATCH_JS = `
   };
 })();
 true;
-`;
+`);
 
 /** ページが動き出す前に入れる（2の開いた側）。handoff は開いた元から預かったもの */
 export function openerStubJs(handoff: Handoff | null): string {

@@ -8,6 +8,7 @@
 // 使っているあいだにログインが切れたときも、Face ID で入り直せれば、その場で続けられる（reauthenticate）。
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
+import { forgetCsrf } from '../api/http';
 import { forgetAttendanceReminders } from '../attendanceReminder';
 import type { Session } from '../auth/api';
 import { forgetCognitoTokens, loadCognitoStorage } from '../auth/cognitoStorage';
@@ -39,9 +40,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     (async () => {
-      // 前の版が端末に残したトークンを消す（src/auth/cognitoStorage.ts）
-      await loadCognitoStorage();
-      const result = await restoreSession();
+      // 前の版が端末に残したトークンを消す（src/auth/cognitoStorage.ts）。サーバーへの確かめと同時に進める（起動を待たせない）
+      const [, result] = await Promise.all([loadCognitoStorage(), restoreSession()]);
       // 電波がない: 前にログインしていた人なら、その人の画面（マイアプリ）を出しておく。一覧は「つながっていません」と
       // 「もう一度読み込む」を出し、つながって読み直したときに、ログインが切れていればログイン画面に戻す
       let restored: Session | null = result.status === 'valid' ? result.session : result.status === 'offline' ? result.saved : null;
@@ -73,6 +73,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(() => {
     forgetCognitoTokens(); // メモリに置いていたトークンも消す
+    forgetCsrf(); // なりすまし防止の合言葉も
     forgetAllAppData();
     forgetAllInitApps(); // 画面の定義の控えと、裏で読む画面の覚え書き
     discardOld(true); // 受け取った明細などのファイルも残さない

@@ -8,11 +8,24 @@
 //
 // 色の考え方: 設計者がわざわざ付けた色（緑のボタン、青い見出しなど）は残す。
 // 白い地・黒い文字・灰色の線のような「無彩色」だけを、テーマの色に置き換える。
+import { compactCss, compactJs } from './compact';
 import { APP_SKINS, roleCss, type AppSkin } from './appStyles';
 import { SEARCH_ICON } from './layout';
 
 /** WebView に読み込ませる JavaScript を作る（appId はアプリケーション ID。アプリごとの調整に使う） */
+// 作ったスクリプトは、アプリごとに控えて使い回す（TiMS は 600KB を超える。画面を描き直すたびに作り直さない）
+const skinCache = new Map<string, string>();
+
 export function buildSkinScript(appId: string): string {
+  let js = skinCache.get(appId);
+  if (js === undefined) {
+    js = compactJs(makeSkinScript(appId));
+    skinCache.set(appId, js);
+  }
+  return js;
+}
+
+function makeSkinScript(appId: string): string {
   const skin = APP_SKINS[appId];
   const css = BASE_CSS + GLASS_CSS + (skin ? roleCss(skin) : '');
   const mobileForms = skin?.mobileForms ?? [];
@@ -43,7 +56,7 @@ export function buildSkinScript(appId: string): string {
   // ---- スタイルを差し込む ----
   var style = document.createElement('style');
   style.id = 'myapp-skin';
-  style.textContent = ${JSON.stringify(css)};
+  style.textContent = ${JSON.stringify(compactCss(css))};
   (document.head || root).appendChild(style);
 
   // ---- アプリごとの動き（appStyles.ts の script。window.__myappAppUpdate を決める） ----
@@ -430,10 +443,34 @@ const GENERIC_JS = `
 
   // 一覧のカード（cardGrid）のために: 値のない欄にしるし（見出しだけが出ないように）、
   // ページが1つしかない一覧にもしるし（« < 1 / 1p > » を出さないように）
-  function tidyGrids() {
+  // 一覧のマスを見直すのは、中身が変わった一覧（gridsDirty）だけ。ページのどこかが変わるたびに、全部の一覧の全部のマスを
+  // 調べ直すと重いため（勤務表の出力は 1,000 マスを超える）。見落としのないよう、全部の見直しも 1.5 秒に 1 回はする
+  var gridsDirty = [];
+  var gridsFullAt = 0;
+  function markGridsIn(node) {
+    if (!node || node.nodeType !== 1) node = node && node.parentElement;
+    if (!node || !node.closest) return;
+    var body = node.closest('.TccGridBodyScroll');
+    if (body) { if (gridsDirty.indexOf(body) < 0) gridsDirty.push(body); return; }
+    if (node.getElementsByClassName('TccGridBodyScroll').length) {
+      Array.prototype.forEach.call(node.getElementsByClassName('TccGridBodyScroll'), function (b) {
+        if (gridsDirty.indexOf(b) < 0) gridsDirty.push(b);
+      });
+    }
+  }
+  window.__myappNoteMutations = function (records) {
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      markGridsIn(r.target);
+      for (var k = 0; k < r.addedNodes.length; k++) if (r.addedNodes[k].nodeType === 1) markGridsIn(r.addedNodes[k]);
+    }
+  };
+  // チェックを入れた・外した（中身の文字は変わらない）
+  document.addEventListener('change', function (e) { markGridsIn(e.target); }, true);
+  function tidyCell(td) {
+    var text = td.textContent || '';
     // 名前の中に、文字の番号のまま入っているもの（「ハ&#12442;スキー」= パスキー）は、文字に直して見せる（見せるだけ。データはそのまま）
-    document.querySelectorAll('.TccGridBodyScroll td').forEach(function (td) {
-      if ((td.textContent || '').indexOf('&#') < 0) return;
+    if (text.indexOf('&#') >= 0) {
       var w = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
       var node;
       while ((node = w.nextNode())) {
@@ -445,11 +482,22 @@ const GENERIC_JS = `
         if (v.normalize) v = v.normalize('NFC');
         if (v !== node.nodeValue) node.nodeValue = v;
       }
-    });
-    document.querySelectorAll('.TccGridBodyScroll td').forEach(function (td) {
-      // 「----」（値なし）も、空として扱う（見出しだけが「合計 ----」と出ないように）
-      var blank = !/[^\\s\\-－―ー]/.test(td.textContent || '') && !td.querySelector('input:checked, img, i');
-      if (td.hasAttribute('data-myapp-blank') !== blank) td.toggleAttribute('data-myapp-blank', blank);
+      text = td.textContent || '';
+    }
+    // 「----」（値なし）も、空として扱う（見出しだけが「合計 ----」と出ないように）
+    var blank = !/[^\\s\\-－―ー]/.test(text) && !td.querySelector('input:checked, img, i');
+    if (td.hasAttribute('data-myapp-blank') !== blank) td.toggleAttribute('data-myapp-blank', blank);
+  }
+  function tidyGrids() {
+    var now = Date.now();
+    var bodies = gridsDirty;
+    gridsDirty = [];
+    if (now - gridsFullAt > 1500) {
+      gridsFullAt = now;
+      bodies = Array.prototype.slice.call(document.getElementsByClassName('TccGridBodyScroll'));
+    }
+    bodies.forEach(function (body) {
+      if (body.isConnected) body.querySelectorAll('td').forEach(tidyCell);
     });
     document.querySelectorAll('.tcc-component.grid').forEach(function (grid) {
       var pager = grid.querySelector('.tcc-pager-navi');
@@ -1150,7 +1198,10 @@ const DARK_JS = `
 
   media.addEventListener('change', applyTheme);
   // 中身はあとから描かれる・入れ替わるので、そのたびに測り直し、塗り直す
-  new MutationObserver(update).observe(root, { childList: true, subtree: true });
+  new MutationObserver(function (records) {
+    if (window.__myappNoteMutations) window.__myappNoteMutations(records);
+    update();
+  }).observe(root, { childList: true, subtree: true });
   if (window.ResizeObserver && document.body) new ResizeObserver(update).observe(document.body);
   document.addEventListener('click', function () { setTimeout(update, 300); }, true);
   document.addEventListener('input', update, true);
