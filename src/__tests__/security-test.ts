@@ -1,7 +1,7 @@
 // セキュリティチェックで直したところ（外からのリンク・WebView の行き先・外で開くリンク・PDF を見る画面）。
 import { redirectSystemPath } from '../app/+native-intent';
-import { isInside } from '../files';
-import { depositLaunch, takeLaunch } from '../launch';
+import { isInside } from '../platform/files';
+import { depositLaunch, takeLaunch } from '../shortcuts/launch';
 import { depositHandoff, takeHandoff } from '../webview/handoff';
 import { isServerUrl, mayNavigate, mayOpenOutside } from '../webview/origin';
 
@@ -22,7 +22,7 @@ describe('外からアプリを開くリンク（+native-intent）', () => {
   });
 });
 
-describe('近道の指示の預かり所（src/launch.ts）', () => {
+describe('近道の指示の預かり所（src/shortcuts/launch.ts）', () => {
   test('預けた指示は、渡された番号でだけ取り出せる', () => {
     const id = depositLaunch({ steps: ['frmLTiMSTop_btnApply'], ready: 'LOGIN_USER', label: '勤怠申請', prefill: { date: '2026/11/18' } });
     expect(takeLaunch(id)).toEqual({ steps: ['frmLTiMSTop_btnApply'], ready: 'LOGIN_USER', label: '勤怠申請', prefill: { date: '2026/11/18' } });
@@ -77,7 +77,7 @@ describe('WebView の行き先と知らせ（src/webview/origin.ts）', () => {
   });
 });
 
-describe('PDF を見る画面が開くファイル（src/files.ts の isInside）', () => {
+describe('PDF を見る画面が開くファイル（src/platform/files.ts の isInside）', () => {
   const folder = 'file:///var/mobile/Containers/Data/Application/X/Library/Caches/myapp-files';
   test('受け取ったファイルを置く場所の中だけ', () => {
     expect(isInside(`${folder}/1794930000000/給与明細.pdf`, folder)).toBe(true);

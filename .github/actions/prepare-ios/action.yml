@@ -1,0 +1,99 @@
+# iOS の版を作る前の、共通の手順（.github/workflows/testflight.yml の2つのジョブで使う）。
+#   node_modules → チェック（型・lint・テスト・ページのスクリプト）→ ビルド番号とコミットを app.json に入れる
+#   → ios フォルダを作る（expo prebuild）→ CocoaPods
+# ここでは Secrets を使わない（使うのは、送るジョブの署名と送信だけ）。
+name: iOS の版を作る準備
+description: チェックして、ios フォルダと CocoaPods を用意する
+
+inputs:
+  xcode-app:
+    description: 使う Xcode の場所（リポジトリの変数 XCODE_APP を、呼ぶ側から渡す。空なら、実行環境の決まりの Xcode）
+    required: false
+    default: ''
+
+outputs:
+  build-number:
+    description: 決めたビルド番号（作った日時。日本時間の「年月日.時分」）
+    value: ${{ steps.number.outputs.build-number }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 24
+        cache: npm
+
+    # node_modules の控え（package-lock.json と patches/ が同じなら、npm ci をしない。1 分半ほど速い）
+    - name: node_modules の控え
+      id: node-modules
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: node-modules-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'patches/**') }}
+
+    - if: steps.node-modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    - shell: bash
+      run: npx tsc --noEmit
+    - shell: bash
+      run: npx expo lint
+    - shell: bash
+      run: npm test -- --ci
+    - shell: bash
+      run: npm run check:pages
+
+    # 使う Xcode を決める。リポジトリの変数 XCODE_APP（Settings → Secrets and variables → Actions → Variables。
+    # 例 /Applications/Xcode_26.2.app）があれば、それを使う。なければ、実行環境の決まりの Xcode（GitHub が環境を新しくすると変わる）。
+    # composite action の中では vars を読めないので、呼ぶ側（testflight.yml）が inputs.xcode-app で渡す
+    - name: Xcode を選ぶ
+      shell: bash
+      env:
+        XCODE_APP: ${{ inputs.xcode-app }}
+      run: |
+        if [ -n "$XCODE_APP" ]; then
+          sudo xcode-select -s "$XCODE_APP"
+        fi
+        xcode-select -p
+
+    # CocoaPods の控えの鍵。Xcode の版（xcodebuild -version）と、ビルド番号を入れる前の app.json などで決める
+    # （Xcode が変わったら、前の Xcode で作った部品を使わない。ビルド番号を入れたあとだと、毎回ちがう鍵になる）
+    - name: CocoaPods の控えの鍵を決める
+      shell: bash
+      run: |
+        xcodebuild -version
+        XCODE=$(xcodebuild -version | tr '\n' ' ' | tr -cs 'A-Za-z0-9.' '-')
+        echo "PODS_KEY=pods-v2-${{ runner.os }}-${{ runner.arch }}-${XCODE}-${{ hashFiles('package-lock.json', 'app.json', 'patches/**', 'modules/**') }}" >> "$GITHUB_ENV"
+
+    # ビルド番号は、作った日時（日本時間の「年月日.時分」。例 261121.1830）。いつも前より大きくなる。
+    # app.json の ios.buildNumber に入れてから ios フォルダを作る。作ったコミットも extra.gitSha に入れる
+    # （どちらも、アプリの下に出る版の名前に使う。問い合わせで、どのコードの版かをたどるため。src/core/appVersion.ts）
+    - name: ビルド番号とコミットを決める
+      id: number
+      shell: bash
+      run: |
+        BUILD_NUMBER=$(TZ=Asia/Tokyo date +%y%m%d.%H%M)
+        node -e 'const fs = require("fs"); const a = JSON.parse(fs.readFileSync("app.json", "utf8")); a.expo.ios.buildNumber = process.argv[1]; a.expo.extra = { ...a.expo.extra, gitSha: process.argv[2] }; fs.writeFileSync("app.json", JSON.stringify(a, null, 2) + "\n");' "$BUILD_NUMBER" "$GITHUB_SHA"
+        echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+        echo "build-number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+        echo "ビルド番号: $BUILD_NUMBER（コミット ${GITHUB_SHA::7}）"
+
+    - name: ios フォルダを作る
+      shell: bash
+      run: npx expo prebuild --platform ios --no-install
+
+    # 前に入れた Pods（React Native の作りおきの部品も入っている）を戻す。合っていれば pod install はすぐ終わる（2 分ほど速い）
+    - name: CocoaPods の控え
+      uses: actions/cache@v4
+      with:
+        path: |
+          ios/Pods
+          ios/Podfile.lock
+        key: ${{ env.PODS_KEY }}
+
+    - name: CocoaPods
+      shell: bash
+      working-directory: ios
+      run: pod install

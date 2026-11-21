@@ -1,0 +1,25 @@
+// Android の Health Connect から、1日の歩数の合計を読む、このアプリだけの小さな部品（src/platform/health.ts から使う。iPhone は ../ios の HealthKit）
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.myapphealth'
+version = '1.0.0'
+
+expoModule {
+  v2 true
+}
+
+android {
+  namespace "expo.modules.myapphealth"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  // Health Connect のクライアント（Google の公式。読むのは歩数だけ）
+  implementation 'androidx.health.connect:connect-client:1.1.0'
+}

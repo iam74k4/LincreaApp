@@ -5,7 +5,8 @@
 // 段の数は、入力によって少し変わる（プロジェクトの行が多いと増える）。最後に保存できたときの数を使う。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { clockOf } from '../clock';
+import { clockOf } from '../core/clock';
+import { runappOf } from './origin';
 
 export type SaveSize = {
   /** 書き込みの段の数（トランザクションの始め・書き込み・確定）。「保存しています（3/9）」の 9 */
@@ -42,8 +43,7 @@ export function loadSaveSizes(): Promise<void> {
 
 /** 画面（URL の /runapp/アプリ/画面/）と、押した書き込みのボタンの名前から、覚える名前を作る */
 export function saveKey(uri: string, label: string): string {
-  const form = /\/runapp\/[^/]+\/([^/?#]+)/.exec(uri)?.[1] ?? '';
-  return `${decodeURIComponent(form)}:${label}`;
+  return `${runappOf(uri)?.form ?? ''}:${label}`;
 }
 
 /** 前に保存できたときの数（知らなければ null） */
@@ -97,7 +97,7 @@ export function describeSave(
   );
 }
 
-/** 開発中に Metro に出す、ページの通信1回ぶんの1行（bridge の NET_TRACE_JS）。始めた時刻・かかった時間・パス・大きさ */
+/** 開発中に Metro に出す、ページの通信1回ぶんの1行（src/webview/page/bridgeJs.ts の NET_TRACE_JS）。始めた時刻・かかった時間・パス・大きさ */
 export function describeNet(
   net: { method: string; path: string; keys: string; at: number; ms: number; status: number; sent: number; received: number; hint: string },
   screen: string,

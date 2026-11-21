@@ -1,9 +1,10 @@
-// 保存の見張り（src/webview/bridge.ts の SAVE_WATCH_JS）と、「保存しています（n/m）」の数（src/webview/saveSizes.ts）。
+// 保存の見張り（src/webview/page/bridgeJs.ts の SAVE_WATCH_JS）と、「保存しています（n/m）」の数（src/webview/saveSizes.ts）。
 // ページのスクリプトは jsdom の中で、偽の通信（XMLHttpRequest）を相手に動かす。
 // EZCraft の保存の流れ（beginTrans → 読む・書く → commit）は、2026-11-18 に勤怠実績登録で測ったものに合わせる。
 import { JSDOM } from 'jsdom';
 
-import { parseBridgeMessage, SAVE_WATCH_JS } from '../webview/bridge';
+import { parseBridgeMessage } from '../webview/bridge';
+import { SAVE_WATCH_JS } from '../webview/page/bridgeJs';
 import { describeSave, rememberSaveSize, saveKey, saveProgress, saveSizeOf, savingText } from '../webview/saveSizes';
 
 jest.mock('@react-native-async-storage/async-storage', () =>

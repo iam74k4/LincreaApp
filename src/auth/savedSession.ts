@@ -6,9 +6,10 @@
 // 次の起動では、サーバーのログインがまだ有効か確かめてから、この控えで画面を戻す。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { landedOnLogin, NetworkError, rememberCsrf, serverFetch } from '../api/http';
-import { SERVER_URL } from '../config';
-import { cognitoPoolOf, type CognitoPool, type Session } from './api';
+import { landedOnLogin, rememberCsrf } from '../api/ezcraft/server';
+import { NetworkError, serverFetch, textWithin } from '../api/http';
+import { SERVER_URL } from '../core/config';
+import { cognitoPoolOf, logout, type CognitoPool, type Session } from './login';
 
 const KEY = 'session.username';
 /** 起動のときに待つ長さ（電波が弱いときに、くるくるのまま長く待たせない） */
@@ -41,26 +42,35 @@ async function savedSession(): Promise<Session | null> {
 }
 
 /**
- * 起動したときの、前のログインの様子:
- *   valid   … サーバーのログインがまだ有効（session で画面を戻す）
+ * 起動したときの、前のログインの様子（saved は、前にログインしていた人。ログアウトしていれば null）:
+ *   valid   … サーバーのログインがまだ有効で、前にログインしていた人がいる（session で画面を戻す）
  *   expired … 切れている（Face ID で入り直すか、ログイン画面へ）
- *   offline … サーバーにつながらない。前にログインしていた人がいれば saved（その人の画面を出しておき、つながったら確かめる）
+ *   offline … サーバーにつながらない・サーバーの中で問題が起きている（その人の画面を出しておき、つながったら確かめる）
  */
 export type Restored =
   | { status: 'valid'; session: Session }
   // pool: 確かめたときにログイン画面へ戻され、その画面から読めた Cognito の設定（Face ID で入り直すときに使う。読めなければ null）
-  | { status: 'expired'; pool: CognitoPool | null }
+  | { status: 'expired'; pool: CognitoPool | null; saved: Session | null }
   | { status: 'offline'; saved: Session | null };
 
 export async function restoreSession(): Promise<Restored> {
+  const saved = await savedSession();
   try {
     const res = await serverFetch(`${SERVER_URL}/main/`, { credentials: 'include' }, RESTORE_TIMEOUT_MS);
-    const html = await res.text();
-    if (!res.ok || landedOnLogin(res)) return { status: 'expired', pool: res.ok ? cognitoPoolOf(html) : null };
+    const html = await textWithin(res, RESTORE_TIMEOUT_MS);
+    // サーバーの中の問題（500 番台）は、ログインが切れたのではない。前の人のまま始め、つながったら確かめ直す
+    if (res.status >= 500) return { status: 'offline', saved };
+    if (!res.ok || landedOnLogin(res)) return { status: 'expired', pool: res.ok ? cognitoPoolOf(html) : null, saved };
+    // サーバーのログインは残っているのに、アプリでは誰もログインしていない（ログアウトしたが、そのとき /logout が
+    // 届かなかった）。そのまま入ると、共用の端末で次の人が前の人として使えてしまうので、サーバーのログインも終わらせる
+    if (!saved) {
+      await logout();
+      return { status: 'expired', pool: null, saved: null };
+    }
     rememberCsrf(html); // マイアプリの一覧を聞くときに使う（/main/ をもう一度読まない）
-    return { status: 'valid', session: (await savedSession()) ?? { username: '' } };
+    return { status: 'valid', session: saved };
   } catch (e) {
-    if (e instanceof NetworkError) return { status: 'offline', saved: await savedSession() };
-    return { status: 'expired', pool: null };
+    if (e instanceof NetworkError) return { status: 'offline', saved };
+    return { status: 'expired', pool: null, saved };
   }
 }

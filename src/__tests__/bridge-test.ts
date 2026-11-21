@@ -1,6 +1,7 @@
 // ページからアプリへの知らせ（src/webview/bridge.ts の parseBridgeMessage）と、アプリからページへの返事。
 // ページから来るものは信用しないので、形の違うものは捨てることを確かめる。
-import { allowedFrom, healthFlagJs, parseBridgeMessage, stepsDayAllowed, stepsReplyJs } from '../webview/bridge';
+import { allowedFrom, parseBridgeMessage, stepsDayAllowed } from '../webview/bridge';
+import { healthFlagJs, stepsReplyJs } from '../webview/page/bridgeJs';
 
 const parse = (message: unknown) => parseBridgeMessage(JSON.stringify(message));
 
@@ -45,9 +46,14 @@ describe('stepsReplyJs: 歩数の返事', () => {
   test('ID は文字列として埋め込む（ページのスクリプトとして動かない）', () => {
     expect(stepsReplyJs('a"b', 1)).toContain('"a\\"b"');
   });
-  test('ヘルスケアが使えるときだけ、ページに知らせる', () => {
+  test('歩数の記録が使えるときだけ、ページに知らせる（呼び名も）', () => {
     expect(healthFlagJs(true)).toContain('window.__myappHealth = true');
-    expect(healthFlagJs(false)).toBe('');
+    expect(healthFlagJs(true)).toContain('window.__myappHealthName = "ヘルスケア"');
+    expect(healthFlagJs(true, 'ヘルスコネクト')).toContain('window.__myappHealthName = "ヘルスコネクト"');
+    expect(healthFlagJs(false, 'ヘルスコネクト')).toBe('');
+  });
+  test('呼び名は文字列として埋め込む（ページのスクリプトとして動かない）', () => {
+    expect(healthFlagJs(true, '"; alert(1); "')).toContain('window.__myappHealthName = "\\"; alert(1); \\""');
   });
 });
 

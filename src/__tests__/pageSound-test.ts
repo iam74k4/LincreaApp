@@ -1,8 +1,8 @@
-// ページの音（EZCraft のお知らせの音）を、iPhone のマナーモードに従わせる（src/webview/ezcraftSkin.ts の bootJs）。
+// ページの音（EZCraft のお知らせの音）を、iPhone のマナーモードに従わせる（src/webview/page/ezcraftSkin.ts の bootJs）。
 // ページは jsdom で作る（React Native のテストの設定と jsdom の環境は一緒に使えないため、テストの中で作る）。
 import { JSDOM } from 'jsdom';
 
-import { bootJs } from '../webview/ezcraftSkin';
+import { bootJs } from '../webview/page/ezcraftSkin';
 
 function runBoot(audioSession: { type: string } | undefined) {
   const dom = new JSDOM('<!doctype html><html><body></body></html>');

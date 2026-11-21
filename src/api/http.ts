@@ -1,7 +1,8 @@
-// サーバーとの通信で、どこからでも使う小さな道具。
+// 外部の API との通信で、どの相手にも使う小さな道具（待ちすぎ・つながらないの扱い、失敗の文）。
+// 相手ごとの決まり（ログイン画面への戻され方・合言葉など）は、相手ごとのフォルダに置く（EZCraft は src/api/ezcraft/）。
 import { fetch as expoFetch } from 'expo/fetch';
 
-import { clockOf } from '../clock';
+import { clockOf } from '../core/clock';
 
 /** ログインが切れている（サーバーにログイン画面へ戻された）ときの失敗 */
 export class SessionExpiredError extends Error {
@@ -32,7 +33,7 @@ export class CanceledError extends Error {
 }
 
 /** 返事を待つ長さ（ふつう）。iOS の通信の決まりの 60 秒は、起動やログアウトで待たせるには長すぎる */
-export const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_TIMEOUT_MS = 20_000;
 
 type FetchInit = NonNullable<Parameters<typeof expoFetch>[1]>;
 
@@ -55,12 +56,35 @@ export async function serverFetch(url: string, init: FetchInit = {}, timeoutMs: 
     if (__DEV__) console.log(`[通信:アプリ] ${clockOf(at)} ${((Date.now() - at) / 1000).toFixed(2)}秒 ${init.method ?? 'GET'} ${pathOf(url)} ${res.status}`);
     return res;
   } catch {
+    outer?.removeEventListener('abort', stop);
     if (outer?.aborted) throw new CanceledError();
     if (controller.signal.aborted) throw new TimeoutError();
     throw new NetworkError();
   } finally {
+    // 待ち時間は、返事の頭が届くまで（本文は textWithin で待つ長さを決める）。
+    // 呼んだ側が止めたら、本文の受け取りも止める（返事の頭が届いたあとも、止める仕組みは外さない）
     clearTimeout(timer);
-    outer?.removeEventListener('abort', stop);
+  }
+}
+
+/**
+ * 返事の中身（本文）を読む。待ちすぎたら TimeoutError、途中で切れたら NetworkError。
+ * serverFetch の待ち時間は、返事の頭（ステータスとヘッダー）が届くまでなので、本文が届かないまま待たされないように使う
+ */
+export async function textWithin(res: { text(): Promise<string> }, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new TimeoutError()), timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      res.text().catch((e: unknown) => {
+        throw e instanceof NetworkError ? e : new NetworkError();
+      }),
+      timeout,
+    ]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -83,34 +107,3 @@ export function pathOf(url: string): string {
   }
 }
 
-/** リダイレクトをたどった結果、ログイン画面に着いたか */
-export function landedOnLogin(res: { url: string }): boolean {
-  return pathOf(res.url).startsWith('/login');
-}
-
-// ---- なりすまし防止の合言葉（CSRF トークン） ----
-// Web 版は、/main/ のページの <html _t="..."> の値を、書き込み・一覧の問い合わせのヘッダーに付ける。
-// 値はログインのあいだ同じなので、/main/ を読んだついでに覚えておき、問い合わせのたびに /main/ を読み直さない
-// （起動の確かめ・ログインの最後の段で /main/ を読んでいる）。ログイン・ログアウトで忘れる。
-let csrfToken: string | null = null;
-
-/** /main/ のページの HTML から、合言葉を読む（なければ null） */
-export function csrfOf(html: string): string | null {
-  return html.match(/<html[^>]*\s_t="([^"]+)"/)?.[1] ?? null;
-}
-
-/** /main/ を読んだときに、合言葉を覚えておく */
-export function rememberCsrf(html: string): void {
-  const token = csrfOf(html);
-  if (token) csrfToken = token;
-}
-
-/** 覚えている合言葉（なければ null） */
-export function recallCsrf(): string | null {
-  return csrfToken;
-}
-
-/** 合言葉を忘れる（ログイン・ログアウトしたとき。使って断られたとき） */
-export function forgetCsrf(): void {
-  csrfToken = null;
-}

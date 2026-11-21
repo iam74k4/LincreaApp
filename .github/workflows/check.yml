@@ -30,3 +30,8 @@ jobs:
       - run: npx expo lint
       - run: npm test -- --ci
       - run: npm run check:pages
+      # Expo SDK と部品の版のずれ・設定の問題を知らせる（止めはしない。Expo の新しい小さな版が出るたびに止まらないように。
+      # 出ていたら npx expo install --fix で直す。AGENTS.md の Commands）
+      - name: Expo の健康診断（知らせるだけ）
+        continue-on-error: true
+        run: npx expo-doctor

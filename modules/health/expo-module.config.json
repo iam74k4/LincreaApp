@@ -1,6 +1,9 @@
 {
-  "platforms": ["apple"],
+  "platforms": ["apple", "android"],
   "apple": {
     "modules": ["MyAppHealthModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.myapphealth.MyAppHealthModule"]
   }
 }

@@ -1,17 +1,17 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { SymbolView } from 'expo-symbols';
 
-import type { MyApp } from '../api/myApps';
-import { displayName } from '../knownApps';
-import { sizes, useColors, type Colors } from '../theme';
+import type { MyApp } from '../models/myApp';
+import { Icon } from '../platform/icons';
+import { displayName } from '../myApps/knownApps';
+import { sizes, useColors, type Colors } from '../core/theme';
 import { AppIcon } from './AppIcon';
 
 /**
  * 一覧の1行。使う人に要るのは「どのアプリか」だけなので、アイコンと名前だけを出す。
  * 説明（一言）は画面には出さず、読み上げのときのヒントにだけ使う。
  * 版・リリース日・稼働中 / 開発中は出さない（作る人向けの情報で、「稼働中」と「開発中」が並ぶと矛盾して見える）。
- * 使えないアプリにだけ「停止中」を出す。名前と一言は、知っているアプリなら短いもの（src/knownApps.ts）。
+ * 使えないアプリにだけ「停止中」を出す。名前と一言は、知っているアプリなら短いもの（src/myApps/knownApps.ts）。
  * 一覧は、角の丸い1枚のカードに行を並べる（iOS の設定アプリと同じ）。first・last で、カードの上下の角を丸める。
  */
 export function MyAppRow({ app, onPress, first, last }: { app: MyApp; onPress: () => void; first: boolean; last: boolean }) {
@@ -32,12 +32,7 @@ export function MyAppRow({ app, onPress, first, last }: { app: MyApp; onPress: (
         {name}
       </Text>
       {!app.isAvailable && <Text style={[styles.tag, styles.stopped]}>停止中</Text>}
-      <SymbolView
-        name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-        size={13}
-        weight="semibold"
-        tintColor={c.textSecondary}
-      />
+      <Icon name="chevron-forward" size={13} weight="semibold" tintColor={c.textSecondary} />
     </Pressable>
   );
 }

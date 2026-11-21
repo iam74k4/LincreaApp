@@ -1,10 +1,10 @@
 // 保存（登録・削除など）のあいだ、ページの上に出す「保存しています（3/9）」。
 //
 // EZCraft の保存は、通信を1つずつ順に送るので、長いと 10 秒ほどかかる。そのあいだ、くるくるだけだと
-// 止まっているのか進んでいるのか分からないので、段の数と棒で進み具合を見せる（src/webview/bridge.ts の SAVE_WATCH_JS）。
+// 止まっているのか進んでいるのか分からないので、段の数と棒で進み具合を見せる（src/webview/page/bridgeJs.ts の SAVE_WATCH_JS）。
 //   - 5 秒を超えたら、待ってよいことを伝える
 //   - 保存を裏で続けられないとき、‹ で戻ろうとしたら、すぐには戻らず、終わってから戻る（途中で戻ると保存が切れるため）
-//   - 保存を裏で続けられるとき（onLeave。ページを置き場へ移せるアプリだけ。src/webview/savePark.tsx）は、‹ で戻っても保存は続くことを伝える。
+//   - 保存を裏で続けられるとき（onLeave。ページを置き場へ移せるアプリだけ。src/components/SavePark.tsx）は、‹ で戻っても保存は続くことを伝える。
 //     右へなぞっても戻れる（保存のあいだは iOS の戻るスワイプを止めているため）
 //   - ほかの画面が保存しているあいだに「登録」などを押したら、前の保存が終わるのを待っていることを伝える（waiting="turn"）。
 //     待っているあいだに戻ろうとしたら、この画面の保存が始まってから戻る
@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, PanResponder, StyleSheet, Text, View } from 'react-native';
 
-import { useColors } from '../theme';
+import { useColors } from '../core/theme';
 import { saveProgress, savingText, type SaveSize } from '../webview/saveSizes';
 
 /** すぐ終わる保存で、ちらっと出ないように、少し待ってから出す */

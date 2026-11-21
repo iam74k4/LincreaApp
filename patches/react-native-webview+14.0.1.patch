@@ -1,0 +1,157 @@
+diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+index 80c6803..c8f528d 100644
+--- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
++++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+@@ -18,6 +18,7 @@ import android.webkit.WebViewClient;
+ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
+ import androidx.webkit.JavaScriptReplyProxy;
++import androidx.webkit.ScriptHandler;
+ import androidx.webkit.WebMessageCompat;
+ import androidx.webkit.WebViewCompat;
+ import androidx.webkit.WebViewFeature;
+@@ -44,6 +45,7 @@ import com.reactnativecommunity.webview.events.TopMessageEvent;
+ import org.json.JSONException;
+ import org.json.JSONObject;
+ 
++import java.util.Collections;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+@@ -253,7 +255,8 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+             this.bridgeListener = new WebViewCompat.WebMessageListener() {
+               @Override
+               public void onPostMessage(@NonNull WebView view, @NonNull WebMessageCompat message, @NonNull Uri sourceOrigin, boolean isMainFrame, @NonNull JavaScriptReplyProxy replyProxy) {
+-                RNCWebView.this.onMessage(message.getData(), sourceOrigin.toString());
++                // LincreaApp: report the page URL for the main frame (called on the UI thread, so getUrl() is safe)
++                RNCWebView.this.onMessage(message.getData(), messageSenderUrl(view.getUrl(), sourceOrigin, isMainFrame));
+               }
+             };
+             WebViewCompat.addWebMessageListener(
+@@ -312,11 +315,86 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+         if (getSettings().getJavaScriptEnabled() &&
+                 injectedJSBeforeContentLoaded != null &&
+                 !TextUtils.isEmpty(injectedJSBeforeContentLoaded)) {
+-            evaluateJavascriptWithFallback("(function() {\n" + injectedJSBeforeContentLoaded + ";\n})();");
++            // LincreaApp: registered as a document-start script (runs before the page's own scripts), so do not run it again here
++            if (documentStartScript == null) {
++                evaluateJavascriptWithFallback("(function() {\n" + injectedJSBeforeContentLoaded + ";\n})();");
++            }
+             injectJavascriptObject();  // re-inject the Javascript object in case it has been overwritten.
+         }
+     }
+ 
++    /**
++     * LincreaApp: run injectedJavaScriptBeforeContentLoaded before the page's own scripts, like iOS does
++     * (WKUserScriptInjectionTimeAtDocumentStart). Without it, Android runs the script from onPageStarted,
++     * which can be after the page's scripts have started. Falls back to onPageStarted when the WebView
++     * does not support DOCUMENT_START_SCRIPT. A document-start script also runs in iframes, so the
++     * "main frame only" setting is kept by checking window.top in the script itself.
++     */
++    protected @Nullable
++    ScriptHandler documentStartScript = null;
++    /** The script text registered in documentStartScript (to skip re-registering the same text when several props are set) */
++    protected @Nullable
++    String documentStartScriptSource = null;
++
++    public void updateDocumentStartScript() {
++        String script = null;
++        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) &&
++                getSettings().getJavaScriptEnabled() &&
++                injectedJSBeforeContentLoaded != null &&
++                !TextUtils.isEmpty(injectedJSBeforeContentLoaded)) {
++            String body = "(function() {\n" + injectedJSBeforeContentLoaded + ";\n})();";
++            script = injectedJavaScriptBeforeContentLoadedForMainFrameOnly
++                    ? "if (window === window.top) {\n" + body + "\n}"
++                    : body;
++        }
++        if (documentStartScript != null && script != null && script.equals(documentStartScriptSource)) {
++            return;
++        }
++        if (documentStartScript != null) {
++            documentStartScript.remove();
++            documentStartScript = null;
++            documentStartScriptSource = null;
++        }
++        if (script == null) {
++            return;
++        }
++        try {
++            documentStartScript = WebViewCompat.addDocumentStartJavaScript(this, script, Collections.singleton("*"));
++            documentStartScriptSource = script;
++        } catch (Exception e) {
++            FLog.w("RNCWebView", "addDocumentStartJavaScript failed; falling back to onPageStarted", e);
++            documentStartScript = null;
++        }
++    }
++
++    /**
++     * LincreaApp: the URL reported with a message (nativeEvent.url). Like iOS and the fallback bridge, a message from the
++     * main frame reports the page URL (the app checks its path to decide which app's page sent it). Messages from frames,
++     * or while the page URL is not the sender's origin (a navigation just committed), report the sender's origin only.
++     */
++    /** LincreaApp: "scheme://host[:port]" of a URL (an empty string when it has none) */
++    static String originOnly(@Nullable String url) {
++        if (url == null) {
++            return "";
++        }
++        Uri uri = Uri.parse(url);
++        if (uri.getScheme() == null || uri.getHost() == null) {
++            return "";
++        }
++        return uri.getScheme() + "://" + uri.getHost() + (uri.getPort() == -1 ? "" : ":" + uri.getPort());
++    }
++
++    static String messageSenderUrl(@Nullable String pageUrl, @NonNull Uri sourceOrigin, boolean isMainFrame) {
++        if (!isMainFrame || pageUrl == null) {
++            return sourceOrigin.toString();
++        }
++        Uri page = Uri.parse(pageUrl);
++        boolean sameOrigin = page.getScheme() != null && page.getScheme().equalsIgnoreCase(sourceOrigin.getScheme())
++                && page.getHost() != null && page.getHost().equalsIgnoreCase(sourceOrigin.getHost())
++                && page.getPort() == sourceOrigin.getPort();
++        return sameOrigin ? pageUrl : sourceOrigin.toString();
++    }
++
+     protected String injectedJavaScriptObject = null;
+ 
+     public void setInjectedJavaScriptObject(String obj) {
+@@ -446,7 +524,9 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+         public void postMessage(String message) {
+             if (mWebView.getMessagingEnabled()) {
+                 // Post to main thread because `mWebView.getUrl()` requires to be executed on main.
+-                mWebView.post(() -> mWebView.onMessage(message, mWebView.getUrl()));
++                // LincreaApp: this bridge (old WebViews without WebMessageListener) is also given to iframes of any site and
++                // cannot tell which frame called it, so report the page's origin only (the app then trusts no app-specific message).
++                mWebView.post(() -> mWebView.onMessage(message, originOnly(mWebView.getUrl())));
+             } else {
+                 FLog.w(TAG, "ReactNativeWebView.postMessage method was called but messaging is disabled. Pass an onMessage handler to the WebView.");
+             }
+diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+index f83033b..1958815 100644
+--- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
++++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+@@ -495,6 +495,7 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+     fun setInjectedJavaScriptBeforeContentLoaded(viewWrapper: RNCWebViewWrapper, value: String?) {
+         val view = viewWrapper.webView
+         view.injectedJSBeforeContentLoaded = value
++        view.updateDocumentStartScript() // LincreaApp: run before the page's own scripts when supported
+     }
+ 
+     fun setInjectedJavaScriptForMainFrameOnly(viewWrapper: RNCWebViewWrapper, value: Boolean) {
+@@ -505,6 +506,7 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+     fun setInjectedJavaScriptBeforeContentLoadedForMainFrameOnly(viewWrapper: RNCWebViewWrapper, value: Boolean) {
+         val view = viewWrapper.webView
+         view.injectedJavaScriptBeforeContentLoadedForMainFrameOnly = value
++        view.updateDocumentStartScript() // LincreaApp: the main-frame check is part of the registered script
+     }
+ 
+     fun setInjectedJavaScriptObject(viewWrapper: RNCWebViewWrapper, value: String?) {
+@@ -545,6 +547,7 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+     fun setJavaScriptEnabled(viewWrapper: RNCWebViewWrapper, enabled: Boolean) {
+         val view = viewWrapper.webView
+         view.settings.javaScriptEnabled = enabled
++        view.updateDocumentStartScript() // LincreaApp: register (or drop) the document-start script to match
+     }
+ 
+     fun setAllowFileAccess(viewWrapper: RNCWebViewWrapper, allowFileAccess: Boolean) {

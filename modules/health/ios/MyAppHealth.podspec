@@ -1,4 +1,4 @@
-# ヘルスケア（HealthKit）から歩数を読む、このアプリだけの小さな部品（src/health.ts から使う）
+# ヘルスケア（HealthKit）から歩数を読む、このアプリだけの小さな部品（src/platform/health.ts から使う）
 Pod::Spec.new do |s|
   s.name           = 'MyAppHealth'
   s.version        = '1.0.0'

@@ -1,5 +1,5 @@
-// 勤怠実績登録の残業の計算（src/webview/timsSkin.ts の OVERTIME_MATH_JS）。ページの中で動く JavaScript を、そのまま動かす。
-import { OVERTIME_MATH_JS } from '../webview/timsSkin';
+// 勤怠実績登録の残業の計算（src/webview/page/timsSkin.ts の OVERTIME_MATH_JS）。ページの中で動く JavaScript を、そのまま動かす。
+import { OVERTIME_MATH_JS } from '../webview/page/timsSkin';
 
 type OvertimeMath = {
   minutesOf: (t: string) => number | null;

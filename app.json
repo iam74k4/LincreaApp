@@ -19,7 +19,21 @@
       },
       "infoPlist": {
         "NSHealthShareUsageDescription": "Walk the Talk に登録する歩数を、ヘルスケアから読み取ります。",
-        "NSHealthUpdateUsageDescription": "LINCREA はヘルスケアにデータを書き込みません（Walk the Talk に登録する歩数を、読み取るだけです）。"
+        "NSHealthUpdateUsageDescription": "LINCREA はヘルスケアにデータを書き込みません（Walk the Talk に登録する歩数を、読み取るだけです）。",
+        "NSCameraUsageDescription": "ページでファイルを添付するときに、写真を撮るために使います。",
+        "NSMicrophoneUsageDescription": "ページでファイルを添付するときに、動画を撮るために使います。"
+      },
+      "privacyManifests": {
+        "NSPrivacyCollectedDataTypes": [
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeFitness",
+            "NSPrivacyCollectedDataTypeLinked": true,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          }
+        ]
       },
       "icon": {
         "light": "./assets/icon.png",
@@ -28,16 +42,20 @@
       }
     },
     "android": {
+      "package": "com.iam74k4.LincreaApp",
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
+      "predictiveBackGestureEnabled": false,
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -54,21 +72,18 @@
           "faceIDPermission": "Face ID でログインするために使います。"
         }
       ],
-      "expo-font",
       [
         "expo-notifications",
         {
-          "enableRemoteNotifications": false
+          "enableRemoteNotifications": false,
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#007AFF"
         }
-      ]
+      ],
+      "./plugins/withAndroidReleaseSigning"
     ],
     "scheme": "lincrea",
     "extra": {
-      "router": {
-        "asyncRoutes": {
-          "web": true
-        }
-      },
       "eas": {
         "projectId": "0b7b8a00-dbbd-41ce-b7ac-11bbedbb0c26"
       }

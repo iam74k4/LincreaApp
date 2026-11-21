@@ -1,15 +1,16 @@
-// Walk the Talk の歩数入力に、ヘルスケアの歩数を入れるページのスクリプト（appStyles.ts の HEALTH_STEPS_JS）。
+// Walk the Talk の歩数入力に、端末の歩数（ヘルスケア・ヘルスコネクト）を入れるページのスクリプト（appStyles.ts の HEALTH_STEPS_JS）。
 // 今日までの日だけを聞くこと、年をまたぐ週の日付、多い日だけ入れること、知らせの文を確かめる。
 // ページは jsdom で作る（React Native のテストの設定と jsdom の環境は一緒に使えないため、テストの中で作る）。
 // 時計（setTimeout・Date）は、Jest の偽の時計を使う。
 import { JSDOM } from 'jsdom';
 
-import { HEALTH_STEPS_JS, WEEKLY } from '../webview/appStyles';
+import { HEALTH_STEPS_JS, WEEKLY } from '../webview/page/appStyles';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 type Win = JSDOM['window'] & {
   __myappHealth?: boolean;
+  __myappHealthName?: string;
   __myappXhr?: () => number;
   __myappXhrAt?: number;
   __myappXhrIdle?: (ms: number) => boolean;
@@ -49,7 +50,7 @@ beforeEach(() => {
   win.__myappHealth = true;
   win.__myappXhr = () => 0;
   win.__myappXhrAt = 0;
-  // ページの読み込み前に入れる bootJs（src/webview/ezcraftSkin.ts）と同じ判定
+  // ページの読み込み前に入れる bootJs（src/webview/page/ezcraftSkin.ts）と同じ判定
   win.__myappXhrIdle = (ms) => (win.__myappXhr?.() ?? 0) === 0 && Date.now() - (win.__myappXhrAt ?? 0) >= ms;
   win.ReactNativeWebView = { postMessage: jest.fn() };
   // ページに入れるのと同じ文を、そのページ（window・document・Event）で動かし、中の関数を取り出す
@@ -87,6 +88,14 @@ test('ヘルスケアの歩数が多い日だけ入れて、知らせを出す�
   expect(input('tuesday').value).toBe('9,000');
   expect(input('wednesday').value).toBe('0');
   expect(note()).toBe('ヘルスケアの歩数を入れました（11/16）。「保存」で登録します');
+});
+
+test('知らせには、部品が名乗る呼び名を使う（Android はヘルスコネクト）', () => {
+  win.__myappHealthName = 'ヘルスコネクト';
+  dialog(['11/16', '11/17', '11/18', '11/19', '11/20', '11/21', '11/22']);
+  openAndWait();
+  reply({ '2026-11-16': 8234 });
+  expect(note()).toBe('ヘルスコネクトの歩数を入れました（11/16）。「保存」で登録します');
 });
 
 test('欄に入れたら、EZCraft が「変わった」と分かるように input と change を送る', () => {

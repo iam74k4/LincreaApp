@@ -2,14 +2,17 @@
 #   チェック（型・lint・テスト・ページに入れるスクリプト）→ ios フォルダを作る（expo prebuild）→ Xcode で作る（署名して archive）
 #   → App Store Connect に送る（TestFlight）。GitHub の macOS の実行環境で、全部 GitHub の中で行う（Expo のクラウド・EAS は使わない）。
 # リポジトリが Public なので、macOS の実行環境は無料。作り終わるまで 20〜40 分ほど。そのあと Apple の処理に 10〜30 分。
-# 手順書だけの変更（docs/・*.md）では作らない。
+# 手順書・テスト・道具だけの変更では作らない（下の paths-ignore）。
 #
-# プルリクエストでは、同じ手順で、署名せずに作れるかだけを確かめる（送らない）。
+# ジョブは2つ:
+#   build   … 署名せずに作れるかだけを確かめる（送らない。Secrets を使わない）。プルリクエスト・送らないときの手動の実行
+#   release … 署名して TestFlight に送る。GitHub の Environment「testflight」の Secrets を使う（develop と hotfix/* だけが使える）
 # 手で始める（Actions のページの「Run workflow」）こともできる:
-#   - develop を選び「TestFlight に送る」をつけたまま → いつもと同じく TestFlight に出す
-#   - ほかのブランチ、または「TestFlight に送る」を外す → 署名せずに作れるかだけを確かめる（送らない。API キーも使わない）
+#   - develop（または hotfix/…）を選び「TestFlight に送る」をつけたまま → TestFlight に出す
+#   - ほかのブランチ、または「TestFlight に送る」を外す → 作れるかだけを確かめる（送らない）
+# 毎月 1 日にも、develop の版を出し直す（TestFlight の版は 90 日で使えなくなるため。マージがない月にも切らさない）。
 #
-# 要るもの（GitHub の Settings → Secrets and variables → Actions）:
+# 要るもの（GitHub の Settings → Environments →「testflight」の Environment secrets。作り方は docs/distribution.md）:
 #   ASC_KEY_ID・ASC_ISSUER_ID・ASC_KEY_P8 … App Store Connect の API キー（Admin）。署名（Xcode が自動で用意）と、送るのに使う
 name: TestFlight に出す
 
@@ -19,116 +22,111 @@ on:
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
+      - 'src/__tests__/**'
+      - 'scripts/**'
+      - '.claude/**'
+      - 'LICENSE'
+      - '.gitignore'
   # プルリクエストでは、署名せずに作れるかだけを確かめる（送らない。Secrets も使わない）。マージする前に、作れなくなる直しに気づくため
   pull_request:
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
+      - 'src/__tests__/**'
+      - 'scripts/**'
+      - '.claude/**'
+      - 'LICENSE'
+      - '.gitignore'
+  # 毎月 1 日 9:00（日本時間）。TestFlight の版の 90 日の期限を切らさない
+  schedule:
+    - cron: '0 0 1 * *'
   workflow_dispatch:
     inputs:
       upload:
-        description: TestFlight に送る（develop のときだけ。外すと、作れるかだけを確かめる）
+        description: TestFlight に送る（develop・hotfix/… のときだけ。外すと、作れるかだけを確かめる）
         type: boolean
         default: true
 
-# 続けてマージしたときは、前のが終わってから次を作る（順番を入れ替えない・同じ番号で2つ作らない）
+# 続けてマージしたときは、前のが終わってから次を作る（順番を入れ替えない・同じ番号で2つ作らない）。
+# プルリクエストは、新しく push したら前の確かめをやめる（古いコードを 20〜40 分かけて作らない）
 concurrency:
   group: testflight-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
-env:
-  # 送るのは develop のときだけ（作りかけのブランチの版を、使っている人に届けない）
-  UPLOAD: ${{ github.ref == 'refs/heads/develop' && (github.event_name == 'push' || inputs.upload) }}
-
 jobs:
-  testflight:
+  build:
+    if: >-
+      !((github.ref == 'refs/heads/develop' && (github.event_name == 'push' || github.event_name == 'schedule' || inputs.upload))
+        || (startsWith(github.ref, 'refs/heads/hotfix/') && github.event_name == 'workflow_dispatch' && inputs.upload))
     # macOS 26（Xcode 26）。Xcode を上げるときは、ここを書き換えて「送る」を外した手動の実行で確かめる。
     # 2027 年 4 月からは iOS 27 SDK（Xcode 27）で作った版しか送れない（Apple の警告）。それまでに上げる
     runs-on: macos-26
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
+      - uses: ./.github/actions/prepare-ios
         with:
-          node-version: 24
-          cache: npm
-
-      # node_modules の控え（package-lock.json と patches/ が同じなら、npm ci をしない。1 分半ほど速い）
-      - name: node_modules の控え
-        id: node-modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: node-modules-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'patches/**') }}
-
-      - if: steps.node-modules.outputs.cache-hit != 'true'
-        run: npm ci
-
-      - run: npx tsc --noEmit
-      - run: npx expo lint
-      - run: npm test -- --ci
-      - run: npm run check:pages
-
-      - name: Xcode の版
-        run: xcodebuild -version
-
-      # CocoaPods の控えの鍵。ビルド番号を入れる前の app.json で決める（入れたあとだと、毎回ちがう鍵になる）。
-      # Xcode を上げたら xcode26 の所も変える（古い控えを使わない）
-      - name: CocoaPods の控えの鍵を決める
-        run: echo "PODS_KEY=pods-v1-${{ runner.os }}-${{ runner.arch }}-xcode26-${{ hashFiles('package-lock.json', 'app.json', 'patches/**', 'modules/**') }}" >> "$GITHUB_ENV"
-
-      # ビルド番号は、作った日時（日本時間の「年月日.時分」。例 261121.1830）。いつも前より大きくなる。
-      # app.json の ios.buildNumber に入れてから ios フォルダを作る（アプリの下に出る版の名前にも使う。src/appVersion.ts）
-      - name: ビルド番号を決める
-        run: |
-          BUILD_NUMBER=$(TZ=Asia/Tokyo date +%y%m%d.%H%M)
-          node -e 'const fs = require("fs"); const a = JSON.parse(fs.readFileSync("app.json", "utf8")); a.expo.ios.buildNumber = process.argv[1]; fs.writeFileSync("app.json", JSON.stringify(a, null, 2) + "\n");' "$BUILD_NUMBER"
-          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
-          echo "ビルド番号: $BUILD_NUMBER"
-
-      - name: ios フォルダを作る
-        run: npx expo prebuild --platform ios --no-install
-
-      # 前に入れた Pods（React Native の作りおきの部品も入っている）を戻す。合っていれば pod install はすぐ終わる（2 分ほど速い）
-      - name: CocoaPods の控え
-        uses: actions/cache@v4
-        with:
-          path: |
-            ios/Pods
-            ios/Podfile.lock
-          key: ${{ env.PODS_KEY }}
-
-      - name: CocoaPods
-        working-directory: ios
-        run: pod install
-
+          xcode-app: ${{ vars.XCODE_APP }}
+      # 署名・書き出し・Apple の受け付けの確かめ（使い道の説明やプライバシーの書類が足りないなど）はしないので、
+      # ここが通っても、送るときに断られることはある（docs/distribution.md の「止まったとき」）
       - name: 作れるかだけを確かめる（署名しない）
-        if: env.UPLOAD != 'true'
         run: >
           xcodebuild build
           -workspace ios/LINCREA.xcworkspace -scheme LINCREA -configuration Release
           -destination 'generic/platform=iOS'
           CODE_SIGNING_ALLOWED=NO
 
+  release:
+    if: >-
+      (github.ref == 'refs/heads/develop' && (github.event_name == 'push' || github.event_name == 'schedule' || inputs.upload))
+      || (startsWith(github.ref, 'refs/heads/hotfix/') && github.event_name == 'workflow_dispatch' && inputs.upload)
+    runs-on: macos-26
+    timeout-minutes: 90
+    # 署名と送るのに使う API キーは、この Environment にだけ置く（develop・hotfix/… 以外のブランチや、プルリクエストからは読めない）
+    environment: testflight
+    # 送るのは、ブランチをまたいで1つずつ（develop と hotfix/… が同じ分に作ると、ビルド番号が重なり、あとのほうが断られる）。
+    # 待てるのは1つだけ: 送っている最中に、ほかの2つのブランチから続けて頼むと、先に待っていたほうは取り消される（Actions に「cancelled」と出る。
+    # そのときは、取り消されたほうを「Run workflow」で頼み直す）
+    concurrency:
+      group: testflight-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+
+      # 古い実行のやり直し（Re-run）で、古いコードを、新しいビルド番号の版として送らない（使っている人に、前の版が届いてしまう）。
+      # 手順書だけのマージのあとなどで止まったら、Actions の「Run workflow」で develop を選んで出し直す（docs/distribution.md）
+      - name: いまのブランチの先頭か確かめる
+        run: |
+          git fetch --depth=1 origin "$GITHUB_REF"
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]; then
+            echo "::error::このコミット（${GITHUB_SHA::7}）は、もう ${GITHUB_REF_NAME} の先頭ではありません。Actions の「Run workflow」で ${GITHUB_REF_NAME} を選んで、いまの先頭を送ってください"
+            exit 1
+          fi
+
+      - uses: ./.github/actions/prepare-ios
+        id: prepare
+        with:
+          xcode-app: ${{ vars.XCODE_APP }}
+
       - name: App Store Connect の API キーを置く
-        if: env.UPLOAD == 'true'
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           mkdir -p "$RUNNER_TEMP/asc"
           printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey.p8"
 
-      # 署名は Xcode に任せる（API キーで、配布用の証明書とプロファイルを Apple から用意する。証明書を GitHub に置かない）
+      # 署名は Xcode に任せる（API キーで、配布用の証明書とプロファイルを Apple から用意する。証明書を GitHub に置かない）。
+      # JavaScript のソースマップも書き出す（落ちたときの JavaScript の場所を、あとで読めるように。下で Actions に残す）
       - name: 作る（署名して archive）
-        if: env.UPLOAD == 'true'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          SOURCEMAP_FILE: ${{ runner.temp }}/sourcemap/main.jsbundle.map
         run: >
+          mkdir -p "$RUNNER_TEMP/sourcemap" &&
           xcodebuild archive
           -workspace ios/LINCREA.xcworkspace -scheme LINCREA -configuration Release
           -destination 'generic/platform=iOS'
@@ -140,7 +138,6 @@ jobs:
           CODE_SIGN_STYLE=Automatic
 
       - name: TestFlight に送る
-        if: env.UPLOAD == 'true'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -153,6 +150,16 @@ jobs:
           -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey.p8"
           -authenticationKeyID "$ASC_KEY_ID"
           -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      # ソースマップを、ビルド番号の名前で 90 日残す（TestFlight の版の期限と同じ）
+      - name: ソースマップを残す
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sourcemap-${{ steps.prepare.outputs.build-number }}-${{ github.sha }}
+          path: ${{ runner.temp }}/sourcemap/
+          retention-days: 90
+          if-no-files-found: warn
 
       - name: API キーを消す
         if: always()

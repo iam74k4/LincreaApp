@@ -24,8 +24,10 @@ jest.mock('expo-constants', () => ({
 }));
 jest.mock('expo-local-authentication', () => ({
   AuthenticationType: { FINGERPRINT: 1, FACIAL_RECOGNITION: 2, IRIS: 3 },
+  SecurityLevel: { NONE: 0, SECRET: 1, BIOMETRIC_WEAK: 2, BIOMETRIC_STRONG: 3 },
   hasHardwareAsync: jest.fn(),
   isEnrolledAsync: jest.fn(),
+  getEnrolledLevelAsync: jest.fn(),
   supportedAuthenticationTypesAsync: jest.fn(),
   authenticateAsync: jest.fn(),
 }));
@@ -35,7 +37,7 @@ jest.mock('expo-secure-store', () => ({
   setItemAsync: jest.fn(),
   deleteItemAsync: jest.fn(),
 }));
-jest.mock('../auth/api', () => ({ loginWithRefreshToken: jest.fn(), RefreshExpiredError: class extends Error {} }));
+jest.mock('../auth/login', () => ({ loginWithRefreshToken: jest.fn(), RefreshExpiredError: class extends Error {} }));
 jest.mock('../auth/rememberedUsername', () => ({ loadRememberedUsername: jest.fn(async () => null) }));
 
 const auth = LocalAuthentication as jest.Mocked<typeof LocalAuthentication>;
@@ -51,6 +53,7 @@ beforeEach(async () => {
   Platform.OS = 'ios';
   auth.hasHardwareAsync.mockResolvedValue(true);
   auth.isEnrolledAsync.mockResolvedValue(true);
+  auth.getEnrolledLevelAsync.mockResolvedValue(LocalAuthentication.SecurityLevel.BIOMETRIC_STRONG);
   auth.supportedAuthenticationTypesAsync.mockResolvedValue([LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION]);
   auth.authenticateAsync.mockResolvedValue({ success: true });
   store.setItemAsync.mockResolvedValue(undefined);
@@ -102,6 +105,31 @@ describe('使うか聞く・使えるようにする', () => {
     expect(await enablePayslipFaceId('taro', '', 'Face ID')).toBe(false);
     expect(store.setItemAsync).not.toHaveBeenCalled();
   });
+  test('iPhone: 入れるときの確かめの説明は渡さない（iOS は入れるときに Face ID を求めない）', async () => {
+    await enablePayslipFaceId('taro', PASSWORD, 'Face ID');
+    expect(store.setItemAsync.mock.calls[0][2]).not.toHaveProperty('authenticationPrompt');
+  });
+  test('Android: 入れるときに端末が確かめるので、前もっては確かめない（確かめの画面は1回）。消さずに上書きする', async () => {
+    Platform.OS = 'android';
+    expect(await enablePayslipFaceId('taro', PASSWORD, '顔認証')).toBe(true);
+    expect(auth.authenticateAsync).not.toHaveBeenCalled();
+    expect(store.deleteItemAsync).not.toHaveBeenCalled();
+    expect(store.setItemAsync).toHaveBeenCalledWith(
+      'password',
+      PASSWORD,
+      expect.objectContaining({ requireAuthentication: true, authenticationPrompt: '次から 顔認証 で明細を開きます' }),
+    );
+    expect(await payslipBiometry('taro')).toBe('顔認証');
+  });
+  test('Android: 別の人が使えるようにしかけてやめても、前の人のパスワードは消さない（何も入れていないため）', async () => {
+    Platform.OS = 'android';
+    await enablePayslipFaceId('taro', PASSWORD, '顔認証');
+    jest.clearAllMocks();
+    store.setItemAsync.mockRejectedValue(new Error('User canceled the authentication'));
+    expect(await enablePayslipFaceId('hanako', NEW_PASSWORD, '顔認証')).toBe(false);
+    expect(store.deleteItemAsync).not.toHaveBeenCalled();
+    expect(await payslipBiometry('taro')).toBe('顔認証');
+  });
 });
 
 describe('読む', () => {
@@ -146,6 +174,21 @@ describe('入れ替える・消す', () => {
     jest.clearAllMocks();
     await renewPayslipPassword('hanako', NEW_PASSWORD);
     expect(store.setItemAsync).not.toHaveBeenCalled();
+  });
+  test('iPhone: 入れ替えられなかったら（前のものは消してある）、使っていないことにする', async () => {
+    await enablePayslipFaceId('taro', PASSWORD, 'Face ID');
+    store.setItemAsync.mockRejectedValue(new Error('keychain error'));
+    await renewPayslipPassword('taro', NEW_PASSWORD);
+    expect(await payslipBiometry('taro')).toBeNull();
+  });
+  test('Android: 確かめの画面でやめても、前のものが残っているので、そのまま使える（消さない）', async () => {
+    Platform.OS = 'android';
+    await enablePayslipFaceId('taro', PASSWORD, '顔認証');
+    jest.clearAllMocks();
+    store.setItemAsync.mockRejectedValue(new Error('User canceled the authentication'));
+    await renewPayslipPassword('taro', NEW_PASSWORD);
+    expect(store.deleteItemAsync).not.toHaveBeenCalled();
+    expect(await payslipBiometry('taro')).toBe('顔認証');
   });
   test('消すと、使っていないことになる', async () => {
     await enablePayslipFaceId('taro', PASSWORD, 'Face ID');

@@ -1,6 +1,6 @@
-// 見た目の直しの道具（src/webview/layout.ts）と、組み立てた見た目の直し（src/webview/ezcraftSkin.ts）。
-import { scoped } from '../webview/layout';
-import { buildSkinScript } from '../webview/ezcraftSkin';
+// 見た目の直しの道具（src/webview/page/layout.ts）と、組み立てた見た目の直し（src/webview/page/ezcraftSkin.ts）。
+import { scoped } from '../webview/page/layout';
+import { buildSkinScript } from '../webview/page/ezcraftSkin';
 
 /** 前後の空白（最後の改行）は比べない */
 const css = (scope: string, text: string) => scoped(scope, text).trim();

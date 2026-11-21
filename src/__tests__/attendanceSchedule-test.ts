@@ -1,4 +1,4 @@
-import { daysInMonth, isProbablyOff, keepRecentMonths, planReminders, unregisteredDays } from '../attendanceSchedule';
+import { daysInMonth, isProbablyOff, keepRecentMonths, planReminders, unregisteredDays } from '../attendance/attendanceSchedule';
 
 /** 1か月分の状態を作る（土日は休日。code(日) が返せばその状態、返さなければ registeredUntil の日までは登録済み、そのあとは未登録） */
 function month(year: number, m: number, registeredUntil: number, code: (day: number) => string | undefined = () => undefined): string {

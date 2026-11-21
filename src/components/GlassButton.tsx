@@ -1,13 +1,16 @@
 // 主な操作の、丸い（カプセルの）ボタン。iOS 26 では本物の Liquid Glass（差し色を透かしたガラス。押すと光って少しふくらむ）。
 // ガラスが使えない端末（iOS 26 より前・Android）や「透明度を下げる」の設定では、差し色で塗ったふつうのボタンにする。
 import { useEffect, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AccessibilityInfo, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 
-import { sizes, useColors } from '../theme';
+import { sizes, useColors } from '../core/theme';
 
-/** ガラスを使えるか（iOS 26 以上で、その API があるとき。一部の iOS 26 のベータには API がなく、使うと落ちる） */
-const GLASS = Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+/**
+ * ガラスを使えるか（iOS 26 以上で、その API があるとき。一部の iOS 26 のベータには API がなく、使うと落ちる）。
+ * iPhone 以外では、expo-glass-effect がどちらも false を返す（端末を見分けなくてよい）
+ */
+const GLASS = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
 /** 「透明度を下げる」の設定を見る（オンのときはガラスにしない） */
 function useReduceTransparency(): boolean {

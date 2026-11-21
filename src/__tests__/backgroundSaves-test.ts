@@ -114,3 +114,28 @@ test('同じ日のページを裏で保存しているあいだは、あとか�
   endSave('dtl-1', true);
   expect(savingSamePage(day14, 'dtl-2')).toBe(false);
 });
+
+test('裏で続けている画面が、続けてもう1回保存を始めても、裏のまま（戻った先に知らせ、上の知らせも終わりに変わる）', () => {
+  const done = jest.fn();
+  const off = onBackgroundSaveDone(done);
+  beginSave('dtl-1', '残業申請', '保存しています（0/9）', '申請', null);
+  moveSaveToBackground('dtl-1', 'list-1');
+  // 1回目の確定が終わっても、裏の画面は、ページが閉じるのを待っている（まだ endSave しない。EzcraftWebView の finishSave）。
+  // そのあいだに、2回に分けて確定するフォームが、もう1回保存を始めた
+  beginSave('dtl-1', '残業申請', '保存しています（0/9）', '申請', null);
+  expect(savesSnapshot().current).toMatchObject({ id: 'dtl-1', background: true, parentKey: 'list-1', state: 'saving' });
+  expect(savesSnapshot().banner).toMatchObject({ id: 'dtl-1', state: 'saving' });
+  expect(backgroundSavePendingFor('list-1')).toBe(true);
+  endSave('dtl-1', true);
+  expect(done).toHaveBeenCalledTimes(1);
+  expect(savesSnapshot().banner).toMatchObject({ id: 'dtl-1', state: 'done' });
+  off();
+});
+
+test('前で保存していた画面が、続けて保存を始めたときは、前のまま（知らせは出さない）', () => {
+  beginSave('dtl-1', '勤怠実績登録', '保存しています（0/9）', '登録', null);
+  beginSave('dtl-1', '勤怠実績登録', '保存しています（0/9）', '登録', null);
+  expect(savesSnapshot().current).toMatchObject({ background: false, parentKey: null });
+  expect(savesSnapshot().banner).toBeNull();
+  endSave('dtl-1', true);
+});

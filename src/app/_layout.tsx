@@ -12,11 +12,18 @@
 // 各画面は「次にどこへ行くか」を自分で決めなくてよい。
 import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, AppState, Keyboard, StyleSheet, useColorScheme, View, type KeyboardEventName } from 'react-native';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type ErrorBoundaryProps } from 'expo-router';
 import { setStatusBarStyle, StatusBar } from 'expo-status-bar';
 
+import { AppErrorScreen } from '../components/AppErrorScreen';
 import { SessionProvider, useSession } from '../session/SessionContext';
-import { useColors } from '../theme';
+import { useColors } from '../core/theme';
+
+/** 画面を描く途中で思わぬエラーが起きても、アプリごと落ちずに「もう一度試す」を出す（src/components/AppErrorScreen.tsx） */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  console.error(`[画面] 描けませんでした: ${error?.message ?? String(error)}`);
+  return <AppErrorScreen error={error} retry={retry} />;
+}
 
 export default function RootLayout() {
   const scheme = useColorScheme();

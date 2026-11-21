@@ -1,8 +1,8 @@
-// マイアプリの一覧の控え（src/api/myAppsCache.ts）。起動してすぐ前回の一覧を出すためのもの。
+// マイアプリの一覧の控え（src/myApps/myAppsCache.ts）。起動してすぐ前回の一覧を出すためのもの。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { MyApp } from '../api/myApps';
-import { forgetCachedApps, loadCachedApps, saveCachedApps } from '../api/myAppsCache';
+import type { MyApp } from '../models/myApp';
+import { forgetCachedApps, loadCachedApps, saveCachedApps } from '../myApps/myAppsCache';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
