@@ -10,6 +10,7 @@
 // 白い地・黒い文字・灰色の線のような「無彩色」だけを、テーマの色に置き換える。
 import type { AppSkin } from './appSkin';
 import { appSkinOf, roleCss } from './appStyles';
+import { MSG_BOX_CSS, MSG_BOX_JS } from './msgBox';
 import { compactCss, compactJs } from './compact';
 import { SEARCH_ICON } from './layout';
 
@@ -28,7 +29,7 @@ export function buildSkinScript(appId: string): string {
 
 function makeSkinScript(appId: string): string {
   const skin = appSkinOf(appId);
-  const css = BASE_CSS + GLASS_CSS + (skin ? roleCss(skin) : '');
+  const css = BASE_CSS + GLASS_CSS + MSG_BOX_CSS + (skin ? roleCss(skin) : '');
   const mobileForms = skin?.mobileForms ?? [];
   const mobileWhen = skin?.mobileWhen ?? {};
   const config = {
@@ -62,6 +63,10 @@ function makeSkinScript(appId: string): string {
 
   // ---- アプリごとの動き（appStyles.ts の script。window.__myappAppUpdate を決める） ----
   ${skin?.script ?? ''}
+
+  ${MSG_BOX_JS}
+
+  ${TYPING_JS}
 
   ${GENERIC_JS}
 
@@ -839,12 +844,18 @@ const GENERIC_JS = `
       // 勤怠の申請のフォーム（.myapp-row に並べ直したもの・有給休暇申請）は、＊ を出さずに「任意」を添える決まりなので、ここでは触らない
       if (field.closest('.myapp-row, [id^="frmApply"]')) return;
       var required = field.offsetParent !== null && /[＊*]/.test(getComputedStyle(field, '::after').content || '');
+      // 見出しは、必須になったときに1回だけ探す（見つからなかったことも覚える。整え直しのたびに画面全体を探さない）。
+      // 見出しを決めてある欄（アプリの見た目の直しが __myappReqLabelFixed を付けたもの）は探さない
+      if (field.__myappReqWas !== required) {
+        field.__myappReqWas = required;
+        if (!field.__myappReqLabelFixed) field.__myappReqLabel = undefined;
+      }
       var label = field.__myappReqLabel;
-      if (required && !label) {
+      if (required && label === undefined) {
         var fr = field.getBoundingClientRect();
         var best = null;
         var bestScore = Infinity;
-        Array.prototype.forEach.call(field.parentElement.children, function (el) {
+        var pick = function (el) {
           if (!el.classList.contains('lbl') || el.offsetParent === null) return;
           if ((el.textContent || '').trim().length <= 2) return; // 「〜」「：」のようなつなぎの言葉は見出しではない
           var r = el.getBoundingClientRect();
@@ -853,8 +864,14 @@ const GENERIC_JS = `
           if (!sameRow && !above) return;
           var score = sameRow ? fr.left - r.right : fr.top - r.bottom;
           if (score < bestScore) { bestScore = score; best = el; }
-        });
-        label = best;
+        };
+        Array.prototype.forEach.call(field.parentElement.children, pick);
+        // 見出しが別の入れ物にあるダイアログもある（健康診断の受診登録の「健診機関名」。2026-11-22）。並びの中になければ、画面（フォーム）全体から探す
+        if (!best) {
+          var scope = field.closest('.tcc-modal-content, .tcc-form');
+          if (scope) scope.querySelectorAll('.lbl').forEach(pick);
+        }
+        label = best || false;
         field.__myappReqLabel = label;
       }
       var moved = !!(required && label);
@@ -867,6 +884,7 @@ const GENERIC_JS = `
     quietDialogs();
     notices();
     msgBars();
+    msgBoxes();
     requiredMarks();
     calendarSheets();
     openingDone();
@@ -928,11 +946,27 @@ const GENERIC_JS = `
     });
   }
 
-  // 選択欄の一覧の、名前のない選択肢（「なし」の意味の空の行）に、「なし」と書く（CSS）
+  // 選択欄の一覧の、名前のない選択肢（空の行）に名前を書く（CSS が data-myapp-none の字を出す）。
+  // 開いた選択欄に、何も選んでいないときの言葉（placeholder。資格の検索の「すべて」など）があればそれ、なければ「なし」
+  // （欄には「すべて」と出ているのに、一覧の空の行は「なし」だった。2026-11-22）
+  var lastCombo = null;
+  document.addEventListener('touchstart', function (e) {
+    var c = e.target && e.target.closest && e.target.closest('.tcc-component');
+    if (!c || c.classList.contains('cmblist') || !c.querySelector('input')) return;
+    lastCombo = c;
+    // EZCraft は一覧を使い回す。開く前に、空の行の名前をこの欄のものにしておく（整え直しを待つと、前の欄の名前が一瞬見えた）
+    emptyChoices();
+  }, { capture: true, passive: true });
   function emptyChoices() {
+    var input = lastCombo && lastCombo.isConnected ? lastCombo.querySelector('input') : null;
+    var label = (input && (input.placeholder || '').trim()) || 'なし';
     document.querySelectorAll('body > .tcc-component.cmblist > .cmblist-item').forEach(function (item) {
       var none = !/\\S/.test((item.textContent || '').replace(/\\u00a0/g, ' '));
-      if (item.hasAttribute('data-myapp-none') !== none) item.toggleAttribute('data-myapp-none', none);
+      var want = none ? label : null;
+      if (item.getAttribute('data-myapp-none') !== want) {
+        if (want) item.setAttribute('data-myapp-none', want);
+        else item.removeAttribute('data-myapp-none');
+      }
     });
   }
 
@@ -991,10 +1025,53 @@ const FIT_JS = `
   }
 `;
 
+/**
+ * 入力欄で打っているあいだ（キーボードが出ているあいだ）は、画面の下に固定した帯（登録などのボタン・下のタブ）を隠す（CSS の :root.myapp-typing）。
+ * iOS は、キーボードが出ているあいだ、画面の下に固定したものを、画面の途中（打っている欄の近く）に出してしまう
+ * （勤怠実績登録の「登録」が、欄の上に重なって浮いた。2026-11-22）。Android でも、キーボードのすぐ上に帯が出て、打つ欄の見える所が狭くなる。
+ * 打ち終わる（キーボードを閉じる）と、また出す。テストからも使う（src/__tests__/typing-test.ts）
+ */
+export const TYPING_JS = `
+  var TYPING_INPUT = /^(text|search|tel|url|email|number|password)$/;
+  function isTyping(el) {
+    if (!el || el.readOnly || el.disabled) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    if (el.tagName === 'INPUT') return TYPING_INPUT.test((el.getAttribute('type') || 'text').toLowerCase());
+    return !!el.isContentEditable;
+  }
+  var typingTimer = null;
+  // 人が欄に入ったときだけ（作った focusin、たとえば時刻のダイヤルの「決定」が送るものでは、帯を隠さない。一瞬消えてちらついた）
+  document.addEventListener('focusin', function (e) {
+    clearTimeout(typingTimer);
+    if (e.isTrusted && isTyping(e.target)) root.classList.add('myapp-typing');
+  }, true);
+  document.addEventListener('focusout', function () {
+    clearTimeout(typingTimer);
+    // 次の欄へ移るあいだ（focusout のすぐあとに focusin が来る）に、帯が一瞬出てちらつかないよう、少し待ってから決める
+    typingTimer = setTimeout(function () {
+      if (!isTyping(document.activeElement)) root.classList.remove('myapp-typing');
+    }, 150);
+  }, true);
+  // 欄に入ったまま、キーボードだけを閉じたとき（Android の戻るボタン）は focusout が来ない。
+  // 見えている高さが、キーボードのない高さ（これまでにいちばん高かったもの）に戻ったら、帯を出す
+  var vv = window.visualViewport;
+  if (vv) {
+    var tallest = vv.height;
+    vv.addEventListener('resize', function () {
+      if (vv.height > tallest) tallest = vv.height;
+      var keyboard = vv.height < tallest - 80;
+      // 閉じた欄をもう一度押して、キーボードだけがまた出たとき（focusin は来ない）も、帯を隠す
+      var want = keyboard && isTyping(document.activeElement);
+      if (root.classList.contains('myapp-typing') !== want && (want || !keyboard)) root.classList.toggle('myapp-typing', want);
+    });
+  }
+`;
+
 // ---------------------------------------------------------------------------
 // 3. ダークモード（ページに直接書かれた色も、無彩色だけ置き換える）
 // ---------------------------------------------------------------------------
-const DARK_JS = `
+/** テストからも使う（src/__tests__/darkPass-test.ts） */
+export const DARK_JS = `
   var media = window.matchMedia('(prefers-color-scheme: dark)');
   var DARK = { surface: [28, 28, 30], text: [245, 245, 247], border: [56, 56, 58] };
   var changed = []; // ダーク用に書き換えた要素（ライトに戻すとき元に戻す）
@@ -1063,7 +1140,7 @@ const DARK_JS = `
     });
     if (shown && media.matches) {
       clearTimeout(ioTimer);
-      ioTimer = setTimeout(function () { step(darken); }, 50);
+      ioTimer = setTimeout(darkenIfSettled, 50);
     }
   }) : null;
   function waitUntilShown(el) {
@@ -1080,8 +1157,24 @@ const DARK_JS = `
   }
   function set(el, prop, value) { remember(el, prop); el.style.setProperty(prop, value, 'important'); }
 
+  // アプリごとの見た目の直しには、<html> のクラスが付いているときだけ効くものがある（timsSkin.ts の scoped(':root.myapp-att-list', …) など）。
+  // クラスが付く前に塗ると、EZCraft のもとの白い地を見て塗ったまま残り（style の !important は CSS に勝つ）、クラスが付いても直らない
+  // （勤務表の一覧が灰色の板になった。ほかのタブが開いているあいだも、隠れた一覧を塗っていた。2026-11-22）。
+  // そこで、そのクラスが変わったら、前に塗った色をいったん全部戻して、いまの CSS で決め直す（同じ処理の中なので、ちらつかない）。
+  // 数えるのは、画面ごとの見た目を切り替えるクラス（timsSkin.ts の scoped(':root.myapp-att-list', …) など）だけ。
+  // ほかのクラス（下の帯・タブがあるかの myapp-has-bar・myapp-has-tabbar、打っているあいだ、保存中など）は余白や見せ方だけを変え、
+  // 地の色は変えない。それで塗り直すと、画面を開くたびに全部を塗り直すことになり重い
+  var SCOPE_CLASS = /^myapp-(att|apply)-/;
+  var scopeSig = null;
+  function scopeOf() {
+    return Array.prototype.filter.call(root.classList, function (c) { return SCOPE_CLASS.test(c); }).sort().join(' ');
+  }
+
   function darken() {
     if (!document.body) return;
+    var scope = scopeOf();
+    if (scopeSig !== null && scope !== scopeSig) lighten();
+    scopeSig = scope;
     var all = document.body.querySelectorAll('*');
     // 先に地の色を決める（文字の色は、地が無彩色のときだけ明るくする）
     for (var i = 0; i < all.length; i++) {
@@ -1221,8 +1314,16 @@ const DARK_JS = `
   function step(fn) {
     try { fn(); } catch (e) { try { console.error('[myapp] 見た目の直し', e); } catch (_) {} }
   }
+  // 整え直し（restyle）が待っている（ページが変わったのに、まだしるしを付け直していない）か
+  var restylePending = true;
+  // 見えてきたもの・スクロールしたぶんの色を決める。ただし整え直しが待っているときは、それに任せる
+  // （アプリのしるし（行の data-myapp-day・<html> のクラスなど）が付く前に塗ると、しるしで決まる色にならないまま残る。2026-11-22）
+  function darkenIfSettled() {
+    if (!restylePending) step(darken);
+  }
   function restyle() {
     clearTimeout(timer);
+    restylePending = false;
     step(applyConfig);
     if (window.__myappAppUpdate) step(window.__myappAppUpdate);
     step(markSingleTabs);
@@ -1240,13 +1341,14 @@ const DARK_JS = `
     var target = e && e.target;
     if (target && target.closest && target.closest('.myapp-pick')) return;
     clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(function () { step(darken); }, 120);
+    scrollTimer = setTimeout(darkenIfSettled, 120);
   }
   // 中身が変わるたびに、少し（0.06 秒）まとめてから整え直す（続けて描き直されるあいだに、何度も整え直さないように）。
   // 打っているあいだ（最後に打ってから 0.4 秒以内）は、打ち終わるまで（0.25 秒）待ってからにする。
   // 1文字ごとに整え直すと、打つのが重くなる（整え直しは iPhone で 1回 10〜45ms ほど。2026-11-21 に測った）
   var typedAt = 0;
   function update() {
+    restylePending = true;
     clearTimeout(timer);
     timer = setTimeout(restyle, Date.now() - typedAt < 400 ? 250 : 60);
   }
@@ -1266,6 +1368,13 @@ const DARK_JS = `
   // 中身はあとから描かれる・入れ替わるので、そのたびに測り直し、塗り直す
   new MutationObserver(function (records) {
     if (window.__myappNoteMutations) window.__myappNoteMutations(records);
+    // お知らせ・エラーのダイアログ（msgBox.ts）は、出た瞬間に整える（整え直しを待つと、出てくる途中で題や文が入れ替わって見えた）
+    for (var r = 0; r < records.length; r++) {
+      var added = records[r].addedNodes;
+      for (var n = 0; n < added.length; n++) {
+        if (added[n].classList && added[n].classList.contains('tcc-msg-box-back')) { step(msgBoxes); r = records.length; break; }
+      }
+    }
     update();
   }).observe(root, { childList: true, subtree: true });
   if (window.ResizeObserver && document.body) new ResizeObserver(update).observe(document.body);
@@ -1342,6 +1451,9 @@ const BASE_CSS = `
   box-sizing: border-box;
 }
 .tcc-modal[id$="_mdl"] .tcc-modal-title { font-size: 17px !important; font-weight: 600 !important; }
+/* ダイアログの題の前の EZCraft の印（虫めがね・窓の形など）は出さない（アプリのシート「プロジェクト」などと同じ、題だけに。2026-11-22） */
+.tcc-modal .tcc-modal-header > i.fa:not(.tcc-modal-quit),
+.tcc-modal .tcc-modal-title > i.fa:not(.tcc-modal-quit) { display: none !important; }
 /* 閉じる（×）は、ほかのダイアログと同じ丸いボタン（GLASS_CSS）。押せる広さは、まわりの余白で取る */
 .tcc-modal[id$="_mdl"] .tcc-modal-footer { display: none !important; }
 .tcc-modal[id$="_mdl"] .tcc-modal-body {
@@ -1451,37 +1563,9 @@ const BASE_CSS = `
 .tcc-modal[id$="_mdl"] [id$="_mdl_grd"][data-myapp-onepage] .tcc-pager-navi { display: none !important; }
 
 /* ダイアログの × は、ライトでもダークでも見える色に */
-.tcc-modal .tcc-modal-quit,
-.tcc-msg-box .tcc-msg-box-quit { color: var(--myapp-text2) !important; background: transparent !important; }
+.tcc-modal .tcc-modal-quit { color: var(--myapp-text2) !important; background: transparent !important; }
 
-/* お知らせ・確認のメッセージ（どのアプリでも同じ作り）: 画面の左右に余白をとった幅に収め、文字は折り返す */
-.tcc-msg-box {
-  left: 16px !important;
-  width: calc(100% - 32px) !important;
-  max-width: none !important;
-  box-sizing: border-box !important;
-}
-.tcc-msg-box .tcc-msg-box-content,
-.tcc-msg-box .tcc-msg-box-header,
-.tcc-msg-box .tcc-msg-box-body,
-.tcc-msg-box .tcc-msg-box-footer { width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
-.tcc-msg-box .tcc-msg-box-txt {
-  width: auto !important;
-  max-width: 100% !important;
-  white-space: normal !important;
-  word-break: normal;
-  overflow-wrap: anywhere; /* 英語の言葉は途中で切らない（収まらない長い英数字だけ折る） */
-  font-size: 15px !important;
-  line-height: 1.5 !important;
-}
-.tcc-msg-box .tcc-msg-box-footer {
-  display: flex !important;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 8px 12px !important;
-}
-.tcc-msg-box .tcc-msg-box-btn { min-width: 88px !important; height: 40px !important; font-size: 16px !important; }
-.tcc-msg-box .tcc-msg-box-quit { width: 40px !important; height: 40px !important; font-size: 22px !important; }
+/* お知らせ・エラーのダイアログ（.tcc-msg-box）の形は msgBox.ts の MSG_BOX_CSS（GLASS_CSS のあとに入れる） */
 
 /* ダイアログの入力欄の文字は 16px 以上に（iOS は、それより小さいと入力のときに画面を勝手に拡大する） */
 .tcc-modal input,
@@ -1541,8 +1625,8 @@ div.tcc-component.radio:not(.tcc-modal *):not(.myapp-card *) { background-color:
    （JS の requiredMarks が見出しに .myapp-required を付ける。見出しが見つからない欄は、そのまま） */
 div.tcc-component.text.myapp-req-moved::after { display: none !important; }
 /* 見出しが長いとき（健診予定日＊ など）も、欄にかからないよう少しだけ詰める */
-.tcc-component.lbl.myapp-required .tcc-label-text { letter-spacing: -0.02em; }
-.tcc-component.lbl.myapp-required .tcc-label-text::after {
+.tcc-component.myapp-required .tcc-label-text { letter-spacing: -0.02em; }
+.tcc-component.myapp-required .tcc-label-text::after {
   content: '＊';
   margin-left: 1px;
   font-size: 11px;
@@ -1587,6 +1671,10 @@ body > .myapp-bottom-bar {
   padding: 10px 16px calc(10px + max(env(safe-area-inset-bottom), var(--myapp-safe-bottom, 0px)));
 }
 .myapp-bottom-bar.in-modal { flex: none; padding: 10px 16px 14px; background-color: var(--myapp-surface); }
+/* 打っているあいだ（キーボードが出ているあいだ）は、画面の下に固定した帯と下のタブを隠す（JS の TYPING_JS）。
+   visibility ではなく display で隠す（EZCraft が中の部品に visibility: visible を直接書くと、部品だけ見えてしまう） */
+:root.myapp-typing body > .myapp-bottom-bar,
+:root.myapp-typing .myapp-tabbar { display: none !important; }
 .myapp-bottom-bar.myapp-empty-bar { display: none !important; }
 /* 小さな知らせ（端末の歩数を入れた など）: 画面の下に浮かぶ、濃い色のカプセル。ダイアログより上に出す */
 body > .myapp-health-note {
@@ -2030,6 +2118,10 @@ div.tcc-panel .tcc-panel-title {
 .tcc-component input[readonly],
 .tcc-component input[disabled],
 .tcc-component textarea[readonly] { background-color: var(--myapp-fill) !important; }
+/* 見るだけの欄（readonly）は、押しても打てないので、選んでいる青いふちを出さない（健康診断の受診年度など。2026-11-22）。
+   日付・検索のように、押すと別の選び方（カレンダー・シート）が出る欄も、出るのはそのシートなので同じ */
+.tcc-component input[readonly]:focus:not([data-myapp-error]),
+.tcc-component textarea[readonly]:focus:not([data-myapp-error]) { border-color: var(--myapp-field-border, var(--myapp-border)) !important; box-shadow: none !important; }
 
 /* ---- ボタン: 2種類だけ。ふつうは灰色の面に青い文字（主な操作だけ青く塗る: appStyles の primary） ---- */
 .tcc-btn,
@@ -2435,8 +2527,8 @@ body > .tcc-component.cmblist {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22), inset 0 1px 0 var(--myapp-glass-border) !important;
 }
 body > .tcc-component.cmblist > .cmblist-item { border-radius: 10px; margin: 0 6px; }
-/* 名前のない選択肢（空の行）は「なし」と書く（JS の emptyChoices） */
-body > .tcc-component.cmblist > .cmblist-item[data-myapp-none]::before { content: 'なし'; color: var(--myapp-text2); }
+/* 名前のない選択肢（空の行）は、欄の「すべて」などか「なし」と書く（JS の emptyChoices） */
+body > .tcc-component.cmblist > .cmblist-item[data-myapp-none]::before { content: attr(data-myapp-none); color: var(--myapp-text2); }
 
 /* 文字のあるボタンには、EZCraft のアイコンを出さない（JS の textButtons）。文字だけのボタンにそろえる */
 .tcc-btn.myapp-text-btn > i.fa { display: none !important; }

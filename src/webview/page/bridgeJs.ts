@@ -485,7 +485,11 @@ export const SAVE_WATCH_JS = compactJs(`
     var boxes = Array.prototype.filter.call(document.querySelectorAll('.tcc-msg-box, .tcc-modal'), function (b) { return b.offsetParent !== null; });
     var box = boxes[boxes.length - 1];
     if (!box) return '';
+    // アプリが足した「赤い枠の欄を直してください」は除く（裏で保存していたとき、知らせを見る人はその画面を見ていない。msgBox.ts）
+    var lead = box.querySelector('.myapp-msg-lead');
+    var skip = lead ? (lead.textContent || '').trim() : '';
     return (box.innerText || '').split('\\n').map(function (line) { return line.trim(); })
+      .filter(function (line) { return line !== skip; })
       .filter(function (line) { return line && !/^(OK|はい|いいえ|キャンセル|閉じる|×)$/.test(line); })
       .join(' ').slice(0, 200);
   }

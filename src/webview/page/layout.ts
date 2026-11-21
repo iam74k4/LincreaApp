@@ -240,6 +240,8 @@ ${
   box-sizing: border-box !important;
   border-bottom: 1px solid var(--myapp-border) !important;
 }
+/* いちばん下の行の下には線を引かない（カードの終わりに、もう1本の線が出ていた。2026-11-22） */
+#${gridId} .TccGridBodyScroll tbody > tr:last-child { border-bottom: none !important; }
 /* 2段目と3段目のあとで改行する */
 #${gridId} .TccGridBodyScroll tr::before,
 #${gridId} .TccGridBodyScroll tr::after { content: ''; flex-basis: 100%; height: 0; }

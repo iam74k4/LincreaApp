@@ -122,6 +122,21 @@ describe('トランザクションを使う保存（勤怠実績の登録など�
     expect(messages().at(-1)).toEqual({ type: 'saveError', text: 'エラー Lock wait timeout exceeded' });
   });
 
+  test('アプリが整えたエラーの知らせ（msgBox.ts）からは、アプリが足した案内の行を除いて知らせる', () => {
+    request('beginTrans', { sync: true });
+    request('rollBack', { sync: true, query: 'transId=77' });
+    const box = dom.window.document.createElement('div');
+    box.className = 'tcc-msg-box';
+    box.innerHTML = '<p class="myapp-msg-lead">赤い枠の欄を直してください。</p>';
+    Object.defineProperty(box, 'offsetParent', { get: () => dom.window.document.body });
+    Object.defineProperty(box, 'innerText', {
+      get: () => '入力項目にエラーがあります\n赤い枠の欄を直してください。\n開始時間と終了時間の整合性エラー\nOK',
+    });
+    dom.window.document.body.appendChild(box);
+    jest.advanceTimersByTime(400);
+    expect(messages().at(-1)).toEqual({ type: 'saveError', text: '入力項目にエラーがあります 開始時間と終了時間の整合性エラー' });
+  });
+
   test('保存のあいだだけ、ページに myapp-saving を付ける（EZCraft のくるくるを隠す）', () => {
     const html = dom.window.document.documentElement;
     request('beginTrans', { sync: true });
