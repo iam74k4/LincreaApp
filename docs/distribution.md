@@ -31,7 +31,8 @@ npx eas-cli@latest build --platform ios --profile preview
 - Expo のクラウドで作る（15〜30分ほど）。登録した iPhone を選ぶ画面が出たら、配る相手の iPhone を選ぶ
 - 終わると、入れるためのリンクと QR コードが出る（expo.dev のビルドのページにも出る）
 - 相手は、そのリンクを **iPhone の Safari** で開いて「インストール」を押す。ホーム画面に LINCREA が出る
-- デベロッパモードは要らない（配る用の署名のため）
+- iPhone（iOS 16 以降）では、入れたあとに **デベロッパモード** をオンにしないと開けない（設定 → プライバシーとセキュリティ → デベロッパモード。iPhone が再起動する。1台につき1回）。
+  Expo の説明: https://docs.expo.dev/guides/ios-developer-mode/ 。デベロッパモードなしで使ってもらうには、TestFlight で配る（下の「App Store・TestFlight に出すとき」）
 - 作った版は **1年で使えなくなる**。その前に作り直して、入れ直してもらう
 - 無料の枠では、iOS は15回まで作れる
 

@@ -55,7 +55,9 @@ export type LoginResult = { session: Session; refreshToken: string };
 
 // ログインを始めてからの時間（どの段に時間がかかっているかを、開発中に Metro で見るため）
 let startedAt = 0;
-const done = (label: string, detail: string) => console.log(`[login] OK ${label}: ${detail}（${Date.now() - startedAt}ms）`);
+const done = (label: string, detail: string) => {
+  if (__DEV__) console.log(`[login] OK ${label}: ${detail}（${Date.now() - startedAt}ms）`);
+};
 
 /** パスワードでログインする */
 export async function login(username: string, password: string, remember: boolean): Promise<LoginResult> {

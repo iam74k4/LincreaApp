@@ -67,8 +67,7 @@ export type BridgeMessage =
   | { type: 'saveEnd'; ok: boolean; steps: number; writes: number; ms: number }
   | { type: 'net'; method: string; path: string; keys: string; at: number; ms: number; status: number; sent: number; received: number; hint: string }
   | { type: 'refMode'; key: string; text: string; contentType: string }
-  | { type: 'netBody'; name: string; text: string }
-  | { type: 'pageLog'; level: 'error' | 'warn' | 'info'; text: string }
+  | { type: 'pageLog'; level: 'error' | 'warn'; text: string }
   | { type: 'ready' };
 
 /** ページから来た数（0 以上の整数で、大きすぎないもの）。違えば null */
@@ -144,12 +143,8 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
     if (message.type === 'refMode' && typeof message.key === 'string' && message.key.length <= 1000 && typeof message.text === 'string' && message.text.length <= 2000) {
       return { type: 'refMode', key: message.key, text: message.text, contentType: typeof message.contentType === 'string' ? message.contentType.slice(0, 200) : '' };
     }
-    // 開発中だけ: 申請の画面の定義（EZCraft のプログラム）の写し（NET_TRACE_JS）。アプリが端末のファイルに書く
-    if (message.type === 'netBody' && typeof message.name === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(message.name) && typeof message.text === 'string') {
-      return { type: 'netBody', name: message.name, text: message.text.slice(0, 5_000_000) };
-    }
     // 開発中だけ: ページで起きたエラー・警告（NET_TRACE_JS）
-    if (message.type === 'pageLog' && (message.level === 'error' || message.level === 'warn' || message.level === 'info') && typeof message.text === 'string') {
+    if (message.type === 'pageLog' && (message.level === 'error' || message.level === 'warn') && typeof message.text === 'string') {
       return { type: 'pageLog', level: message.level, text: message.text.slice(0, 2000) };
     }
     // ヘルスケアの歩数をください（Walk the Talk の歩数の登録。アプリは stepsReplyJs で答える）
@@ -500,9 +495,6 @@ export const BRIDGE_JS = compactJs(`
   }
   window.__myappCloseModal = function () {
     var quit = topModalQuit();
-    // 開発中だけ（NET_TRACE_JS が入っているとき）: アプリがダイアログを閉じた（戻る操作の代わり）ことをログに出す。
-    // EZCraft は × で閉じたダイアログを「取り消し」として扱う（承認者確認フォームなら、保存を rollBack する）
-    if (window.__myappNetTrace) post({ type: 'pageLog', level: 'info', text: '[closeModal] by app, found=' + !!quit });
     if (quit) quit.click();
   };
   var modalOpen = false;
@@ -548,69 +540,13 @@ export const NET_TRACE_JS = compactJs(`
     var keys = q >= 0 ? url.slice(q + 1).split('&').map(function (kv) { return kv.split('=')[0]; }).join(',') : '';
     post({ type: 'net', m: net.method, p: path, q: keys, at: net.at, ms: Date.now() - net.at, s: status, n: net.sent, r: received, h: net.hint });
   }
-  // 申請の画面では、画面の定義（initApp・initAppModal。EZCraft のプログラム）の写しをアプリに渡す（登録・申請で何をしているかを読むため）
-  function dumpBody(net, text) {
-    if (!/\\/frmApply_/.test(location.pathname) || !/\\/initApp(Modal)?\\//i.test(net.url) || typeof text !== 'string' || !text) return;
-    var form = (/[?&]formid=([A-Za-z0-9_]+)/.exec(net.url) || [])[1] || 'page';
-    var kind = /initAppModal/i.test(net.url) ? 'modal' : 'app';
-    post({ type: 'netBody', name: kind + '-' + form, text: text });
-  }
-  // ページで起きたエラー・警告（保存が途中で取り消される理由を探すため）
+  // ページで起きたエラー・警告（EZCraft の画面が動かないときに、理由を探すため）
   var log = function (level, parts) {
     try {
       var text = Array.prototype.map.call(parts, function (p) { return p && p.stack ? String(p.stack) : typeof p === 'object' ? JSON.stringify(p) : String(p); }).join(' ');
       post({ type: 'pageLog', level: level, text: text.slice(0, 600) });
     } catch (e) {}
   };
-  // 読み込んだスクリプトの一覧（EZCraft の仕組みのファイルを読むため）
-  window.addEventListener('load', function () {
-    var list = Array.prototype.map.call(document.scripts, function (sc) { return sc.src ? sc.src.replace(/^https?:\\/\\/[^/]+/, '').split('?')[0] : ''; }).filter(Boolean);
-    for (var i = 0; i < list.length; i += 10) log('info', ['[scripts] ' + list.slice(i, i + 10).join(' ')]);
-  });
-  // ダイアログの中のボタンを押したとき: 押したもの・その文字・EZCraft の部品が覚えている文字
-  document.addEventListener('click', function (e) {
-    var el = e.target && e.target.closest && e.target.closest('.tcc-modal .tcc-btn, .tcc-modal .tcc-modal-quit');
-    if (!el) return;
-    var comp = el.closest('.tcc-component');
-    var tcc = null;
-    try { tcc = window.jQuery && comp ? window.jQuery(comp).data('tcc') : null; } catch (err) {}
-    var prop = '';
-    try { prop = tcc ? String(tcc.text) : ''; } catch (err) { prop = 'err:' + err; }
-    log('info', ['[modal-click] trusted=' + e.isTrusted + ' id=' + (comp ? comp.id : '') + ' dom=' + JSON.stringify((el.textContent || '').trim()) + ' prop=' + JSON.stringify(prop)]);
-  }, true);
-  // EZCraft のダイアログが閉じるとき: 何を渡して閉じたか（承認者確認フォームの「申請」なら承認者のデータ、× なら x-mark）と、どこから閉じたか
-  window.addEventListener('load', function () {
-    try {
-      var proto = window.Tcc && Tcc.TccModal && Tcc.TccModal.prototype;
-      if (!proto || proto.__myappTraced) return;
-      proto.__myappTraced = true;
-      // 開いたとき: ダイアログの中のボタンの文字（EZCraft は押したボタンの文字で「申請」かどうかを決める）
-      var open = proto.open;
-      proto.open = function () {
-        var self = this;
-        var result = open.apply(this, arguments);
-        setTimeout(function () {
-          try {
-            var texts = Array.prototype.map.call((self.$frm && self.$frm[0] ? self.$frm[0] : document).querySelectorAll('.tcc-btn'), function (b) {
-              var t = b.textContent || '';
-              return JSON.stringify(t) + '/' + JSON.stringify(t.trim()) + (t.trim() === '申請' ? ' =申請' : '');
-            });
-            log('info', ['[modal-open] id=' + (self._id || '') + ' buttons=' + texts.join(', ')]);
-          } catch (err) { log('warn', ['[modal-open] ' + err]); }
-        }, 800);
-        return result;
-      };
-      var close = proto.close;
-      proto.close = function () {
-        var stack = '';
-        try { throw new Error('x'); } catch (err) { stack = String(err.stack || '').split('\\n').slice(1, 6).join(' | '); }
-        var args = '';
-        try { args = JSON.stringify(Array.prototype.slice.call(arguments)); } catch (err) { args = '?'; }
-        log('info', ['[modal-close] id=' + (this._id || '') + ' args=' + args + ' from=' + stack]);
-        return close.apply(this, arguments);
-      };
-    } catch (err) { log('warn', ['[modal-close] could not trace: ' + err]); }
-  });
   window.addEventListener('error', function (e) { log('error', [e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno, e.error || '']); });
   window.addEventListener('unhandledrejection', function (e) { log('error', ['unhandledrejection', e.reason]); });
   ['error', 'warn'].forEach(function (level) {
@@ -632,10 +568,8 @@ export const NET_TRACE_JS = compactJs(`
       net.hint = hint(body);
       xhr.addEventListener('loadend', function () {
         var size = 0;
-        var text = '';
-        try { text = String(xhr.responseText || ''); size = text.length; } catch (e) {}
+        try { size = String(xhr.responseText || '').length; } catch (e) {}
         report(net, xhr.status, size);
-        dumpBody(net, text);
       });
     }
     try {
