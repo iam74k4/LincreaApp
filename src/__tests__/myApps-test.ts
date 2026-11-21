@@ -1,8 +1,9 @@
-// マイアプリの一覧（src/api/myApps.ts）: なりすまし防止の合言葉（CSRF トークン）を覚えて、/main/ を読み直さないこと。
+// マイアプリの一覧（src/api/ezcraft/myApps.ts）: なりすまし防止の合言葉（CSRF トークン）を覚えて、/main/ を読み直さないこと。
 import { fetch as expoFetch } from 'expo/fetch';
 
-import { forgetCsrf, NetworkError, rememberCsrf } from '../api/http';
-import { fetchMyApps } from '../api/myApps';
+import { forgetCsrf, rememberCsrf } from '../api/ezcraft/server';
+import { NetworkError } from '../api/http';
+import { fetchMyApps } from '../api/ezcraft/myApps';
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 const mockedFetch = expoFetch as jest.MockedFunction<typeof expoFetch>;

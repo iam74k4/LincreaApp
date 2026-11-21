@@ -31,7 +31,20 @@ yarn-error.*
 *.pem
 
 # local env files
-.env*.local
+.env
+.env.*
+!.env.example
+
+# signing keys and release artifacts (the repository is public)
+*.keystore
+*.aab
+*.apk
+*.ipa
+*.xcarchive
+*service-account*.json
+google-services.json
+GoogleService-Info.plist
+AuthKey_*.p8
 
 # typescript
 *.tsbuildinfo
@@ -39,3 +52,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# 自分の部品（modules/）を Android で作ったときに、Gradle が作るもの（npx expo prebuild のあとの ./gradlew）
+modules/*/android/build/
+modules/*/android/.cxx/
+modules/*/android/.gradle/

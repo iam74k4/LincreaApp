@@ -5,7 +5,7 @@
 // ただし、ログインした人の記録（最後にログインした時刻など）も入っているので、ログインし直すと少し変わる。
 // そのため、ログイン・ログアウトのたびに控えを捨てる（forgetInitAppTexts / forgetAllInitApps）。
 // そこで:
-//   - 一度読んだら、ここに控える。次にその画面を開くときは、ページの読み込みの要求に控えで答える（src/webview/initApp.ts）
+//   - 一度読んだら、ここに控える。次にその画面を開くときは、ページの読み込みの要求に控えで答える（src/webview/page/initApp.ts）
 //   - よく使う画面は、マイアプリを見ているあいだに裏で読んでおく（prefetchInitApps）。アプリを開いて最初の1回も待たない
 //
 // 控えはメモリの中だけ（端末には保存しない。アプリを閉じれば消える）。EZCraft の画面が作り直されたときに
@@ -13,8 +13,8 @@
 // 裏で読む画面の覚え書き（アプリの名前・画面の名前・画面の ID だけ。中身は入れない）は端末に保存する。ログアウトで消す。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { landedOnLogin, serverFetch as fetch } from '../api/http';
-import { SERVER_URL } from '../config';
+import { fetchInitApp } from '../api/ezcraft/initApp';
+import { runappOf } from './origin';
 import { forgetRefModes } from './refModeCache';
 
 const MAX_AGE_MS = 30 * 60 * 1000; // 30 分
@@ -41,14 +41,13 @@ function put(key: string, entry: { id: string; text: string; savedAt: number }):
   while (store.size > MAX_TEXTS) store.delete(store.keys().next().value as string);
 }
 
-/** /runapp/<アプリ>/<画面>/ の URL から、どの画面かを取り出す（runapp でなければ null） */
+/** /runapp/<アプリ>/<画面>/ の URL から、どの画面かを取り出す（runapp でない・読めない URL は null。src/webview/origin.ts） */
 export function initAppFormOfUrl(url: string): InitAppForm | null {
-  const match = /\/runapp\/([^/?#]+)\/([^/?#]+)/.exec(url);
-  return match ? { app: decodeURIComponent(match[1]), form: decodeURIComponent(match[2]) } : null;
+  return runappOf(url);
 }
 
 /** EZCraft の画面の定義らしいか（ログイン画面やエラーのページを控えないため） */
-export function looksLikeInitApp(text: string): boolean {
+function looksLikeInitApp(text: string): boolean {
   return text.length > 1000 && /^\s*\/\*\s*<!\[CDATA\[/.test(text);
 }
 
@@ -122,21 +121,11 @@ export function prefetchInitApps(): Promise<void> {
       if (controller.signal.aborted) return;
       if (recallInitApp(f)?.id === f.id) continue;
       try {
-        const query = `appid=${encodeURIComponent(f.app)}&formid=${encodeURIComponent(f.form)}&id=${encodeURIComponent(f.id)}&_=${Date.now()}`;
-        // ページ（jQuery）と同じ頼み方にする
-        const res = await fetch(`${SERVER_URL}/RunApp/initApp/?${query}`, {
-          credentials: 'include',
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            Accept: 'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01',
-          },
-          signal: controller.signal,
-        });
-        if (landedOnLogin(res)) return; // ログインが切れている。続けても同じなのでやめる
-        if (!res.ok) continue; // この画面は読めなかった。次の画面へ
-        const text = await res.text();
+        const reply = await fetchInitApp(f, controller.signal);
+        if (reply.status === 'login') return; // ログインが切れている。続けても同じなのでやめる
+        if (reply.status === 'error') continue; // この画面は読めなかった。次の画面へ
         if (controller.signal.aborted) return;
-        if (looksLikeInitApp(text)) put(keyOf(f), { id: f.id, text, savedAt: Date.now() });
+        if (looksLikeInitApp(reply.text)) put(keyOf(f), { id: f.id, text: reply.text, savedAt: Date.now() });
       } catch {
         return; // 通信できない・止めた。次の機会に
       }

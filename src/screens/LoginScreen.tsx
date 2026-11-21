@@ -17,14 +17,14 @@ import {
   type TextInputProps,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SymbolView } from 'expo-symbols';
 
-import { login, LoginError, type Session } from '../auth/api';
+import { login, LoginError, type Session } from '../auth/login';
 import { biometry, disableFaceId, enableFaceId, faceIdUser, loginWithFaceId, renewFaceIdToken, type Biometry } from '../auth/faceId';
 import { loadRememberedUsername, saveRememberedUsername } from '../auth/rememberedUsername';
-import { versionLabel } from '../appVersion';
+import { versionLabel } from '../core/appVersion';
 import { GlassButton } from '../components/GlassButton';
-import { sizes, useColors, type Colors } from '../theme';
+import { Icon } from '../platform/icons';
+import { sizes, useColors, type Colors } from '../core/theme';
 
 type Props = {
   /** ログインできたら呼ぶ。次の画面へ進むのは呼んだ側の仕事 */
@@ -214,11 +214,7 @@ export function LoginScreen({ onLoggedIn, onForgotPassword, onLoginHelp }: Props
                   accessibilityRole="button"
                   accessibilityLabel={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
                 >
-                  <SymbolView
-                    name={showPassword ? { ios: 'eye.slash', android: 'visibility_off', web: 'visibility_off' } : { ios: 'eye', android: 'visibility', web: 'visibility' }}
-                    size={20}
-                    tintColor={c.textSecondary}
-                  />
+                  <Icon name={showPassword ? 'eye-off' : 'eye'} size={20} tintColor={c.textSecondary} />
                 </Pressable>
               </View>
             </View>
@@ -228,7 +224,7 @@ export function LoginScreen({ onLoggedIn, onForgotPassword, onLoginHelp }: Props
               <Switch
                 value={rememberUsername}
                 onValueChange={setRememberUsername}
-                trackColor={{ true: c.accent }}
+                trackColor={{ false: c.switchOff, true: c.accent }}
                 accessibilityLabel="ユーザー名を保持する"
               />
             </View>
@@ -239,7 +235,7 @@ export function LoginScreen({ onLoggedIn, onForgotPassword, onLoginHelp }: Props
                 <Switch
                   value={useBio}
                   onValueChange={setUseBio}
-                  trackColor={{ true: c.accent }}
+                  trackColor={{ false: c.switchOff, true: c.accent }}
                   accessibilityLabel={`次から ${kind} でログイン`}
                 />
               </View>
@@ -267,11 +263,7 @@ export function LoginScreen({ onLoggedIn, onForgotPassword, onLoginHelp }: Props
                 accessibilityLabel={`${kind} でログイン`}
                 style={({ pressed }) => [styles.bioButton, (pressed || submitting) && styles.bioButtonPressed]}
               >
-                <SymbolView
-                  name={kind === 'Face ID' || kind === '顔認証' ? { ios: 'faceid', android: 'face', web: 'face' } : { ios: 'touchid', android: 'fingerprint', web: 'fingerprint' }}
-                  size={22}
-                  tintColor={c.accent}
-                />
+                <Icon name={kind === 'Face ID' || kind === '顔認証' ? 'face' : 'fingerprint'} size={22} tintColor={c.accent} />
                 <Text style={styles.bioButtonText}>{kind} でログイン</Text>
               </Pressable>
             )}

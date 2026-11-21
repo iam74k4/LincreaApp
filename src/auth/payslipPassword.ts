@@ -12,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
-import { biometry, type Biometry } from './faceId';
+import { biometricStoreOptions, biometry, saveAsksBiometrics, type Biometry } from './faceId';
 
 /** パスワードを入れる場所（ログインの鍵とは分ける） */
 const STORE = { keychainService: 'myapp.payslip' };
@@ -22,7 +22,7 @@ const USER_KEY = 'payslip.username';
 /** 「使わない」を選んだ人（もう聞かない） */
 const DECLINED_KEY = 'payslip.declined';
 /** パスワードの長さの上限（ページから来たものなので、長すぎるものは入れない） */
-export const PAYSLIP_PASSWORD_MAX = 128;
+const PAYSLIP_PASSWORD_MAX = 128;
 
 async function getItem(key: string): Promise<string | null> {
   try {
@@ -50,20 +50,28 @@ export async function payslipBiometryToOffer(username: string): Promise<Biometry
  */
 export async function enablePayslipFaceId(username: string, password: string, kind: Biometry): Promise<boolean> {
   if (!username || !password || password.length > PAYSLIP_PASSWORD_MAX) return false;
-  const check = await LocalAuthentication.authenticateAsync({
-    promptMessage: `次から ${kind} で明細を開きます`,
-    cancelLabel: 'やめる',
-    disableDeviceFallback: true, // パスワードも Face ID でしか読めないので、ここもパスコードでは通さない
-  });
-  if (!check.success) return false;
+  const prompt = `次から ${kind} で明細を開きます`;
+  // 入れるときに端末が確かめる（Android）なら、その確かめだけにする（同じ確かめを2回続けて出さない。src/auth/faceId.ts）
+  if (!saveAsksBiometrics()) {
+    const check = await LocalAuthentication.authenticateAsync({
+      promptMessage: prompt,
+      cancelLabel: 'やめる',
+      disableDeviceFallback: true, // パスワードも Face ID でしか読めないので、ここもパスコードでは通さない
+    });
+    if (!check.success) return false;
+  }
+  let saved = false;
   try {
-    await savePassword(password);
+    await savePassword(password, prompt);
+    saved = true;
     await AsyncStorage.setItem(USER_KEY, username);
     await AsyncStorage.removeItem(DECLINED_KEY);
     return true;
   } catch (e) {
     console.log(`[payslip] NG 保存できませんでした: ${e instanceof Error ? e.message : String(e)}`);
-    await forgetPayslipPassword();
+    // iPhone は前のものを消してから入れるので、どこで失敗しても使えなくする。Android は、確かめの画面でやめると
+    // 何も入れずに終わり、前の人のものが残っている。入れたのに誰のものかを書けなかったときだけ消す（src/auth/faceId.ts）
+    if (saved || !saveAsksBiometrics()) await forgetPayslipPassword();
     return false;
   }
 }
@@ -79,14 +87,15 @@ export async function declinePayslipFaceId(username: string): Promise<void> {
 
 /**
  * 手で入れたパスワードで明細が開けた。Face ID を使っている同じ人なら、覚えているパスワードを入れ替える
- * （イントラのパスワードを変えたとき。Face ID は求めない）
+ * （イントラのパスワードを変えたとき。iPhone は Face ID を求めない。Android は入れるときに確かめの画面が出る）
  */
 export async function renewPayslipPassword(username: string, password: string): Promise<void> {
   if (!username || !password || password.length > PAYSLIP_PASSWORD_MAX || (await getItem(USER_KEY)) !== username) return;
   try {
-    await savePassword(password);
+    await savePassword(password, '覚えているパスワードを新しくします');
   } catch {
-    await forgetPayslipPassword();
+    // iPhone は消してから入れるので、入れられなければ使えない。Android は上書きなので、やめても前のものが残っている
+    if (!saveAsksBiometrics()) await forgetPayslipPassword();
   }
 }
 
@@ -125,12 +134,11 @@ export async function forgetPayslipPassword(): Promise<void> {
   }
 }
 
-/** パスワードを Face ID 付きで入れる。上書きだと iOS が Face ID を求めるので、先に消してから新しく入れる */
-async function savePassword(password: string): Promise<void> {
-  await SecureStore.deleteItemAsync(PASSWORD_KEY, STORE);
-  await SecureStore.setItemAsync(PASSWORD_KEY, password, {
-    ...STORE,
-    requireAuthentication: true,
-    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  });
+/**
+ * パスワードを Face ID 付きで入れる。iPhone は、上書きだと iOS が Face ID を求めるので、先に消してから新しく入れる。
+ * Android は、入れるときに確かめの画面が出るので、やめたときに前のものが残るよう、消さずに上書きする（src/auth/faceId.ts）
+ */
+async function savePassword(password: string, prompt: string): Promise<void> {
+  if (!saveAsksBiometrics()) await SecureStore.deleteItemAsync(PASSWORD_KEY, STORE);
+  await SecureStore.setItemAsync(PASSWORD_KEY, password, { ...STORE, ...biometricStoreOptions(prompt) });
 }

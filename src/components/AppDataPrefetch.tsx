@@ -1,22 +1,23 @@
 // 近道のための下準備: 見えないところでアプリのメニューの画面を読み込み、App.data（ログインした人など）を控えておく。
-// 控えがあれば、近道はメニューを開かずに行き先の画面を直接開ける（src/shortcuts.ts・src/webview/appDataCache.ts）。
+// 控えがあれば、近道はメニューを開かずに行き先の画面を直接開ける（src/shortcuts/shortcuts.ts・src/webview/appDataCache.ts）。
 //
 // マイアプリを見ているあいだに裏で読むので、近道を押したときには、たいてい準備ができている。
 // メニューの画面は、読み込むときにデータを読むだけ（書き込まない）。
 //
 // 画面の定義（initApp。1MB ほど）と参照モードの返事は、見える画面と同じ控えを使い、なければ読んで控えに入れる
 // （src/webview/initAppCache.ts・src/webview/refModeCache.ts）。マイアプリが裏で読む画面の定義（prefetchInitApps）は、
-// この下準備が終わってから始めるので、同じメニューの定義を2回読まない（src/app/(app)/index.tsx）。
+// この下準備が終わってから始めるので、同じメニューの定義を2回読まない（src/screens/MyAppsScreen.tsx）。
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 import { pathOf } from '../api/http';
-import { SERVER_URL } from '../config';
-import { isServerUrl, mayNavigate } from '../webview/origin';
+import { SERVER_URL } from '../core/config';
+import { isServerUrl, leavesForOtherApp, mayNavigate, trustedSenderApp } from '../webview/origin';
 import { appDataKey, rememberAppData } from '../webview/appDataCache';
-import { joinScripts, parseBridgeMessage } from '../webview/bridge';
-import { initAppJs, refModeJs } from '../webview/initApp';
+import { parseBridgeMessage } from '../webview/bridge';
+import { joinScripts } from '../webview/page/bridgeJs';
+import { initAppJs, refModeJs } from '../webview/page/initApp';
 import { recallInitApp, rememberInitApp } from '../webview/initAppCache';
 import { recallRefModes, rememberRefMode } from '../webview/refModeCache';
 
@@ -48,30 +49,38 @@ export function AppDataPrefetch({ app, form, ready, onDone }: Props) {
     return () => clearTimeout(timer);
   }, []);
   // ページが動き出す前に入れるもの。開いたときに決めて、そのあいだは変えない（変えると、入れ直しになる）
+  // 下準備で読むメニューの画面
+  const menuUrl = `${SERVER_URL}/runapp/${encodeURIComponent(app)}/${encodeURIComponent(form)}/`;
   const [beforeLoadJs] = useState(() => {
     const cached = recallInitApp({ app, form });
-    return joinScripts([initAppJs(cached ? { app, form, ...cached } : null), refModeJs(recallRefModes())]);
+    return joinScripts([initAppJs(cached ? { app, form, ...cached } : null), refModeJs(recallRefModes(app))]);
   });
 
   return (
     <View style={styles.hidden} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <WebView
-        source={{ uri: `${SERVER_URL}/runapp/${encodeURIComponent(app)}/${encodeURIComponent(form)}/` }}
+        source={{ uri: menuUrl }}
         sharedCookiesEnabled
         injectedJavaScriptBeforeContentLoaded={beforeLoadJs}
         injectedJavaScript={prefetchJs(ready)}
-        // 会社のサイトのページだけを開き、そこからの知らせだけを受け付ける（src/webview/origin.ts）
-        onShouldStartLoadWithRequest={(req) => mayNavigate(req.url, req.isTopFrame)}
+        // 会社のサイトのページだけを開き、そこからの知らせだけを受け付ける（src/webview/origin.ts）。
+        // メニューのアプリの外（ほかのアプリの画面）へは移らない（見えない下準備なので、開いた先を見せることもない）
+        onShouldStartLoadWithRequest={(req) => !leavesForOtherApp(menuUrl, req.url, req.isTopFrame) && mayNavigate(req.url, req.isTopFrame)}
         onMessage={(e) => {
           if (!isServerUrl(e.nativeEvent.url)) return;
-          // 読んだ画面の定義と参照モードの返事は、控えに入れる（見える画面と同じ。次に開くときに速い）
+          // 読んだ画面の定義と参照モードの返事は、控えに入れる（見える画面と同じ。次に開くときに速い）。
+          // 控えるのは、このメニューのアプリのページが、そのアプリのものとして送ってきたものだけ
+          // （ほかのアプリの画面の定義を、ページに書き換えさせない。見える画面と同じ判定。src/webview/origin.ts の trustedSenderApp）
           const parsed = parseBridgeMessage(e.nativeEvent.data);
+          const trustedApp = trustedSenderApp(menuUrl, e.nativeEvent.url);
           if (parsed?.type === 'initApp') {
-            rememberInitApp({ app: parsed.app, form: parsed.form }, parsed.id, parsed.text);
+            if (trustedApp && parsed.app.toLowerCase() === trustedApp.toLowerCase()) {
+              rememberInitApp({ app: parsed.app, form: parsed.form }, parsed.id, parsed.text);
+            }
             return;
           }
           if (parsed?.type === 'refMode') {
-            rememberRefMode(parsed.key, { text: parsed.text, type: parsed.contentType });
+            if (trustedApp) rememberRefMode(trustedApp, parsed.key, { text: parsed.text, type: parsed.contentType });
             return;
           }
           try {
@@ -92,7 +101,9 @@ export function AppDataPrefetch({ app, form, ready, onDone }: Props) {
           finish(false);
         }}
         onHttpError={() => finish(false)}
-        onContentProcessDidTerminate={() => finish(false)} // iOS がページの中身を捨てた
+        // OS がページの中身を捨てた（iPhone: onContentProcessDidTerminate / Android: onRenderProcessGone）
+        onContentProcessDidTerminate={() => finish(false)}
+        onRenderProcessGone={() => finish(false)}
         onNavigationStateChange={(nav) => {
           // ログインが切れていた（ログイン画面に飛ばされた）。見える画面のほうで気づいて知らせるので、ここではやめるだけ
           if (pathOf(nav.url).startsWith('/login')) finish(false);

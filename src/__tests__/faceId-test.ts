@@ -6,7 +6,8 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-import { loginWithRefreshToken, RefreshExpiredError } from '../auth/api';
+import { NetworkError } from '../api/http';
+import { loginWithRefreshToken, RefreshExpiredError } from '../auth/login';
 import { biometry, disableFaceId, enableFaceId, faceIdUser, loginWithFaceId, renewFaceIdToken } from '../auth/faceId';
 
 jest.mock('@react-native-async-storage/async-storage', () => jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'));
@@ -17,8 +18,10 @@ jest.mock('expo-constants', () => ({
 }));
 jest.mock('expo-local-authentication', () => ({
   AuthenticationType: { FINGERPRINT: 1, FACIAL_RECOGNITION: 2, IRIS: 3 },
+  SecurityLevel: { NONE: 0, SECRET: 1, BIOMETRIC_WEAK: 2, BIOMETRIC_STRONG: 3 },
   hasHardwareAsync: jest.fn(),
   isEnrolledAsync: jest.fn(),
+  getEnrolledLevelAsync: jest.fn(),
   supportedAuthenticationTypesAsync: jest.fn(),
   authenticateAsync: jest.fn(),
 }));
@@ -28,7 +31,7 @@ jest.mock('expo-secure-store', () => ({
   setItemAsync: jest.fn(),
   deleteItemAsync: jest.fn(),
 }));
-jest.mock('../auth/api', () => {
+jest.mock('../auth/login', () => {
   class LoginError extends Error {}
   class RefreshExpiredError extends LoginError {}
   return { LoginError, RefreshExpiredError, loginWithRefreshToken: jest.fn() };
@@ -47,6 +50,7 @@ const NEW_TOKEN = 'refresh-token-secret-456';
 function faceIdDevice() {
   auth.hasHardwareAsync.mockResolvedValue(true);
   auth.isEnrolledAsync.mockResolvedValue(true);
+  auth.getEnrolledLevelAsync.mockResolvedValue(LocalAuthentication.SecurityLevel.BIOMETRIC_STRONG);
   auth.supportedAuthenticationTypesAsync.mockResolvedValue([LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION]);
 }
 
@@ -77,15 +81,37 @@ describe('biometry: 端末で使える生体認証の名前', () => {
     auth.supportedAuthenticationTypesAsync.mockResolvedValue([LocalAuthentication.AuthenticationType.FINGERPRINT]);
     expect(await biometry()).toBe('Touch ID');
   });
-  test('Android は「顔認証」「指紋認証」', async () => {
+  test('Android は「顔認証」「指紋認証」。両方あるときは、どちらを登録したか分からないので「生体認証」', async () => {
     Platform.OS = 'android';
     expect(await biometry()).toBe('顔認証');
     auth.supportedAuthenticationTypesAsync.mockResolvedValue([LocalAuthentication.AuthenticationType.FINGERPRINT]);
     expect(await biometry()).toBe('指紋認証');
+    auth.supportedAuthenticationTypesAsync.mockResolvedValue([
+      LocalAuthentication.AuthenticationType.FINGERPRINT,
+      LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION,
+    ]);
+    expect(await biometry()).toBe('生体認証');
+  });
+  test('iPhone で顔と指紋の両方が返っても、Face ID（今までどおり）', async () => {
+    auth.supportedAuthenticationTypesAsync.mockResolvedValue([
+      LocalAuthentication.AuthenticationType.FINGERPRINT,
+      LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION,
+    ]);
+    expect(await biometry()).toBe('Face ID');
   });
   test('顔も指紋も登録していなければ使えない', async () => {
     auth.isEnrolledAsync.mockResolvedValue(false);
     expect(await biometry()).toBeNull();
+  });
+  test('Android: 弱い生体認証（カメラの2D の顔認証など）だけなら使えない（鍵を入れる側が、強いものしか受け付けないため）', async () => {
+    Platform.OS = 'android';
+    auth.getEnrolledLevelAsync.mockResolvedValue(LocalAuthentication.SecurityLevel.BIOMETRIC_WEAK);
+    expect(await biometry()).toBeNull();
+  });
+  test('iPhone: 試行を重ねてロックされている間（レベルが下がる）でも、Face ID は使える端末のまま', async () => {
+    auth.getEnrolledLevelAsync.mockResolvedValue(LocalAuthentication.SecurityLevel.SECRET);
+    expect(await biometry()).toBe('Face ID');
+    expect(auth.getEnrolledLevelAsync).not.toHaveBeenCalled();
   });
   test('Expo Go では使えない（Face ID の許可の文がないため）', async () => {
     Constants.executionEnvironment = 'storeClient';
@@ -128,6 +154,50 @@ describe('enableFaceId: Face ID でログインできるようにする', () => 
     expect(await enableFaceId('taro', TOKEN, 'Face ID')).toBe(false);
     expect(await faceIdUser()).toBeNull();
   });
+
+  test('iPhone: 入れるときの確かめの説明は渡さない（iOS は入れるときに Face ID を求めない）', async () => {
+    auth.authenticateAsync.mockResolvedValue({ success: true });
+    await enableFaceId('taro', TOKEN, 'Face ID');
+    expect(store.setItemAsync.mock.calls[0][2]).not.toHaveProperty('authenticationPrompt');
+  });
+
+  test('Android: 入れるときに端末が確かめるので、前もっては確かめない（確かめの画面は1回）。消さずに上書きする', async () => {
+    Platform.OS = 'android';
+    expect(await enableFaceId('taro', TOKEN, '顔認証')).toBe(true);
+    expect(auth.authenticateAsync).not.toHaveBeenCalled();
+    expect(store.deleteItemAsync).not.toHaveBeenCalled();
+    expect(store.setItemAsync).toHaveBeenCalledWith(
+      'refreshToken',
+      TOKEN,
+      expect.objectContaining({ requireAuthentication: true, authenticationPrompt: '次から 顔認証 でログインします' }),
+    );
+    expect(await faceIdUser()).toBe('taro');
+  });
+
+  test('Android: 入れるときの確かめでやめたら、使えないままにする', async () => {
+    Platform.OS = 'android';
+    store.setItemAsync.mockRejectedValue(new Error('User canceled the authentication'));
+    expect(await enableFaceId('taro', TOKEN, '顔認証')).toBe(false);
+    expect(await faceIdUser()).toBeNull();
+  });
+
+  test('Android: 別の人が使えるようにしかけてやめても、前の人の鍵は消さない（何も入れていないため）', async () => {
+    Platform.OS = 'android';
+    await AsyncStorage.setItem('faceid.username', 'taro');
+    store.setItemAsync.mockRejectedValue(new Error('User canceled the authentication'));
+    expect(await enableFaceId('hanako', NEW_TOKEN, '顔認証')).toBe(false);
+    expect(store.deleteItemAsync).not.toHaveBeenCalled();
+    expect(await faceIdUser()).toBe('taro');
+  });
+
+  test('Android: 鍵は入れたのに誰の鍵かを書けなかったら、食い違わないように消す', async () => {
+    Platform.OS = 'android';
+    await AsyncStorage.setItem('faceid.username', 'taro');
+    // テスト用の AsyncStorage はモック関数なので、次の1回だけ失敗させる（元に戻す必要はない）
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+    expect(await enableFaceId('hanako', NEW_TOKEN, '顔認証')).toBe(false);
+    expect(store.deleteItemAsync).toHaveBeenCalledWith('refreshToken', expect.anything());
+  });
 });
 
 describe('renewFaceIdToken: パスワードでログインし直したとき', () => {
@@ -143,11 +213,38 @@ describe('renewFaceIdToken: パスワードでログインし直したとき', (
     await renewFaceIdToken('hanako', NEW_TOKEN);
     expect(store.setItemAsync).not.toHaveBeenCalled();
   });
+
+  test('iPhone: 入れ替えられなかったら（前の鍵は消してある）、Face ID のログインをやめる', async () => {
+    await AsyncStorage.setItem('faceid.username', 'taro');
+    store.setItemAsync.mockRejectedValue(new Error('keychain error'));
+    await renewFaceIdToken('taro', NEW_TOKEN);
+    expect(await faceIdUser()).toBeNull();
+  });
+
+  test('Android: 確かめの画面でやめても、前の鍵は残っているので、そのまま使える（消さない）', async () => {
+    Platform.OS = 'android';
+    await AsyncStorage.setItem('faceid.username', 'taro');
+    store.setItemAsync.mockRejectedValue(new Error('User canceled the authentication'));
+    await renewFaceIdToken('taro', NEW_TOKEN);
+    expect(store.deleteItemAsync).not.toHaveBeenCalled();
+    expect(await faceIdUser()).toBe('taro');
+    expect(store.setItemAsync).toHaveBeenCalledWith('refreshToken', NEW_TOKEN, expect.objectContaining({ authenticationPrompt: 'ログインの鍵を新しくします' }));
+  });
 });
 
 describe('loginWithFaceId: Face ID でログインし直す', () => {
   beforeEach(async () => {
     await AsyncStorage.setItem('faceid.username', 'taro');
+  });
+
+  test('入り直す人が決まっていて（画面に出ている人）、鍵がほかの人のものなら、Face ID を出さずに使わない', async () => {
+    expect(await loginWithFaceId(null, 'hanako')).toEqual({ ok: false, reason: 'off' });
+    expect(store.getItemAsync).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+    // 同じ人なら入る
+    store.getItemAsync.mockResolvedValue(TOKEN);
+    refresh.mockResolvedValue({ session: { username: 'taro' }, refreshToken: TOKEN });
+    expect(await loginWithFaceId(null, 'taro')).toEqual({ ok: true, session: { username: 'taro' } });
   });
 
   test('鍵を Face ID 付きで読み、その鍵でログインする', async () => {
@@ -196,19 +293,41 @@ describe('loginWithFaceId: Face ID でログインし直す', () => {
     expect(await faceIdUser()).toBeNull();
   });
 
+  test('登録が変わった知らせは、その端末の呼び名で出す（iPhone は Face ID、Android は顔認証）', async () => {
+    store.getItemAsync.mockResolvedValue(null);
+    expect(await loginWithFaceId()).toMatchObject({ reason: 'reset', message: expect.stringContaining('Face ID の登録') });
+
+    await AsyncStorage.setItem('faceid.username', 'taro'); // 前の実行で消えているので、また使っていることにする
+    Platform.OS = 'android';
+    expect(await loginWithFaceId()).toMatchObject({ reason: 'reset', message: expect.stringContaining('顔認証 の登録') });
+  });
+
   test('鍵の期限が切れていたら、鍵を消してパスワードに戻す', async () => {
     store.getItemAsync.mockResolvedValue(TOKEN);
     refresh.mockRejectedValue(new RefreshExpiredError('期限切れ'));
-    expect(await loginWithFaceId()).toMatchObject({ ok: false, reason: 'expired' });
+    // 知らせは、その端末の呼び名で出す（iPhone は Face ID）
+    expect(await loginWithFaceId()).toMatchObject({ ok: false, reason: 'expired', message: expect.stringContaining('Face ID でのログインの期限') });
+
+    // Android は顔認証（「Face ID」と決め打ちしていないこと）
+    await AsyncStorage.setItem('faceid.username', 'taro');
+    Platform.OS = 'android';
+    expect(await loginWithFaceId()).toMatchObject({ reason: 'expired', message: expect.stringContaining('顔認証 でのログインの期限') });
     expect(await faceIdUser()).toBeNull();
   });
 
-  test('通信できないだけなら、鍵は消さない', async () => {
+  test('通信できないだけなら offline。鍵は消さない', async () => {
     store.getItemAsync.mockResolvedValue(TOKEN);
-    refresh.mockRejectedValue(new Error('Network request failed'));
-    expect(await loginWithFaceId()).toMatchObject({ ok: false, reason: 'failed' });
+    refresh.mockRejectedValue(new NetworkError());
+    expect(await loginWithFaceId()).toMatchObject({ ok: false, reason: 'offline' });
     expect(store.deleteItemAsync).not.toHaveBeenCalled();
     expect(await faceIdUser()).toBe('taro');
+  });
+
+  test('サーバーが断った・ログイン画面が読めないなど、つながらない以外の失敗は failed（つながらないことにしない）。鍵は消さない', async () => {
+    store.getItemAsync.mockResolvedValue(TOKEN);
+    refresh.mockRejectedValue(new Error('サーバーがトークンを受け付けませんでした（HTTP 302、行き先 /login）'));
+    expect(await loginWithFaceId()).toMatchObject({ ok: false, reason: 'failed' });
+    expect(store.deleteItemAsync).not.toHaveBeenCalled();
   });
 });
 

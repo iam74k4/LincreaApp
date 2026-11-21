@@ -2,8 +2,8 @@
 import { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 
-import { EzcraftWebView } from '../../components/EzcraftWebView';
-import { SERVER_URL } from '../../config';
+import { EzcraftWebView } from '../../components/EzcraftWebView/EzcraftWebView';
+import { SERVER_URL } from '../../core/config';
 import { takeHandoff } from '../../webview/handoff';
 
 export default function PageScreen() {

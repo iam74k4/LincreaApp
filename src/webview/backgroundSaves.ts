@@ -1,9 +1,9 @@
 // 保存（登録・削除など）を、アプリ全体で1つずつにする。保存の途中で ‹ で戻ったら、その保存を裏で続ける。
 //
-// EZCraft の保存は、通信を1つずつ順に送るので 10 秒ほどかかる（src/webview/bridge.ts の SAVE_WATCH_JS）。
+// EZCraft の保存は、通信を1つずつ順に送るので 10 秒ほどかかる（src/webview/page/bridgeJs.ts の SAVE_WATCH_JS）。
 // 待たずにほかの画面へ移れるように、保存の途中で戻ったら、その画面を重ねた画面の一番下に残し、
-// ページは画面の後ろの置き場へ移して、保存を最後まで続けさせる（src/components/EzcraftWebView.tsx。
-// なぜ置き場が要るか・使えないときは src/webview/savePark.tsx）。上には小さな知らせを出す（BackgroundSaveBanner）。
+// ページは画面の後ろの置き場へ移して、保存を最後まで続けさせる（src/components/EzcraftWebView/EzcraftWebView.tsx。
+// なぜ置き場が要るか・使えないときは src/components/SavePark.tsx）。上には小さな知らせを出す（BackgroundSaveBanner）。
 //   - 終わったら: その画面を片づけ、戻った先の画面（勤務表など）のデータを新しくする
 //   - 失敗したら: その画面を片づけて（保存は取り消されている）、知らせに理由と「開き直す」を出す。
 //     見えないところに置いた画面を前に戻すことはしない（重ねる順を入れ替えると、画面が止まった絵のままになった。2026-11-18）
@@ -94,14 +94,29 @@ export function backgroundSavePendingFor(parentKey: string): boolean {
 }
 
 export function beginSave(id: string, title: string, text: string, label: string, pageKey: string | null): void {
-  set({
-    current: { id, title, label, pageKey, background: false, parentKey: null, state: 'saving', text, apply: null, error: null, reopen: null },
-  });
+  const current = snapshot.current;
+  // 裏で続けている画面が、続けてもう1回保存を始めた（2回に分けて確定するフォームなど）。裏のまま続ける
+  // （前に出ていることにすると、終わったときに戻った先の画面に知らせず、上の知らせも「保存しています」のまま残る）
+  const keep = current?.id === id && current.background;
+  const next: SaveStatus = {
+    id,
+    title,
+    label,
+    pageKey,
+    background: keep,
+    parentKey: keep ? current.parentKey : null,
+    state: 'saving',
+    text,
+    apply: null,
+    error: null,
+    reopen: null,
+  };
+  set(keep ? { current: next, banner: next } : { current: next });
 }
 
 /**
  * 同じページ（同じ日の勤怠実績登録など）を、ほかの画面が裏で保存しているか（id の画面のは数えない）。
- * そのあいだに開いた画面は、保存する前の中身を見せているので、終わってから開き直す（src/components/EzcraftWebView.tsx）
+ * そのあいだに開いた画面は、保存する前の中身を見せているので、終わってから開き直す（src/components/EzcraftWebView/EzcraftWebView.tsx）
  */
 export function savingSamePage(pageKey: string | null, id: string): boolean {
   const current = snapshot.current;

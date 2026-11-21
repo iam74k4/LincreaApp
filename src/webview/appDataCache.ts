@@ -8,6 +8,8 @@
 // App.data には「今日」の日付も入っているので、日が変わったら、また古くなりすぎたら使わない。
 import { useSyncExternalStore } from 'react';
 
+import { runappOf } from './origin';
+
 const MAX_AGE_MS = 60 * 60 * 1000; // 1時間
 
 type Entry = { appData: string; savedAt: number; day: string };
@@ -27,10 +29,10 @@ export function appDataKey(app: string, form: string): string {
   return `${app}/${form}`;
 }
 
-/** /runapp/<アプリ>/<画面>/ の URL から、控えの名前を作る（runapp でなければ null） */
+/** /runapp/<アプリ>/<画面>/ の URL から、控えの名前を作る（runapp でない・読めない URL は null。src/webview/origin.ts） */
 export function appDataKeyOfUrl(url: string): string | null {
-  const match = /\/runapp\/([^/?#]+)\/([^/?#]+)/.exec(url);
-  return match ? appDataKey(decodeURIComponent(match[1]), decodeURIComponent(match[2])) : null;
+  const target = runappOf(url);
+  return target ? appDataKey(target.app, target.form) : null;
 }
 
 export function rememberAppData(key: string, appData: string): void {

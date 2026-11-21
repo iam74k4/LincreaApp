@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Health Connect から歩数を読むのに要るもの（アプリの AndroidManifest.xml に合わさる）。
+     Health Connect は Android 9 以上。それより前の端末では、部品は「使えない」と答える（MyAppHealthModule.isAvailable） -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:tools="http://schemas.android.com/tools">
+
+  <!-- Health Connect のクライアントは、アプリより新しい Android の版を求める。古い端末では使わない（実行時に確かめる）ので、合わせる -->
+  <uses-sdk tools:overrideLibrary="androidx.health.connect.client" />
+
+  <!-- 歩数を読むだけ（書かない） -->
+  <uses-permission android:name="android.permission.health.READ_STEPS" />
+
+  <!-- Health Connect（Android 13 以下はアプリ）が入っているかを確かめる -->
+  <queries>
+    <package android:name="com.google.android.apps.healthdata" />
+  </queries>
+
+  <application>
+    <!-- 権限の画面の「このアプリのプライバシーポリシー」から開く、歩数の使い道の説明（Android 13 以下） -->
+    <activity
+      android:name=".HealthPermissionsRationaleActivity"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+      </intent-filter>
+    </activity>
+
+    <!-- 同じ説明（Android 14 以上。設定の「権限の使い道」から開く） -->
+    <activity-alias
+      android:name=".ViewPermissionUsageActivity"
+      android:exported="true"
+      android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+      android:targetActivity=".HealthPermissionsRationaleActivity">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+        <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+      </intent-filter>
+    </activity-alias>
+  </application>
+</manifest>

@@ -2,17 +2,16 @@
 // 近道の下準備のページが読んで控えた定義は読み直さない・1つ読めなくても次は読む・止められたらやめる。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { landedOnLogin, serverFetch } from '../api/http';
+import { landedOnLogin } from '../api/ezcraft/server';
+import { serverFetch } from '../api/http';
 import { forgetAllInitApps, prefetchInitApps, recallInitApp, rememberInitApp, stopPrefetchInitApps } from '../webview/initAppCache';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
-jest.mock('../api/http', () => ({
-  serverFetch: jest.fn(),
-  landedOnLogin: jest.fn(() => false),
-}));
+jest.mock('../api/http', () => ({ ...jest.requireActual('../api/http'), serverFetch: jest.fn() }));
+jest.mock('../api/ezcraft/server', () => ({ landedOnLogin: jest.fn(() => false) }));
 const mockedFetch = serverFetch as jest.MockedFunction<typeof serverFetch>;
 const mockedLanded = landedOnLogin as jest.MockedFunction<typeof landedOnLogin>;
 

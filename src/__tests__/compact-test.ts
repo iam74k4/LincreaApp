@@ -1,5 +1,5 @@
-// ページに入れるスクリプトと CSS を小さくする（src/webview/compact.ts）。動きを変えずに、コメントと空白だけを除くこと。
-import { compactCss, compactJs } from '../webview/compact';
+// ページに入れるスクリプトと CSS を小さくする（src/webview/page/compact.ts）。動きを変えずに、コメントと空白だけを除くこと。
+import { compactCss, compactJs } from '../webview/page/compact';
 
 test('JavaScript: まるごとコメントの行・行頭の空白・空の行を除く', () => {
   const js = `

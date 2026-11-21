@@ -1,4 +1,4 @@
-import { describeSaveFailure } from '../webview/saveErrors';
+import { describeSaveFailure, SAVE_OUTCOME_UNKNOWN } from '../webview/saveErrors';
 
 describe('describeSaveFailure', () => {
   it('turns a lock wait timeout into words people can act on', () => {
@@ -26,5 +26,14 @@ describe('describeSaveFailure', () => {
     const long = describeSaveFailure('あ'.repeat(120)).reason;
     expect(long).toHaveLength(81);
     expect(long.endsWith('…')).toBe(true);
+  });
+});
+
+describe('結果が分からないまま終わった保存（返事が止まった・読み直された）', () => {
+  it('「取り消されました」とは言わず、登録されたかを確かめてもらう（入力し直すと、申請が2回になりうる）', () => {
+    const failure = describeSaveFailure(SAVE_OUTCOME_UNKNOWN);
+    expect(failure.reason).toMatch(/分かりませんでした/);
+    expect(failure.reason).not.toMatch(/取り消され/);
+    expect(failure.next).toMatch(/確かめ/);
   });
 });

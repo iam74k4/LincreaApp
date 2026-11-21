@@ -2,7 +2,7 @@
 // ここは「ログインできたら session に入れる」ことと、ヘルプの開き方だけを決める。
 import { Alert, Linking } from 'react-native';
 
-import { SERVER_URL } from '../config';
+import { SERVER_URL } from '../core/config';
 import { LoginScreen } from '../screens/LoginScreen';
 import { useSession } from '../session/SessionContext';
 
@@ -18,14 +18,14 @@ export default function LoginRoute() {
   return (
     <LoginScreen
       onLoggedIn={signIn} // session が入ると、_layout.tsx の守り役がマイアプリへ切り替える
-      // パスワードの再設定は、このアプリではまだできない。何が起きるかを先に伝えてから、Safari で Web 版を開く
+      // パスワードの再設定は、このアプリではまだできない。何が起きるかを先に伝えてから、ブラウザで Web 版を開く
       onForgotPassword={() =>
         Alert.alert(
           'パスワードの再設定',
-          'Safari で Web 版のログイン画面を開きます。「パスワードをお忘れの方」から再設定して、新しいパスワードでこのアプリにログインしてください。',
+          'ブラウザで Web 版のログイン画面を開きます。「パスワードをお忘れの方」から再設定して、新しいパスワードでこのアプリにログインしてください。',
           [
             { text: 'キャンセル', style: 'cancel' },
-            { text: 'Safari で開く', onPress: openWebLogin },
+            { text: 'ブラウザで開く', onPress: openWebLogin },
           ],
         )
       }

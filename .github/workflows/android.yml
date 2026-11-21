@@ -1,0 +1,164 @@
+# Android の版を作る（docs/android-release.md）。Google Play にはまだ送らない
+# （Google Play は、最初の1回を Play Console に手で入れる決まり。送るのを自動にするのは、そのあと）。
+#   android フォルダを作る（expo prebuild）→ Gradle で作る。GitHub の ubuntu の実行環境で、全部 GitHub の中で行う（EAS は使わない）。
+# 手順書・テスト・道具だけの変更では作らない（下の paths-ignore。iOS の testflight.yml と同じ）。
+#
+# ジョブは2つ:
+#   build   … プルリクエストで、作れるかだけを確かめる（Expo のひな形のデバッグ用の鍵で署名。Secrets を使わない）
+#   release … 手で始める（Actions のページの「Run workflow」で develop か hotfix/… を選ぶ）。アップロード鍵で署名した .aab を作り、
+#             Actions の成果物（Artifacts）に 14 日残す。それを Play Console に入れる。GitHub の Environment「google-play」の Secrets を使う
+#
+# 要るもの（GitHub の Settings → Environments →「google-play」の Environment secrets。作り方は docs/android-release.md）:
+#   ANDROID_UPLOAD_KEYSTORE_BASE64   アップロード鍵のファイル（.keystore）を base64 にしたもの
+#   ANDROID_UPLOAD_KEYSTORE_PASSWORD 鍵のファイルのパスワード
+#   ANDROID_UPLOAD_KEY_ALIAS         鍵の名前
+#   ANDROID_UPLOAD_KEY_PASSWORD      鍵のパスワード
+# あるとよいもの（Settings → Secrets and variables → Actions → Variables）:
+#   ANDROID_UPLOAD_CERT_SHA256       アップロード鍵の証明書の SHA-256（ちがう鍵で署名したら止める）
+name: Android の版を作る
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'src/__tests__/**'
+      - 'scripts/**'
+      - '.claude/**'
+      - 'LICENSE'
+      - '.gitignore'
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: アップロード鍵で署名した .aab を作る（develop・hotfix/… のときだけ。外すと、作れるかだけを確かめる）
+        type: boolean
+        default: true
+
+# プルリクエストは、新しく push したら前の確かめをやめる
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: >-
+      !(github.event_name == 'workflow_dispatch' && inputs.sign
+        && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/hotfix/')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/prepare-android
+      # 確かめるだけなので、いまの Android の端末の多くが使う arm64-v8a だけを作る（全部より速い）
+      - name: 作れるかだけを確かめる（デバッグ用の鍵）
+        working-directory: android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+
+  release:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.sign
+      && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/hotfix/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # アップロード鍵は、この Environment にだけ置く（develop・hotfix/… 以外のブランチや、プルリクエストからは読めない）
+    environment: google-play
+    # 署名した版は1つずつ作る（versionCode は分の単位なので、同じ分に2つ作ると番号が重なる）
+    concurrency:
+      group: android-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+
+      # 古い実行のやり直し（Re-run）で、古いコードを、新しい versionCode の版として作らない（testflight.yml と同じ）
+      - name: いまのブランチの先頭か確かめる
+        run: |
+          git fetch --depth=1 origin "$GITHUB_REF"
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]; then
+            echo "::error::このコミット（${GITHUB_SHA::7}）は、もう ${GITHUB_REF_NAME} の先頭ではありません。Actions の「Run workflow」で ${GITHUB_REF_NAME} を選んで、いまの先頭を作ってください"
+            exit 1
+          fi
+
+      - uses: ./.github/actions/prepare-android
+        id: prepare
+        with:
+          checks: 'true'
+
+      # 4つのうち1つでも欠けると、plugins/withAndroidReleaseSigning.js はデバッグ用の鍵で署名してしまう。ここで止める
+      - name: アップロード鍵を置く
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Environment「google-play」の Secrets（ANDROID_UPLOAD_…）が足りません（docs/android-release.md）"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/upload-key"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload-key/upload.keystore"
+
+      # JavaScript のソースマップも、React Native の Gradle の手順が書き出す（下で Actions に残す）
+      - name: 作る（アップロード鍵で署名した .aab）
+        working-directory: android
+        env:
+          ANDROID_UPLOAD_KEYSTORE: ${{ runner.temp }}/upload-key/upload.keystore
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease --no-daemon
+
+      # デバッグ用の鍵や、ちがう鍵で署名されていたら、Google Play は受け付けない。成果物に残す前に止める。
+      # リポジトリの変数 ANDROID_UPLOAD_CERT_SHA256（アップロード鍵の証明書の SHA-256。docs/android-release.md）があれば、それと比べる
+      - name: アップロード鍵で署名されたか確かめる
+        env:
+          EXPECTED_SHA256: ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}
+        run: |
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+          CERT=$(keytool -printcert -jarfile "$AAB")
+          echo "$CERT" | grep -E 'Owner|所有者|SHA256' || true
+          ACTUAL=$(echo "$CERT" | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | head -1 | tr -d ': ' | tr 'a-f' 'A-F')
+          if [ -z "$ACTUAL" ]; then
+            echo "::error::.aab に署名がありません"
+            exit 1
+          fi
+          if echo "$CERT" | grep -q 'CN=Android Debug'; then
+            echo "::error::.aab がデバッグ用の鍵で署名されています（plugins/withAndroidReleaseSigning.js に環境変数が届いていない）"
+            exit 1
+          fi
+          EXPECTED=$(echo "$EXPECTED_SHA256" | tr -d ': ' | tr 'a-f' 'A-F')
+          if [ -z "$EXPECTED" ]; then
+            echo "::warning::リポジトリの変数 ANDROID_UPLOAD_CERT_SHA256 がないので、どの鍵で署名したかは比べていません（docs/android-release.md）"
+          elif [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::.aab の署名の鍵が、ANDROID_UPLOAD_CERT_SHA256 とちがいます（Secrets の鍵を確かめてください）"
+            exit 1
+          fi
+
+      # リポジトリが Public なので、成果物は GitHub にログインしただれでも落とせる（中身はこのリポジトリのコードから作れるもので、
+      # 鍵は入っていない。署名があるだけ）。Play Console に入れたら要らないので、14 日で消す
+      - name: .aab を残す
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ steps.prepare.outputs.version-code }}-${{ github.sha }}
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 14
+          if-no-files-found: error
+
+      # 落ちたときの場所を、あとで読めるように（JavaScript のソースマップと、R8 で縮めたときの Java の名前の対応表）
+      - name: ソースマップを残す
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-sourcemap-${{ steps.prepare.outputs.version-code }}-${{ github.sha }}
+          path: |
+            android/app/build/generated/sourcemaps/react/release/
+            android/app/build/outputs/mapping/release/
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: アップロード鍵を消す
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/upload-key"

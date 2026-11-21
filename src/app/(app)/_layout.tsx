@@ -3,18 +3,18 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, Stack, usePathname } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 
-import { REMINDER_SHORTCUT, useAttendanceReminders } from '../../attendanceReminder';
+import { REMINDER_SHORTCUT, useAttendanceReminders } from '../../attendance/attendanceReminder';
 import { BackgroundSaveBanner } from '../../components/BackgroundSaveBanner';
-import { openShortcut, stopApplyQueue } from '../../openShortcut';
-import { SHORTCUTS } from '../../shortcuts';
-import { SavePark, SaveParkProvider } from '../../webview/savePark';
-import { useColors } from '../../theme';
+import { Icon } from '../../platform/icons';
+import { openShortcut, stopApplyQueue } from '../../shortcuts/openShortcut';
+import { SHORTCUTS } from '../../shortcuts/shortcuts';
+import { SavePark, SaveParkProvider } from '../../components/SavePark';
+import { useColors } from '../../core/theme';
 
 export default function AppLayout() {
   const c = useColors();
-  // 勤怠登録の通知（src/attendanceReminder.ts）: アプリを開くたびに予約し直し、通知を押して開いたら勤務表を開く
+  // 勤怠登録の通知（src/attendance/attendanceReminder.ts）: アプリを開くたびに予約し直し、通知を押して開いたら勤務表を開く
   // （いま勤務表を見ているなら、もう1枚は重ねない）
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
@@ -33,7 +33,7 @@ export default function AppLayout() {
   return (
     <SaveParkProvider>
       <View style={styles.fill}>
-        {/* 保存中のページの置き場。画面の組の後ろに置いて、ほかの画面を見ているあいだも保存を続けさせる（src/webview/savePark.tsx） */}
+        {/* 保存中のページの置き場。画面の組の後ろに置いて、ほかの画面を見ているあいだも保存を続けさせる（src/components/SavePark.tsx） */}
         <SavePark />
         <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
           {/* 大きな見出し。下に引っぱると縮んで、上のバーに収まる（iOS 標準の動き）。
@@ -45,7 +45,7 @@ export default function AppLayout() {
           {/* ページから受け取った PDF（左上で戻る・右上で保存・共有） */}
           <Stack.Screen name="file" options={webScreen} />
           {/* その場で開く申請などは、シートで重ねる（iOS 26 ではガラスの縁のシート）。左上の × で閉じる
-              （まとめて申請の途中なら、残りもやめる。src/openShortcut.ts） */}
+              （まとめて申請の途中なら、残りもやめる。src/shortcuts/openShortcut.ts） */}
           <Stack.Screen
             name="sheet/[app]/[form]"
             options={{
@@ -61,7 +61,7 @@ export default function AppLayout() {
                   accessibilityLabel="閉じる"
                   hitSlop={8}
                 >
-                  <SymbolView name={{ ios: 'xmark', android: 'close', web: 'close' }} size={17} weight="semibold" tintColor={c.text} />
+                  <Icon name="close" size={17} weight="semibold" tintColor={c.text} />
                 </Pressable>
               ),
             }}

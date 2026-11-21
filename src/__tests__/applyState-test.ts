@@ -1,8 +1,8 @@
-// 勤務表の日の申請の札が、申請中か承認済などか（src/webview/timsSkin.ts の APPLY_STATE_JS）。
+// 勤務表の日の申請の札が、申請中か承認済などか（src/webview/page/timsSkin.ts の APPLY_STATE_JS）。
 // EZCraft は札の地の色だけで分けている（残業: 申請中 #8ecaa6・承認済 #1caa8c、休暇: #ff9999・#ff3232、遅刻早退: #969696・#323232）
 import { JSDOM } from 'jsdom';
 
-import { APPLY_STATE_JS } from '../webview/timsSkin';
+import { APPLY_STATE_JS } from '../webview/page/timsSkin';
 
 const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' });
 const w = dom.window as unknown as { eval: (code: string) => unknown; document: Document };

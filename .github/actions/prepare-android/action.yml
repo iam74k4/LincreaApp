@@ -1,0 +1,78 @@
+# Android の版を作る前の、共通の手順（.github/workflows/android.yml の2つのジョブで使う）。
+#   node_modules →（release のときだけ）チェック → versionCode とコミットを app.json に入れる
+#   → Java → android フォルダを作る（expo prebuild）
+# ここでは Secrets を使わない（使うのは、署名するジョブの鍵だけ）。
+name: Android の版を作る準備
+description: android フォルダと Java を用意する
+
+inputs:
+  checks:
+    description: 型・lint・テスト・ページのスクリプトを確かめる（プルリクエストでは「チェック」check.yml が確かめるので、送る版を作るときだけ）
+    required: false
+    default: 'false'
+
+outputs:
+  version-code:
+    description: 決めた versionCode（1970 年からの分）
+    value: ${{ steps.number.outputs.version-code }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 24
+        cache: npm
+
+    # node_modules の控え（iOS の prepare-ios と同じ鍵。package-lock.json と patches/ が同じなら、npm ci をしない）
+    - name: node_modules の控え
+      id: node-modules
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: node-modules-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'patches/**') }}
+
+    - if: steps.node-modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    - if: inputs.checks == 'true'
+      shell: bash
+      run: npx tsc --noEmit
+    - if: inputs.checks == 'true'
+      shell: bash
+      run: npx expo lint
+    - if: inputs.checks == 'true'
+      shell: bash
+      run: npm test -- --ci
+    - if: inputs.checks == 'true'
+      shell: bash
+      run: npm run check:pages
+
+    # versionCode は、作った時の「1970 年からの分」（例 29412345）。いつも前より大きくなり、Google Play の上限（2,100,000,000）にも届かない。
+    # iOS のビルド番号の形（261121.1830）を整数にすると上限を超えるので、使わない。
+    # app.json の android.versionCode に入れてから android フォルダを作る。作ったコミットも extra.gitSha に入れる
+    # （どちらも、アプリの下に出る版の名前に使う。src/core/appVersion.ts）
+    - name: versionCode とコミットを決める
+      id: number
+      shell: bash
+      run: |
+        VERSION_CODE=$(( $(date +%s) / 60 ))
+        node -e 'const fs = require("fs"); const a = JSON.parse(fs.readFileSync("app.json", "utf8")); a.expo.android.versionCode = Number(process.argv[1]); a.expo.extra = { ...a.expo.extra, gitSha: process.argv[2] }; fs.writeFileSync("app.json", JSON.stringify(a, null, 2) + "\n");' "$VERSION_CODE" "$GITHUB_SHA"
+        echo "version-code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+        echo "versionCode: $VERSION_CODE（コミット ${GITHUB_SHA::7}）"
+
+    # React Native 0.88 の Android は JDK 17 で作る。Gradle の控え（~/.gradle の部品）も残す
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: 17
+        cache: gradle
+        cache-dependency-path: |
+          package-lock.json
+          patches/**
+          modules/**/build.gradle
+
+    - name: android フォルダを作る
+      shell: bash
+      run: npx expo prebuild --platform android --no-install

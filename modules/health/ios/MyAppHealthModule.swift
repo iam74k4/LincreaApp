@@ -9,6 +9,9 @@ public class MyAppHealthModule: Module {
   public func definition() -> ModuleDefinition {
     Name("MyAppHealth")
 
+    // 歩数を読む先の呼び名（ページの知らせに出す。Android の部品は「ヘルスコネクト」）
+    Constant("sourceName") { "ヘルスケア" }
+
     // この端末でヘルスケアが使えるか（ヘルスケアのない端末では false）
     Function("isAvailable") { () -> Bool in
       HKHealthStore.isHealthDataAvailable()

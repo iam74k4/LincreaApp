@@ -1,5 +1,5 @@
-// よく使う理由（src/webview/timsSkin.ts の REASONS_JS）。ページの中で動く JavaScript を、そのまま動かす。
-import { REASONS_JS } from '../webview/timsSkin';
+// よく使う理由（src/webview/page/timsSkin.ts の REASONS_JS）。ページの中で動く JavaScript を、そのまま動かす。
+import { REASONS_JS } from '../webview/page/timsSkin';
 
 type Reasons = {
   rememberReason: (kind: string, text: string) => void;

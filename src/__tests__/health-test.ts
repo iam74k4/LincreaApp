@@ -1,18 +1,18 @@
-// ヘルスケアから歩数を読む部品の入口（src/health.ts）。
+// 端末の歩数の記録（ヘルスケア・ヘルスコネクト）から歩数を読む部品の入口（src/platform/health.ts）。
 import { requireOptionalNativeModule } from 'expo';
 
 jest.mock('expo', () => ({ requireOptionalNativeModule: jest.fn() }));
 
-type Native = { isAvailable: jest.Mock; requestStepsAccess: jest.Mock; stepsOnDay: jest.Mock };
+type Native = { sourceName?: string; isAvailable: jest.Mock; requestStepsAccess: jest.Mock; stepsOnDay: jest.Mock };
 
 /** 部品（ネイティブ）の有無を決めてから、まっさらに読み込む */
-function load(native: Native | null): typeof import('../health') {
+function load(native: Native | null): typeof import('../platform/health') {
   (requireOptionalNativeModule as jest.Mock).mockReturnValue(native);
-  let mod!: typeof import('../health');
+  let mod!: typeof import('../platform/health');
   jest.isolateModules(() => {
     // まっさらな読み込みは require でしかできない（テストの中の import() は使えない）
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    mod = require('../health');
+    mod = require('../platform/health');
   });
   return mod;
 }
@@ -32,6 +32,12 @@ test('部品のない Expo Go では、使えない（歩数は手で打つ）',
   const health = load(null);
   expect(health.healthAvailable()).toBe(false);
   expect(await health.stepsOn('2026-11-17')).toBeNull();
+});
+
+test('呼び名は部品が名乗る（名乗らない・部品がないときはヘルスケア）', () => {
+  expect(load(null).healthSourceName()).toBe('ヘルスケア');
+  expect(load(native()).healthSourceName()).toBe('ヘルスケア');
+  expect(load({ ...native(), sourceName: 'ヘルスコネクト' } ).healthSourceName()).toBe('ヘルスコネクト');
 });
 
 test('その日の歩数を返す', async () => {

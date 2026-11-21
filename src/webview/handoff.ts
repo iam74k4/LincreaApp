@@ -30,3 +30,8 @@ export function takeHandoff(id: string | undefined): Handoff | null {
   if (!id) return null;
   return store.get(id) ?? null;
 }
+
+/** ログアウトしたとき: すべて捨てる（ログインした人の情報が入っている） */
+export function forgetAllHandoffs(): void {
+  store.clear();
+}

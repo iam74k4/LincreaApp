@@ -1,8 +1,8 @@
-// ページの中のダイアログの見張り（src/webview/bridge.ts の BRIDGE_JS）。見えているあいだだけ、0.3 秒ごとに見る。
+// ページの中のダイアログの見張り（src/webview/page/bridgeJs.ts の BRIDGE_JS）。見えているあいだだけ、0.3 秒ごとに見る。
 // 重ねた画面の下に隠れたページでは止め、見えたら戻す（隠れたページが、1秒に3回起きて電池を使わないように）
 import { JSDOM } from 'jsdom';
 
-import { BRIDGE_JS } from '../webview/bridge';
+import { BRIDGE_JS } from '../webview/page/bridgeJs';
 
 function page(hiddenAtStart: boolean) {
   const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://example.test/runapp/L_Tims/frmAttendance/', runScripts: 'outside-only' });

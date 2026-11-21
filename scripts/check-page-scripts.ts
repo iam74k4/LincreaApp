@@ -10,11 +10,11 @@
 //   2. \ が落ちた形（/(d{4})/ や /^s*/ など）が残っていないこと
 //   3. アプリごとの見た目の直しを、空のページ（jsdom）で動かしても、最初の一歩でエラーにならないこと
 //   4. スクリプトの中の CSS の { と } の数が合っていること（1つ欠けると、そのあとの決まりがすべて効かなくなる）
-//   5. 複数行にまたがる文字（` や行末の \）がないこと（小さくするとき、行頭の空白を消すため。src/webview/compact.ts）
+//   5. 複数行にまたがる文字（` や行末の \）がないこと（小さくするとき、行頭の空白を消すため。src/webview/page/compact.ts）
 import { JSDOM, VirtualConsole } from 'jsdom';
 
-import { APP_SKINS } from '../src/webview/appStyles';
-import { bootJs, buildSkinScript, SHOW_PAGE_JS } from '../src/webview/ezcraftSkin';
+import { APP_SKINS } from '../src/webview/page/appStyles';
+import { bootJs, buildSkinScript, SHOW_PAGE_JS } from '../src/webview/page/ezcraftSkin';
 import {
   autoClickJs,
   BRIDGE_JS,
@@ -28,8 +28,8 @@ import {
   safeAreaJs,
   SAVE_WATCH_JS,
   stepsReplyJs,
-} from '../src/webview/bridge';
-import { initAppJs, refModeJs } from '../src/webview/initApp';
+} from '../src/webview/page/bridgeJs';
+import { initAppJs, refModeJs } from '../src/webview/page/initApp';
 
 // \ が落ちた正規表現によくある形（前の文字が \ でない d{ や s* など）
 const LOST_ESCAPE = /[^\\a-zA-Z](?:d\{\d|d\+\)|s\*\[|d日)|\|d\+\)|\^d\{|\^s\*|\(d\{|[^\\]s\*\$|[^\\]s\+\/|\[s\]/g;
@@ -81,7 +81,7 @@ for (const [name, js] of scripts) {
   }
   const lost = js.match(LOST_ESCAPE);
   if (lost) ng(name, `\\ が落ちた正規表現らしいもの: ${lost.slice(0, 5).join(' / ')}`);
-  // 小さくする（src/webview/compact.ts）ときに、行頭の空白とコメントの行を消すので、複数行にまたがる文字を使わない
+  // 小さくする（src/webview/page/compact.ts）ときに、行頭の空白とコメントの行を消すので、複数行にまたがる文字を使わない
   const multiline = js.split('\n').find((line) => line.includes('`') || /\\$/.test(line));
   if (multiline) ng(name, `複数行にまたがる文字（\` や行末の \\）がある: ${multiline.trim().slice(0, 80)}`);
 }

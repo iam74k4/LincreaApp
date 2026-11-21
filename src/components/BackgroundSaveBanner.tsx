@@ -7,12 +7,12 @@
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { openApplication } from '../openShortcut';
-import { SHORTCUTS } from '../shortcuts';
-import { useColors } from '../theme';
+import { Icon } from '../platform/icons';
+import { openApplication } from '../shortcuts/openShortcut';
+import { SHORTCUTS } from '../shortcuts/shortcuts';
+import { useColors } from '../core/theme';
 import { dismissBanner, useSaves } from '../webview/backgroundSaves';
 import { describeSaveFailure } from '../webview/saveErrors';
 
@@ -32,12 +32,12 @@ export function BackgroundSaveBanner() {
     return (
       <Shell card label={`${title}。${failure.reason}${failure.next}`}>
         <View style={styles.head}>
-          <SymbolView name={{ ios: 'exclamationmark.circle.fill', android: 'error', web: 'error' }} size={20} tintColor={c.danger} />
+          <Icon name="error-filled" size={20} tintColor={c.danger} />
           <Text style={[styles.text, styles.grow, { color: c.text }]} numberOfLines={2}>
             {title}
           </Text>
           <Pressable onPress={dismissBanner} accessibilityRole="button" accessibilityLabel="閉じる" hitSlop={12} style={styles.close}>
-            <SymbolView name={{ ios: 'xmark', android: 'close', web: 'close' }} size={13} weight="semibold" tintColor={c.textSecondary} />
+            <Icon name="close" size={13} weight="semibold" tintColor={c.textSecondary} />
           </Pressable>
         </View>
         <View style={styles.body}>
@@ -67,7 +67,7 @@ export function BackgroundSaveBanner() {
       {banner.state === 'saving' ? (
         <ActivityIndicator size="small" color={c.textSecondary} />
       ) : (
-        <SymbolView name={{ ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' }} size={20} tintColor={c.available.text} />
+        <Icon name="check-filled" size={20} tintColor={c.available.text} />
       )}
       <Text style={[styles.text, styles.shrink, { color: c.text }]} numberOfLines={2}>
         {text}

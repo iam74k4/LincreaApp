@@ -1,9 +1,9 @@
 // ログインした人の「参照モード」（/user/getRefMode/）の返事の控え（src/webview/refModeCache.ts）と、
-// ページの中で控えで答えるスクリプト（src/webview/initApp.ts の refModeJs）。スクリプトは jsdom の中で、偽の通信を相手に動かす。
+// ページの中で控えで答えるスクリプト（src/webview/page/initApp.ts の refModeJs）。スクリプトは jsdom の中で、偽の通信を相手に動かす。
 import { JSDOM } from 'jsdom';
 
 import { parseBridgeMessage } from '../webview/bridge';
-import { refModeJs } from '../webview/initApp';
+import { refModeJs } from '../webview/page/initApp';
 import { forgetRefModes, recallRefModes, rememberRefMode, type RefModeReply } from '../webview/refModeCache';
 
 const URL_REF = '/user/getRefMode/';
@@ -115,20 +115,28 @@ test('中身が違う問い合わせ・ほかの通信・中身が文字でな�
 });
 
 test('アプリの控え: 30 分で捨てる・ログイン（ログアウト）で捨てる', () => {
-  rememberRefMode(KEY, REPLY, 0);
-  expect(recallRefModes(29 * 60_000)).toEqual({ [KEY]: REPLY });
-  expect(recallRefModes(31 * 60_000)).toEqual({});
-  rememberRefMode(KEY, REPLY, 0);
+  rememberRefMode('L_Tims', KEY, REPLY, 0);
+  expect(recallRefModes('L_Tims', 29 * 60_000)).toEqual({ [KEY]: REPLY });
+  expect(recallRefModes('L_Tims', 31 * 60_000)).toEqual({});
+  rememberRefMode('L_Tims', KEY, REPLY, 0);
   forgetRefModes();
-  expect(recallRefModes(1)).toEqual({});
+  expect(recallRefModes('L_Tims', 1)).toEqual({});
 });
 
-test('アプリの控え: 10 個を超えたら、古いものから捨てる', () => {
-  for (let i = 0; i < 12; i++) rememberRefMode(`POST n=${i}`, REPLY, i);
-  const keys = Object.keys(recallRefModes(100));
-  expect(keys).toHaveLength(10);
+test('アプリの控え: 控えたアプリの画面にだけ渡す（ほかのアプリのページが控えさせた答えを、給与明細などに渡さない）', () => {
+  rememberRefMode('X_Other', KEY, { text: '{"refMode":"偽物"}', type: 'application/json' }, 0);
+  expect(recallRefModes('L_Payslip', 1)).toEqual({});
+  expect(recallRefModes('X_Other', 1)).toEqual({ [KEY]: { text: '{"refMode":"偽物"}', type: 'application/json' } });
+  rememberRefMode('L_Payslip', KEY, REPLY, 0);
+  expect(recallRefModes('L_Payslip', 1)).toEqual({ [KEY]: REPLY });
+});
+
+test('アプリの控え: 20 個を超えたら、古いものから捨てる', () => {
+  for (let i = 0; i < 22; i++) rememberRefMode('L_Tims', `POST n=${i}`, REPLY, i);
+  const keys = Object.keys(recallRefModes('L_Tims', 100));
+  expect(keys).toHaveLength(20);
   expect(keys).not.toContain('POST n=0');
-  expect(keys).toContain('POST n=11');
+  expect(keys).toContain('POST n=21');
 });
 
 test('ページからの知らせは、大きすぎるものを受け付けない', () => {
