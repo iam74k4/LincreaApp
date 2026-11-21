@@ -98,3 +98,19 @@ test('止めたあとは、また始められる', async () => {
   await prefetchInitApps();
   expect(recallInitApp(MENU)?.id).toBe('top1');
 });
+
+test('控えておく画面は6つまで。超えたら長く使っていないものから捨てる', () => {
+  for (let i = 0; i < 8; i++) rememberInitApp({ app: 'L_Tims', form: `frm${i}` }, `id${i}`, DEFINITION);
+  expect(recallInitApp({ app: 'L_Tims', form: 'frm0' })).toBeNull();
+  expect(recallInitApp({ app: 'L_Tims', form: 'frm1' })).toBeNull();
+  expect(recallInitApp({ app: 'L_Tims', form: 'frm2' })?.id).toBe('id2');
+  expect(recallInitApp({ app: 'L_Tims', form: 'frm7' })?.id).toBe('id7');
+});
+
+test('入れ直した画面は、新しく使ったものとして残る', () => {
+  for (let i = 0; i < 6; i++) rememberInitApp({ app: 'L_Tims', form: `frm${i}` }, `id${i}`, DEFINITION);
+  rememberInitApp({ app: 'L_Tims', form: 'frm0' }, 'id0b', DEFINITION); // いちばん古いものを使い直す
+  rememberInitApp({ app: 'L_Tims', form: 'frm6' }, 'id6', DEFINITION);
+  expect(recallInitApp({ app: 'L_Tims', form: 'frm0' })?.id).toBe('id0b');
+  expect(recallInitApp({ app: 'L_Tims', form: 'frm1' })).toBeNull();
+});

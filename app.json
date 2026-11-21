@@ -6,15 +6,10 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/0b7b8a00-dbbd-41ce-b7ac-11bbedbb0c26"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.iam74k4.LincreaApp",
+      "appleTeamId": "NL9ZXK2SGR",
       "config": {
         "usesNonExemptEncryption": false
       },

@@ -76,8 +76,6 @@ import {
   updateSave,
   type PendingApply,
 } from '../webview/backgroundSaves';
-import { Directory, File, Paths } from 'expo-file-system';
-
 import { clockOf } from '../clock';
 import { describeNet, describeSave, loadSaveSizes, rememberSaveSize, saveKey, saveSizeOf, savingText, type SaveSize } from '../webview/saveSizes';
 import { noteClosedByPage, noteWrite, takeChildResult, writeCount } from '../webview/writes';
@@ -129,19 +127,6 @@ const ERROR_WAIT_MS = 2000;
 const PARK_FALLBACK_MS = 1000;
 
 /** 保存（登録・削除など）のいま（bridge の 9） */
-/** 開発中だけ: ページから受け取った画面の定義の写しを、端末のファイルに書く（シミュレーターなら Mac から読める） */
-function saveTraceFile(name: string, text: string) {
-  try {
-    const folder = new Directory(Paths.document, 'ezcraft-trace');
-    folder.create({ intermediates: true, idempotent: true });
-    const file = new File(folder, `${name}.js`);
-    file.write(text);
-    console.log(`[写し] ${file.uri}（${text.length} 文字）`);
-  } catch (e) {
-    console.log(`[写し] 書けなかった: ${String(e)}`);
-  }
-}
-
 type SaveRun = {
   /** 画面と押したボタン（src/webview/saveSizes.ts） */
   key: string;
@@ -179,7 +164,6 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // ページの中でダイアログが開いているか（bridge の 8）。開いているあいだは、‹ やスワイプで戻らず、まずダイアログを閉じる
   const [modalOpen, setModalOpen] = useState(false);
   const allowModalRemove = usePreventRemove(modalOpen, () => {
-    if (__DEV__) console.log(`[閉じる] ${clockOf(Date.now())} 戻る操作で、ページのダイアログを閉じる（usePreventRemove）`);
     webRef.current?.injectJavaScript('window.__myappCloseModal && window.__myappCloseModal(); true;');
   });
   // この画面の定義（initApp）の控え。あれば、ページは読まずにこれを使う（src/webview/initAppCache.ts）。
@@ -187,10 +171,6 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const [initApp, setInitApp] = useState(() => cachedInitApp(uri));
   // ログインした人の「参照モード」の返事の控え（src/webview/refModeCache.ts）。開いたとき（と読み直すとき）に決める
   const [refModes, setRefModes] = useState(() => recallRefModes());
-  // 開発中だけ: 申請の画面を控えから開いたときも、画面の定義の写しを書く（ページは読み直さないので、写しが届かないため）
-  useEffect(() => {
-    if (__DEV__ && initApp && /^frmApply_/.test(initApp.form)) saveTraceFile(`app-${initApp.form}`, initApp.text);
-  }, [initApp]);
   // ページが整ったか。整うまでは中身を隠し（bootJs）、読み込み中の印を出しておく（整える前の見た目が一瞬見えないように）
   const [shown, setShown] = useState(false);
   // ページを読み込めなかったときに出す文（通信できない・サーバーが答えない）。「もう一度読み込む」で消す
@@ -262,7 +242,6 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     // 保存の途中で、ページが確かめのダイアログ（承認者確認フォームなど）を開いて答えを待っている。
     // 戻る代わりにダイアログを閉じる（ページが保存を取り消す）。裏へ回すと、見えないダイアログが答えを待ったまま止まるため
     if (savingRef.current && modalOpen) {
-      if (__DEV__) console.log(`[閉じる] ${clockOf(Date.now())} 保存の途中の ‹ で、ページのダイアログを閉じる（leaveDuringSave）`);
       webRef.current?.injectJavaScript('window.__myappCloseModal && window.__myappCloseModal(); true;');
       return;
     }
@@ -529,6 +508,15 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     refreshData(label);
     return true;
   }, [refreshData, takeChildChanges]);
+  // 隠れているあいだに iOS に中身を捨てられたページは、前に出てきたときに読み直す（onContentProcessDidTerminate）
+  const reloadWhenShown = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!reloadWhenShown.current) return;
+      reloadWhenShown.current = false;
+      reloadPage();
+    }, [reloadPage]),
+  );
   // 重ねた画面が保存を裏で続けているあいだは、まだ新しくしない（保存が終わってから。下の onBackgroundSaveDone）
   useFocusEffect(
     useCallback(() => {
@@ -859,10 +847,6 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             }
             if (message?.type === 'net' && __DEV__) console.log(describeNet(message, heading || title || pageTitle || uri));
             if (message?.type === 'pageLog' && __DEV__) console.log(`[ページ:${message.level}] ${message.text}`);
-            if (message?.type === 'netBody' && __DEV__) saveTraceFile(message.name, message.text);
-            if (__DEV__ && (message?.type === 'saveStep' || message?.type === 'saveEnd' || message?.type === 'saveWait' || message?.type === 'saveError' || message?.type === 'modal')) {
-              console.log(`[保存:知らせ] ${clockOf(Date.now())} ${JSON.stringify(message)}`);
-            }
             // 保存の進み具合（bridge の 9）
             if (message?.type === 'saveStart') {
               if (__DEV__) console.log(`[保存] 始まった ${clockOf(Date.now())}「${lastWriteLabel.current}」`);
@@ -896,7 +880,6 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             if (message?.type === 'refMode') rememberRefMode(message.key, { text: message.text, type: message.contentType });
             if (message?.type === 'initApp') {
               rememberInitApp({ app: message.app, form: message.form }, message.id, message.text);
-              if (__DEV__ && /^frmApply_/.test(message.form)) saveTraceFile(`app-${message.form}`, message.text);
             }
             if (message?.type === 'attendanceDays') noteAttendanceDays(message.month, message.days);
             if (message?.type === 'applyQueue' && startApplyQueue(message.form, message.items)) {
@@ -947,8 +930,13 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             });
           }}
           // iPhone のメモリが足りなくなると、裏に回したページの中身を iOS が捨てることがある（そのままだと真っ白）。
-          // 捨てられたら、自動で読み直す（見ていた位置にも戻す）
-          onContentProcessDidTerminate={() => reloadPage()}
+          // 捨てられたら、読み直す（見ていた位置にも戻す）。重ねた画面の下に隠れているページは、前に出てきたときに読み直す
+          // （隠れたまますぐ読み直すと、メモリが足りないところへまた大きなページを読み込み、捨てる・読み直すを繰り返す）。
+          // 裏で保存を続けているページは、保存の結果を出すために、すぐ読み直す（onLoadStart が、保存の失敗として片づける）
+          onContentProcessDidTerminate={() => {
+            if (inBackground.current || navigation.isFocused()) reloadPage();
+            else reloadWhenShown.current = true;
+          }}
           onOpenWindow={(e) => openWindow(e.nativeEvent.targetUrl)} // target="_blank" のリンクなど
           onNavigationStateChange={(nav) => {
             // ログイン画面に飛ばされた = ログインが切れた

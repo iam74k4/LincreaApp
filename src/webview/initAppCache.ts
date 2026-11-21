@@ -30,6 +30,16 @@ type RecentForm = InitAppForm & { id: string; usedAt: number };
 // id は、ページが読む画面の定義の ID（EZCraft で画面を出し直すと変わる）。控えは、同じ ID の要求にだけ使う
 const store = new Map<string, { id: string; text: string; savedAt: number }>();
 const keyOf = ({ app, form }: InitAppForm) => `${app}/${form}`;
+/** 控えておく画面の数。1つ 1MB ほど（メモリでは 1〜2MB）なので、増やしすぎない（よく使う画面が残れば足りる） */
+const MAX_TEXTS = 6;
+
+/** 控えに入れる。古いもの（30 分）は捨て、数を超えたら長く使っていないものから捨てる */
+function put(key: string, entry: { id: string; text: string; savedAt: number }): void {
+  store.delete(key); // 入れ直して、新しく使ったものとして後ろに並べる
+  store.set(key, entry);
+  for (const [k, e] of store) if (entry.savedAt - e.savedAt > MAX_AGE_MS) store.delete(k);
+  while (store.size > MAX_TEXTS) store.delete(store.keys().next().value as string);
+}
 
 /** /runapp/<アプリ>/<画面>/ の URL から、どの画面かを取り出す（runapp でなければ null） */
 export function initAppFormOfUrl(url: string): InitAppForm | null {
@@ -56,7 +66,7 @@ export function recallInitApp(form: InitAppForm): { id: string; text: string } |
 /** ページが読んだ画面の定義を控え、次から裏で読む画面として覚えておく */
 export function rememberInitApp(form: InitAppForm, id: string, text: string): void {
   if (!looksLikeInitApp(text)) return;
-  store.set(keyOf(form), { id, text, savedAt: Date.now() });
+  put(keyOf(form), { id, text, savedAt: Date.now() });
   noteRecent({ ...form, id, usedAt: Date.now() });
 }
 
@@ -126,7 +136,7 @@ export function prefetchInitApps(): Promise<void> {
         if (!res.ok) continue; // この画面は読めなかった。次の画面へ
         const text = await res.text();
         if (controller.signal.aborted) return;
-        if (looksLikeInitApp(text)) store.set(keyOf(f), { id: f.id, text, savedAt: Date.now() });
+        if (looksLikeInitApp(text)) put(keyOf(f), { id: f.id, text, savedAt: Date.now() });
       } catch {
         return; // 通信できない・止めた。次の機会に
       }

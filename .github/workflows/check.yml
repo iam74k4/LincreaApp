@@ -1,10 +1,8 @@
-# 直しを入れるたびに、型・lint・テスト・ページに入れるスクリプトを確かめる（AGENTS.md の「終わる前に通すもの」と同じ）。
-# develop への push と、プルリクエストで動く。ここが通らない直しは、「直しを送る」でも送られない。
+# プルリクエストのたびに、型・lint・テスト・ページに入れるスクリプトを確かめる（AGENTS.md の「終わる前に通すもの」と同じ）。
+# develop に入ったあとは「TestFlight に出す」（testflight.yml）が同じチェックをしてから版を作るので、ここはプルリクエストだけ
 name: チェック
 
 on:
-  push:
-    branches: [develop]
   pull_request:
 
 concurrency:
