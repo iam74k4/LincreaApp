@@ -877,6 +877,17 @@ export const APP_SKINS: Record<string, AppSkin> = {
         pwPress(input);
       };
       window.__myappAppUpdate = function () {
+        // 明細の一覧の日付: 「2026年09月25日」の月・日の頭の 0 を取る（アプリのほかの所の「11月」とそろえる。2026-11-22）。
+        // 文字だけを変える（行を押したときに EZCraft が読む値は、表のデータで、この字ではない）
+        document.querySelectorAll('#LP_main_grd_details .TccGridBodyScroll td').forEach(function (td) {
+          if (!/年0|月0/.test(td.textContent || '')) return;
+          var walker = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+          var t;
+          while ((t = walker.nextNode())) {
+            var v = t.nodeValue.replace(/年0(\\d)月/g, '年$1月').replace(/月0(\\d)日/g, '月$1日');
+            if (v !== t.nodeValue) t.nodeValue = v;
+          }
+        });
         var body = document.getElementById('LP_password_blank1_body');
         var input = document.querySelector('#LP_password_txt_password input');
         // ダイアログを閉じたら、押した明細の行の色を戻す（選んだままに見えないように）
@@ -1177,7 +1188,7 @@ ${fillButton('LIT_main_btn_Execel')}
     hidden: ['LPJZ_Main_btnClose'],
     layout: `
 ${fullWidth('LPJZ_Main')}
-#LPJZ_Main { height: 220px !important; overflow: visible !important; }
+#LPJZ_Main { overflow: visible !important; }
 #LPJZ_Main > * { overflow: visible !important; }
 #LPJZ_Main_R1, #LPJZ_Main_R1_C1, #LPJZ_Main_blank1 { height: 140px !important; }
 #LPJZ_Main_tab_LPJZ { top: 0 !important; height: 140px !important; }
@@ -1229,6 +1240,23 @@ ${row('LPJZ_Main_lbl_kome', 90, 32)}
 #LPJZ_Main_att_file #att-clip { top: 6px !important; left: 8px !important; width: 28px !important; }
 #LPJZ_Main_att_file #att-info { top: 8px !important; left: 40px !important; width: calc(100% - 48px) !important; }
 #LPJZ_Main_att_file .tcc-label-text { font-size: 13px !important; }
+/* 取得したあと: ファイルの一覧（EZCraft の .att-body）を、見出しの下に1行ずつ並べ、欄をその高さに伸ばす。
+   EZCraft は一覧を高さ 0 の箱に重ねて置くので、40px の見出しの中に、見出しとファイルの名前が重なって出ていた（2026-11-22） */
+#LPJZ_Main { height: auto !important; min-height: 220px; }
+#LPJZ_Main *:has(#LPJZ_Main_att_file) { height: auto !important; overflow: visible !important; }
+#LPJZ_Main_att_file { position: relative !important; top: auto !important; margin: 8px 0 12px !important; height: auto !important; min-height: 40px; }
+/* EZCraft の作り（/js/cmn/module/tcc/component/tccAttachment.js の showAttItems。2026-11-22 に読んだ）:
+   見出し #att-header は上に絶対位置。一覧 div.att-body の中に、1件ずつ TccLabel（id が …_att-body-item_N）を、
+   style の top（N × 行の高さ）で重ねて置く。一覧を見出しの下に置き、行は上から順に流す */
+#LPJZ_Main_att_file > .att-body { position: static !important; height: auto !important; margin-top: 40px !important; }
+#LPJZ_Main_att_file > .att-body > [id*="_att-body-item_"] {
+  position: relative !important;
+  top: auto !important;
+  left: 0 !important;
+  width: 100% !important;
+  border-top: 1px solid var(--myapp-border) !important;
+}
+#LPJZ_Main_att_file > .att-body [id*="_att-fileName_"] .tcc-label-text { color: var(--myapp-accent) !important; text-decoration: none !important; }
 /* カードの下に、何ができる画面かの説明（年度は、会社のシステムがその年のものを出す。ほかの年度は選べない） */
 #LPJZ_Main::after {
   content: '「通知書を取得する」を押すと、この年度の特別徴収税額の通知書（PDF）を開きます。保存や印刷は、開いた画面の共有ボタンから。';
@@ -1265,6 +1293,14 @@ ${row('LPJZ_Main_lbl_kome', 90, 32)}
         });
         var n = String(Math.min(shown, 3));
         if (form.getAttribute('data-myapp-notices') !== n) form.setAttribute('data-myapp-notices', n);
+        // 受診登録の「健診機関名」: 必須の印（＊）を移す先の見出しを決めておく（欄と見出しの並びから見つけられず、＊ が欄の外に出ていた。2026-11-22）
+        var agency = document.getElementById('MC_result_Input_1_agency_name');
+        var agencyLabel = document.getElementById('MC_result_Input_1_agency_name_reserv_label');
+        if (agency && agencyLabel && agency.__myappReqLabel !== agencyLabel) {
+          if (agency.__myappReqLabel) agency.__myappReqLabel.classList.remove('myapp-required');
+          agency.__myappReqLabel = agencyLabel;
+          agency.__myappReqLabelFixed = true;
+        }
         // 注意書きの1つの文が、2つの部品（lbl8 と lbl16）に分けてある。lbl8 に続けて1つの段落にし、lbl16 は隠す（CSS）
         var a = document.querySelector('#L_HealthCare_Main_lbl8 .tcc-label-text');
         var b = document.querySelector('#L_HealthCare_Main_lbl16 .tcc-label-text');
@@ -1441,6 +1477,12 @@ ${HEALTH_RESULT_CSS}
           var left = Math.round(num.offsetLeft + w + 6) + 'px';
           if (unit.style.getPropertyValue('left') !== left) unit.style.setProperty('left', left, 'important');
         });
+        // 目標歩数の設定: 基準の目標歩数（「8000歩」）も、ほかの歩数と同じく 3けたで区切る（8,000歩。2026-11-22）
+        var base = document.querySelector('#stepGoalSet_id_2026Walk_lbl8 .tcc-label-text');
+        if (base) {
+          var grouped = (base.textContent || '').replace(/\\d{4,}/g, function (n) { return n.replace(/\\B(?=(\\d{3})+$)/g, ','); });
+          if (base.textContent !== grouped) base.textContent = grouped;
+        }
         var el = document.querySelector('#ranking_id_2026Walk_lbl_upDate .tcc-label-text');
         if (!el) return;
         var m = /(\\d{4})\\/(\\d{1,2})\\/(\\d{1,2})/.exec(el.textContent || '');

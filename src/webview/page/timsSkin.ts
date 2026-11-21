@@ -267,6 +267,8 @@ ${fillButton(A('btnCalendarSearch'))}
   overflow: hidden !important;
   visibility: hidden !important;
 }
+/* 月の集計の札が1つもない（これからの月など、全部 0）ときは、空のカードを出さない */
+.myapp-att-summary:empty { display: none !important; }
 .myapp-att-summary {
   order: 1;
   display: grid;
@@ -495,11 +497,12 @@ ${DAY.status} .tcc-label-text { width: auto !important; font-size: 15px !importa
 #${A('btnCancel')}[style*="visibility: hidden"] { display: none !important; }
 ${[A('btnApply'), A('btnApprove'), A('btnCancel')].map(fillButton).join('')}
 #${A('btnApply')}, #${A('btnApprove')}, #${A('btnCancel')} { margin-top: 12px !important; }
-#frmAttendance[data-myapp-monthend] #${A('btnApply')},
+#frmAttendance[data-myapp-monthend]:not([data-myapp-applied]) #${A('btnApply')},
 #frmAttendance[data-myapp-monthend] #${A('btnApprove')},
 #frmAttendance[data-myapp-monthend] #${A('btnCancel')} { order: 2 !important; margin-top: 0 !important; }
-#frmAttendance[data-myapp-monthend] #${A('btnApply')} .tcc-btn,
-#frmAttendance[data-myapp-monthend] #${A('btnApply')} .tcc-btn i {
+/* もう申請した月（申請中・承認済。JS が data-myapp-applied を付ける）は、勤務表申請を下に控えめなまま */
+#frmAttendance[data-myapp-monthend]:not([data-myapp-applied]) #${A('btnApply')} .tcc-btn,
+#frmAttendance[data-myapp-monthend]:not([data-myapp-applied]) #${A('btnApply')} .tcc-btn i {
   background: var(--myapp-tint) !important;
   color: #FFFFFF !important;
   box-shadow: var(--myapp-tint-shadow) !important;
@@ -762,9 +765,10 @@ ${['R2', 'R2_C1', 'blank3', 'blank3_body']
 ${SEARCH_CSS}
 ${ATT_TAB_BUTTONS.map((id) => fillButton(A(id))).join('')}
 
-/* 勤務申請状況: まだ申請していない月は、名前の下にそう書く（申請状況の欄が空のとき） */
+/* 勤務申請状況: まだ申請していない月は、名前の下にそう書く（申請状況の欄が空のとき）。
+   このタブは月の勤務表の申請だけを並べる。残業などの申請があっても「申請していない」と読めないよう、勤務表のことだと書く（2026-11-22） */
 #${A('grdApplyStat')} .TccGridBodyScroll tr:has(> td.${A('grdApplyStat')}_tdCol3[data-myapp-blank]) > td.${A('grdApplyStat')}_tdCol2::after {
-  content: 'まだ申請していません';
+  content: 'この月の勤務表は、まだ申請していません';
   display: block;
   margin-top: 4px;
   font-size: 13px;
@@ -1455,6 +1459,11 @@ ${scoped('#frmApply_yukyu[data-myapp-reasons][data-myapp-hourly]', areaBelow('lb
 #${Y('R3')}:has(#${Y('tabApply_tabs_2')}.active),
 #${Y('R3')}:has(#${Y('tabApply_tabs_2')}.active) > *,
 #${Y('R3')}:has(#${Y('tabApply_tabs_2')}.active) #${Y('blank3')} { height: 240px !important; }
+/* ステータスが空（まだ申請していない）ときは、空の知らせのカード（下の .myapp-empty で 120px）とタブの見出し（44px）だけの高さに。
+   240px のままだと、カードの下に大きなすき間が空いた（2026-11-22） */
+#${Y('R3')}:has(.tcc-tab-pane.active #${Y('grdStatus')}.myapp-empty),
+#${Y('R3')}:has(.tcc-tab-pane.active #${Y('grdStatus')}.myapp-empty) > *,
+#${Y('R3')}:has(.tcc-tab-pane.active #${Y('grdStatus')}.myapp-empty) #${Y('blank3')} { height: 164px !important; }
 #${Y('tabApply')} { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; }
 /* 付与・ステータスなどの切り替え: 画面の端から 16px あけた切り替えスイッチ */
 #${Y('tabApply')} > ul.tcc-tab-head {
@@ -1586,6 +1595,8 @@ ${fillInput(F('qbxEmp'))}
 #${F('tabApply_tabs_0')} { position: relative !important; height: auto !important; }
 #${F('tabApply_tabs_1')}, #${F('tabApply_tabs_2')} { position: relative !important; height: 200px !important; }
 #${F('tabApply')} .tcc-tab-pane:has([id$="_grdStatus"]) { height: 200px !important; }
+/* ステータスが空（まだ申請していない）ときは、空の知らせのカードの高さに（有給休暇申請と同じ。emptyGrids の知らせ） */
+#${F('tabApply')} .tcc-tab-pane:has(#${F('grdStatus')}.myapp-empty) { height: 120px !important; }
 #${F('grdStatus')} { left: 16px !important; top: 8px !important; width: calc(100% - 32px) !important; height: calc(100% - 16px) !important; border-radius: 20px !important; overflow: hidden !important; }
 ${cardGrid(F('grdStatus'), [[1, 2], [3, 4], [6]], { 4: '承認日' })}
 ${place(F('comment'), '16px', 12, 'calc(100% - 32px)', 160)}
@@ -2251,9 +2262,19 @@ ${APPLY_STATE_JS}
     var ym = ymInput && /^(\\d{4})\\/(\\d{1,2})$/.exec(ymInput.value.trim());
     var today = new Date();
     var month = !ym || (+ym[1] === today.getFullYear() && +ym[2] === today.getMonth() + 1) ? '今月' : +ym[2] + '月';
-    var key = [now, goal, limit, month].join('/');
+    // これからの月: EZCraft は記録のない月では健康管理時間の欄を書き直さないので、前に見た月の数が残っている
+    // （12月を開くと、10月の 177 / 237 時間が「12月の」として出た。2026-11-22）。これからの月には、まだ数がない
+    var future = !!ym && (+ym[1] * 12 + +ym[2]) > (today.getFullYear() * 12 + today.getMonth() + 1);
+    var key = [now, goal, limit, month, future].join('/');
     if (card.__key === key) return;
     card.__key = key;
+    if (future) {
+      card.setAttribute('data-level', 'ok');
+      card.innerHTML =
+        '<div class="myapp-kenko-top"><span>' + month + 'の健康管理時間</span><span>まだありません</span></div>' +
+        '<div class="myapp-kenko-bar"></div><div class="myapp-kenko-note"></div>';
+      return;
+    }
     var max = limit || goal || now || 1;
     var pct = function (v) { return Math.max(0, Math.min(100, (v / max) * 100)); };
     card.setAttribute('data-level', limit && now > limit ? 'limit' : goal && now > goal ? 'over' : 'ok');
@@ -2290,6 +2311,12 @@ ${APPLY_STATE_JS}
       box.setAttribute('data-myapp-nodark', '');
       pane.insertBefore(box, pane.firstChild);
     }
+    // その月の勤務表を、もう申請した（申請中・承認済）か。申請したあとは「勤務表申請」を目立たせない（CSS の data-myapp-applied。
+    // 承認済の月にも青い大きなボタンが上に出て、もう一度申請させるように見えた。2026-11-22）。差戻しの月は、また申請するので目立たせる
+    var statusChip = chips.filter(function (c) { return /申請/.test(c[0]); })[0];
+    var applied = !!statusChip && /承認済|申請中|承認待/.test(statusChip[1]);
+    var attForm = document.getElementById('frmAttendance');
+    if (attForm && attForm.hasAttribute('data-myapp-applied') !== applied) attForm.toggleAttribute('data-myapp-applied', applied);
     var key = JSON.stringify(chips);
     if (box.__key === key) return;
     box.__key = key;
@@ -2341,6 +2368,9 @@ ${APPLY_STATE_JS}
       b.setAttribute('aria-label', d[2]);
       b.addEventListener('click', function (e) {
         e.preventDefault();
+        // 押したあと、ボタンに青い丸い縁取り（フォーカスの印）が残らないように、ボタンから出る（月を読み直すあいだ、WebKit が
+        // キーボードで選んだときの印として出したままにしていた。2026-11-22）
+        b.blur();
         var input = comp.querySelector('input');
         var m = input && /^(\\d{4})\\/(\\d{1,2})$/.exec(input.value.trim());
         if (!m) return;
@@ -2418,6 +2448,9 @@ ${APPLY_STATE_JS}
           hasField = false;
           it.el.classList.add('myapp-heading');
           if (text.replace(/[\\s:：]/g, '').length > 6) it.el.classList.add('myapp-long');
+          // EZCraft の英語の見出し「Prj-No.」は、アプリのほかの所（勤怠実績登録・プロジェクトのシート）と同じ「番号」に（2026-11-22）
+          var headText = it.el.querySelector('.tcc-label-text');
+          if (headText && /^\\s*Prj-?No\\.?\\s*$/i.test(headText.textContent || '')) headText.textContent = '番号';
           row.appendChild(it.el);
           return;
         }
@@ -2879,7 +2912,13 @@ ${REASONS_JS}
   function overtime(form, isNew) {
     var date = document.querySelector('#frmApply_zangyo_dt_from input');
     if (isNew) prefillOvertime(form, date);
-    if (date && isNew && !date.value && !form.__myappDated) { form.__myappDated = true; typeInto(date, ymd(0)); }
+    // 新しい申請の日付には今日を入れておく。ただし土日は入れない（残業申請は平日のもの。EZCraft が「平日を選択してください」と
+    // 弾いて、開いただけでエラーが出ていた。2026-11-22。休みの日の分は「休日出勤申請」）
+    var dow = new Date().getDay();
+    if (date && isNew && !date.value && !form.__myappDated) {
+      form.__myappDated = true;
+      if (dow !== 0 && dow !== 6) typeInto(date, ymd(0));
+    }
     // 時刻の欄の名前: EZCraft は「出勤・退勤」だが、残業の「開始・終了」のこと
     [['tm_from', '出勤', '開始'], ['tm_to', '退勤', '終了']].forEach(function (t) {
       var field = document.getElementById('frmApply_zangyo_' + t[0]);
@@ -4084,6 +4123,11 @@ ${OVERTIME_MATH_JS}
     var last = null;
     try { last = minutesOf(localStorage.getItem(dialKey(id))); } catch (e) {}
     if (last != null) return last;
+    // 始まりの時刻（出勤・休暇・申請の開始）は、いまの時刻ではなく、ふつうの始まり（9:00。休憩は 12:00）から。
+    // いまの時刻だと、夜中に開くと「出勤 02:10」のようになった（2026-11-22）。終わりの時刻は、いまの時刻（いま帰る）のまま
+    // 残業の開始は、ふつうの始まりではなく、いまの時刻のまま（下）
+    if (/break_tm_from\\d*$/.test(id)) return 12 * 60;
+    if (!/zangyo/.test(id) && /(work_stt_tm|_tm_from\\d*)$/.test(id)) return 9 * 60;
     var d = new Date();
     return Math.min(23 * 60 + 55, d.getHours() * 60 + Math.round(d.getMinutes() / 5) * 5);
   }
@@ -4296,6 +4340,18 @@ ${OVERTIME_MATH_JS}
     if (pickStart && t && Math.abs(t.clientX - pickStart.x) + Math.abs(t.clientY - pickStart.y) > 10) return; // スクロールだった
     e.preventDefault(); // キーボードを出さずに、ダイヤルを出す
     openDial(input, comp.id);
+  }, true);
+  // 時刻・時間の欄は、押したらダイヤルを出す（上の touchend。押しても欄には入らない）。EZCraft がエラーの知らせを閉じたあとに
+  // その欄へ戻すと、キーボードが出てしまい、そのまま押してもダイヤルにならなかった（欄に入っているときは上の touchend が何もしない。
+  // 2026-11-22）。知らせを閉じた直後（1.5 秒以内。msgBox.ts が __myappMsgBoxClosedAt を決める）に欄へ入ったときだけ、欄から出す
+  // （キーボードは閉じ、もう一度押せばダイヤルが出る）。外付けのキーボードの Tab・VoiceOver で入ったときは、そのまま打てる
+  document.addEventListener('focusin', function (e) {
+    var input = e.target;
+    if (!e.isTrusted || !input || input.tagName !== 'INPUT' || input.__myappManual) return;
+    if (Date.now() - (window.__myappMsgBoxClosedAt || 0) > 1500) return;
+    var comp = input.closest('.tcc-component');
+    if (!comp || !DIALS[comp.id]) return;
+    setTimeout(function () { if (document.activeElement === input) input.blur(); }, 0);
   }, true);
 
   // メニュー: お知らせのカードの高さを、見えている行の高さの合計にする（多いときは 3 行ぶんまでにして、カードの中でスクロール）
@@ -4650,8 +4706,9 @@ export const TIMS_SKIN: AppSkin = {
     frmApply_grdLeave: 'データはありません',
     frmLTiMSTop_grdApply: '申請中のものはありません',
     frmLTiMSTop_grdAnnouncement: 'お知らせはありません',
-    // 有給休暇申請の「ステータス」: 申請する前は、承認の流れがまだないので、空の白い面にせずそう書く
+    // 有給休暇申請・ほかの申請の「ステータス」: 申請する前は、承認の流れがまだないので、空の面にせずそう書く
     frmApply_yukyu_grdStatus: '申請すると、ここに承認の状況が出ます',
+    ...Object.fromEntries(APPLY_FORMS.map((form) => [`${form}_grdStatus`, '申請すると、ここに承認の状況が出ます'])),
     frmSelProj_grdPrj1: '見つかりませんでした',
     frmSelProj_grdPrj2: '見つかりませんでした',
     frmSelEmp_grdEmp: '見つかりませんでした',
