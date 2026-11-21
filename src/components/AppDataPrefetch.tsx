@@ -21,6 +21,9 @@ import { initAppJs, refModeJs } from '../webview/page/initApp';
 import { recallInitApp, rememberInitApp } from '../webview/initAppCache';
 import { recallRefModes, rememberRefMode } from '../webview/refModeCache';
 
+/** どの URL も onShouldStartLoadWithRequest の判定に通す（react-native-webview の originWhitelist） */
+const ALL_URLS = ['*'];
+
 type Props = {
   app: string;
   form: string;
@@ -64,7 +67,9 @@ export function AppDataPrefetch({ app, form, ready, onDone }: Props) {
         injectedJavaScriptBeforeContentLoaded={beforeLoadJs}
         injectedJavaScript={prefetchJs(ready)}
         // 会社のサイトのページだけを開き、そこからの知らせだけを受け付ける（src/webview/origin.ts）。
-        // メニューのアプリの外（ほかのアプリの画面）へは移らない（見えない下準備なので、開いた先を見せることもない）
+        // メニューのアプリの外（ほかのアプリの画面）へは移らない（見えない下準備なので、開いた先を見せることもない）。
+        // どの URL も判定に通す（既定の originWhitelist では、電話などのリンクは判定に来ずに、アプリの外で開かれる）
+        originWhitelist={ALL_URLS}
         onShouldStartLoadWithRequest={(req) => !leavesForOtherApp(menuUrl, req.url, req.isTopFrame) && mayNavigate(req.url, req.isTopFrame)}
         onMessage={(e) => {
           if (!isServerUrl(e.nativeEvent.url)) return;
