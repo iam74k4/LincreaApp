@@ -57,7 +57,16 @@ jobs:
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      # node_modules の控え（package-lock.json と patches/ が同じなら、npm ci をしない。1 分半ほど速い）
+      - name: node_modules の控え
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'patches/**') }}
+
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
 
       - run: npx tsc --noEmit
       - run: npx expo lint
@@ -66,6 +75,11 @@ jobs:
 
       - name: Xcode の版
         run: xcodebuild -version
+
+      # CocoaPods の控えの鍵。ビルド番号を入れる前の app.json で決める（入れたあとだと、毎回ちがう鍵になる）。
+      # Xcode を上げたら xcode26 の所も変える（古い控えを使わない）
+      - name: CocoaPods の控えの鍵を決める
+        run: echo "PODS_KEY=pods-v1-${{ runner.os }}-${{ runner.arch }}-xcode26-${{ hashFiles('package-lock.json', 'app.json', 'patches/**', 'modules/**') }}" >> "$GITHUB_ENV"
 
       # ビルド番号は、作った日時（日本時間の「年月日.時分」。例 261121.1830）。いつも前より大きくなる。
       # app.json の ios.buildNumber に入れてから ios フォルダを作る（アプリの下に出る版の名前にも使う。src/appVersion.ts）
@@ -78,6 +92,15 @@ jobs:
 
       - name: ios フォルダを作る
         run: npx expo prebuild --platform ios --no-install
+
+      # 前に入れた Pods（React Native の作りおきの部品も入っている）を戻す。合っていれば pod install はすぐ終わる（2 分ほど速い）
+      - name: CocoaPods の控え
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+            ios/Podfile.lock
+          key: ${{ env.PODS_KEY }}
 
       - name: CocoaPods
         working-directory: ios
