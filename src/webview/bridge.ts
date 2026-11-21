@@ -498,12 +498,25 @@ export const BRIDGE_JS = compactJs(`
     if (quit) quit.click();
   };
   var modalOpen = false;
-  setInterval(function () {
+  function checkModal() {
     var open = topModalQuit() !== null;
     if (open === modalOpen) return;
     modalOpen = open;
     post({ type: 'modal', open: open });
-  }, 300);
+  }
+  // 見えているあいだだけ見張る（重ねた画面の下に隠れたページは止める。1秒に3回起きて、そのたびにページの配置を測るので、電池を使う）。
+  // 見えたら、すぐに一度確かめてから見張りを戻す
+  var modalTimer = null;
+  function watchModal(on) {
+    if (on && !modalTimer) modalTimer = setInterval(checkModal, 300);
+    if (!on && modalTimer) { clearInterval(modalTimer); modalTimer = null; }
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { watchModal(false); return; }
+    checkModal();
+    watchModal(true);
+  });
+  watchModal(!document.hidden);
 })();
 true;
 `);

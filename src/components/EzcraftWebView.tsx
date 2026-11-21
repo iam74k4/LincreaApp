@@ -508,6 +508,15 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     refreshData(label);
     return true;
   }, [refreshData, takeChildChanges]);
+  // 隠れているあいだに iOS に中身を捨てられたページは、前に出てきたときに読み直す（onContentProcessDidTerminate）
+  const reloadWhenShown = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!reloadWhenShown.current) return;
+      reloadWhenShown.current = false;
+      reloadPage();
+    }, [reloadPage]),
+  );
   // 重ねた画面が保存を裏で続けているあいだは、まだ新しくしない（保存が終わってから。下の onBackgroundSaveDone）
   useFocusEffect(
     useCallback(() => {
@@ -921,8 +930,13 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             });
           }}
           // iPhone のメモリが足りなくなると、裏に回したページの中身を iOS が捨てることがある（そのままだと真っ白）。
-          // 捨てられたら、自動で読み直す（見ていた位置にも戻す）
-          onContentProcessDidTerminate={() => reloadPage()}
+          // 捨てられたら、読み直す（見ていた位置にも戻す）。重ねた画面の下に隠れているページは、前に出てきたときに読み直す
+          // （隠れたまますぐ読み直すと、メモリが足りないところへまた大きなページを読み込み、捨てる・読み直すを繰り返す）。
+          // 裏で保存を続けているページは、保存の結果を出すために、すぐ読み直す（onLoadStart が、保存の失敗として片づける）
+          onContentProcessDidTerminate={() => {
+            if (inBackground.current || navigation.isFocused()) reloadPage();
+            else reloadWhenShown.current = true;
+          }}
           onOpenWindow={(e) => openWindow(e.nativeEvent.targetUrl)} // target="_blank" のリンクなど
           onNavigationStateChange={(nav) => {
             // ログイン画面に飛ばされた = ログインが切れた
