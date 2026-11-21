@@ -30,7 +30,9 @@
 // 5. データを書き込んだら知らせる
 //    書き込みの通信（/procedure/BigData/update・insert・delete・upsert など）と、登録・削除・申請などのボタン。
 //    アプリは、重ねて開いた画面から戻ったとき、その間に書き込みがあったときだけ元の画面を読み直す。
-//    書き込みの通信がうまく終わったら、ページの中にも myapp-saved を出す（勤怠実績登録が、登録のあと残業申請を開くため）
+//    保存がうまく終わったら、ページの中にも myapp-saved を出す（勤怠実績登録が、登録のあと残業申請を開くため）。
+//    保存の途中（SAVE_WATCH_JS が見ている保存）の書き込みなら、確定してから（myapp-save-end の ok）出す。
+//    1つめの書き込みで出すと、保存の途中で残業申請が開き、あとで取り消されても、開いたまま・理由も覚えたままになっていた
 //
 // 8. ダイアログ（EZCraft の .tcc-modal と、アプリが出すシート .myapp-pick）が開いているかを知らせる（modal）。
 //    開いているあいだは、ヘッダーの ‹ や横へのスワイプで画面ごと戻らず、まずダイアログを閉じる
@@ -238,14 +240,29 @@ export const BRIDGE_JS = compactJs(`
 
   // 5. データを書き込んだら、アプリに知らせる（書き込みの通信と、登録・削除・申請などのボタン）
   var wrote = function (label) { post({ type: 'write', label: label || '' }); };
+  // 保存の途中の書き込み: 保存が終わるのを待って、うまくいったときだけ知らせる（1つの保存で1回）
+  var waitingEnd = false;
+  function savedAtEnd() {
+    if (waitingEnd) return;
+    waitingEnd = true;
+    window.addEventListener('myapp-save-end', function once(e) {
+      window.removeEventListener('myapp-save-end', once);
+      waitingEnd = false;
+      if (e.detail && e.detail.ok === true) window.dispatchEvent(new Event('myapp-saved'));
+    });
+  }
   var xhrOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url) {
     try {
       if (/\\/(update|insert|delete|upsert)\\/?$/i.test(String(url).split('?')[0])) {
         wrote();
-        // 書き込みがうまく終わったら、ページの中に知らせる
+        // 保存がうまく終わったら、ページの中に知らせる（上の 5）
         this.addEventListener('load', function () {
-          if (this.status >= 200 && this.status < 300) window.dispatchEvent(new Event('myapp-saved'));
+          if (this.status < 200 || this.status >= 300) return;
+          if (document.documentElement.classList.contains('myapp-saving')) { savedAtEnd(); return; }
+          var head = '';
+          try { head = String(this.responseText || '').slice(0, 300); } catch (e) {}
+          if (!/"status"\\s*:\\s*"error"/.test(head)) window.dispatchEvent(new Event('myapp-saved'));
         });
       }
     } catch (e) {}
@@ -601,7 +618,8 @@ export function autoClickJs(button: string, readyKey: string): string {
   var stable = 0;
   var timer = setInterval(function () {
     tries++;
-    if (tries > 120) { clearInterval(timer); return; }
+    // アプリがあきらめた（覆いを外して、ページを見せた）。あとから押すと、使う人が見ている画面を勝手に進めてしまう
+    if (tries > 120 || window.__myappAutoClickStop) { clearInterval(timer); return; }
     var P = window.FALCON && FALCON.apps && FALCON.apps.procedure;
     var data = P && P.App && P.App.data;
     var readyKey = ${JSON.stringify(readyKey)};
