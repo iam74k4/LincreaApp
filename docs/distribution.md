@@ -52,6 +52,8 @@ LINCREA は TestFlight で配る。develop にプルリクエストをマージ�
 | 内部テスター | 100 人まで | App Store Connect のユーザーとして招く（「ユーザとアクセス」）。Apple の審査なし。版ができたらすぐ届く |
 | 外部テスター | 10,000 人まで | メールか公開リンクで招く（App Store Connect のアカウントは要らない）。版ごとに Apple の簡単な審査（ふつう 1 日以内） |
 
+- 社内の人は、内部グループ **「社内」**（自動配信）に入っている。新しい版ができると、全員に自動で届く
+  - 人を足すとき: App Store Connect の「ユーザとアクセス」で招く → TestFlight の「社内」→「テスター」の＋で選ぶ（招待のメールが届く）
 - TestFlight の版は **90 日で使えなくなる**。develop にマージするたびに新しい版ができるので、ふだんは気にしなくてよい
 - 前の配り方（EAS のリンク・Ad Hoc。版10 まで）で入れていた人は、TestFlight から入れ直す（同じアプリなので上書きされ、ログインの情報も残る）
 
@@ -95,8 +97,10 @@ LINCREA は TestFlight で配る。develop にプルリクエストをマージ�
 
 ### もう使わないもの
 
-- 版を作る・送るのに、Expo のクラウド（EAS）は使わなくなった。GitHub の Secret `EXPO_TOKEN`、EAS に預けた App Store Connect の
-  API キー（[Expo] EAS Submit …）、前のプロジェクト @iam74k4/login-demo は、消してよい（それぞれの画面で消す）
+- 版を作る・送るのに、Expo のクラウド（EAS）は使わなくなった。2026-11-21 に片づけた:
+  - GitHub の Secret `EXPO_TOKEN` … 消した
+  - EAS に預けていた App Store Connect の API キー（[Expo] EAS Submit …）… App Store Connect で無効にした
+  - 前のプロジェクト @iam74k4/login-demo … 残っていれば、Expo の Settings →「Advanced」→「Delete project」で消してよい
 - Expo のプロジェクト @iam74k4/lincrea（app.json の `owner`・`extra.eas.projectId`）は、Expo Go を外のネットワーク
   （Tailscale・トンネル）から開くときだけ使う（docs/device-testing.md）。それも使わないなら、プロジェクトと app.json の2つを消してよい
 - Expo の仕組み（Expo SDK・Expo Router・`npx expo prebuild` など）は、アプリの土台なので、そのまま使う
