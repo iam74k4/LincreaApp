@@ -48,8 +48,8 @@ function createStyles(c: Colors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 14,
-      minHeight: 60,
-      paddingVertical: 12,
+      minHeight: 52,
+      paddingVertical: 10,
       paddingLeft: 16,
       paddingRight: 16,
       marginHorizontal: 16,
@@ -69,7 +69,6 @@ function createStyles(c: Colors) {
     name: {
       flex: 1,
       fontSize: 17,
-      fontWeight: '600',
       color: c.text,
     },
     tag: {

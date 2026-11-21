@@ -12,10 +12,10 @@ export type Shortcut = {
   key: string;
   /** 近道の名前と、その説明（説明は画面には出さず、読み上げのヒントに使う） */
   title: string;
+  /** 「よく使う」のアイコンの下に出す短い名前（なければ title） */
+  short?: string;
   subtitle: string;
   symbol: SymbolViewProps['name'];
-  /** アイコンの地の色（白いアイコンをのせる） */
-  color: string;
   /** メニューの画面（アプリケーション ID とフォーム ID） */
   app: string;
   form: string;
@@ -35,7 +35,6 @@ export const SHORTCUTS: Shortcut[] = [
     title: '勤務表',
     subtitle: '毎日の登録',
     symbol: { ios: 'calendar.badge.clock', android: 'calendar_month', web: 'calendar_month' },
-    color: '#007AFF',
     ...TIMS,
     steps: ['frmLTiMSTop_btnAttendance'],
     direct: { form: 'frmAttendance', params: {} },
@@ -46,7 +45,6 @@ export const SHORTCUTS: Shortcut[] = [
     subtitle: '今日の残業を申請',
     // 勤怠 TiMS（時計と人）と見分けがつくよう、残業はタイマー
     symbol: { ios: 'timer', android: 'more_time', web: 'more_time' },
-    color: '#FF9500',
     ...TIMS,
     steps: ['frmLTiMSTop_btnApply', 'frmApply_zangyo'],
     direct: { form: 'frmApply_zangyo', params: { mode: 'new' } },
@@ -54,9 +52,9 @@ export const SHORTCUTS: Shortcut[] = [
   {
     key: 'tims-paid-leave',
     title: '有給休暇申請',
+    short: '有給休暇',
     subtitle: '申請と残り日数',
     symbol: { ios: 'sun.max.fill', android: 'beach_access', web: 'beach_access' },
-    color: '#34C759',
     ...TIMS,
     steps: ['frmLTiMSTop_btnApply', 'frmApply_yukyu'],
     direct: { form: 'frmApply_yukyu', params: { mode: 'new' } },
@@ -66,7 +64,6 @@ export const SHORTCUTS: Shortcut[] = [
     title: '勤怠申請',
     subtitle: 'ほかの申請・状況',
     symbol: { ios: 'doc.text.fill', android: 'post_add', web: 'post_add' },
-    color: '#5856D6',
     ...TIMS,
     steps: ['frmLTiMSTop_btnApply'],
     direct: { form: 'frmApply', params: {} },
