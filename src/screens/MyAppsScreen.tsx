@@ -90,12 +90,15 @@ export function MyAppsScreen() {
   );
 
   // サーバーに聞き直して、一覧を入れ替える。読み込み中は、いま出ている一覧をそのまま見せておく。
-  // isActive() が false なら（画面を離れたあとに返事が来たら）結果は捨てる。
-  const loadingRef = useRef(false);
-  const fetchAndShow = useCallback(
-    async (isActive: () => boolean = () => true) => {
-      if (loadingRef.current) return; // 読み込みが重ならないように
-      loadingRef.current = true;
+  // 返事が来たときに、この画面が前に出ていなければ（アプリを開いていれば）、結果は捨てる。
+  // 捨てるかどうかは、返事が来たときに決める。頼んだときの画面で決めると、読み込み中に一度離れて戻ってきたとき、
+  // 戻ってきたときの読み込みは「読み込み中」で飛ばされ、前の読み込みの結果も捨てられて、一覧が出ないままになっていた
+  const focusedRef = useRef(true);
+  const loading = useRef<Promise<void> | null>(null);
+  const fetchAndShow = useCallback((): Promise<void> => {
+    // 読み込みが重ならないように（読み込み中に頼まれたら、その読み込みが終わるのを待つ）
+    if (loading.current) return loading.current;
+    const run = (async () => {
       try {
         let result: MyApp[];
         try {
@@ -109,7 +112,7 @@ export function MyAppsScreen() {
           if (again !== 'ok') throw e;
           result = await fetchMyApps();
         }
-        if (isActive()) {
+        if (focusedRef.current) {
           fresh.current = true;
           fromCache.current = false;
           setApps(result);
@@ -117,13 +120,14 @@ export function MyAppsScreen() {
           saveCachedApps(username, result);
         }
       } catch (e) {
-        if (isActive()) handleError(e);
-      } finally {
-        loadingRef.current = false;
+        if (focusedRef.current) handleError(e);
       }
-    },
-    [handleError, reauthenticate, username],
-  );
+    })().finally(() => {
+      loading.current = null;
+    });
+    loading.current = run;
+    return run;
+  }, [handleError, reauthenticate, username]);
 
   // この画面が前に出るたびに読み直す。
   //   - 最初に開いたとき
@@ -136,15 +140,15 @@ export function MyAppsScreen() {
   const pendingRef = useRef<Shortcut | null>(null);
   useFocusEffect(
     useCallback(() => {
-      let active = true;
+      focusedRef.current = true;
       setFocused(true);
       setPrefetchFailed(false); // 前にうまくいかなかった下準備も、画面に戻ってきたらもう一度
-      fetchAndShow(() => active);
+      fetchAndShow();
       const subscription = AppState.addEventListener('change', (state) => {
-        if (state === 'active') fetchAndShow(() => active);
+        if (state === 'active') fetchAndShow();
       });
       return () => {
-        active = false;
+        focusedRef.current = false;
         setFocused(false);
         pendingRef.current = null;
         setPending(null);

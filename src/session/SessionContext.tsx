@@ -10,7 +10,7 @@ import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, 
 import { AppState } from 'react-native';
 
 import { forgetCachedApps } from '../myApps/myAppsCache';
-import { forgetAttendanceReminders } from '../attendance/attendanceReminder';
+import { attendanceRemindersFor, forgetAttendanceReminders } from '../attendance/attendanceReminder';
 import { forgetServerLogin, type Session } from '../auth/login';
 import { forgetCognitoTokens, loadCognitoStorage } from '../auth/cognitoStorage';
 import { loginWithFaceId } from '../auth/faceId';
@@ -73,6 +73,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     (async () => {
       // 前の版が端末に残したトークンを消す（src/auth/cognitoStorage.ts）。サーバーへの確かめと同時に進める（起動を待たせない）
       const [, result] = await Promise.all([loadCognitoStorage(), restoreSession()]);
+      // 端末に残っている勤怠の通知は、前にログインしていた人のもの（ログアウトで消すので）。
+      // そのあと別の人がログインしたら、signIn で消す（ログインが切れて入り直せなかったときは、ログアウトを通らない）
+      const savedUser = (result.status === 'valid' ? result.session : result.saved)?.username;
+      if (savedUser) attendanceRemindersFor(savedUser);
       // 電波がない: 前にログインしていた人なら、その人の画面（マイアプリ）を出しておく。一覧は「つながっていません」と
       // 「もう一度読み込む」を出し、つながって読み直したときに、ログインが切れていればログイン画面に戻す
       let restored: Session | null = result.status === 'valid' ? result.session : result.status === 'offline' ? result.saved : null;
@@ -85,6 +89,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           forgetAllAppData();
           forgetInitAppTexts();
           restored = faceId.session;
+          attendanceRemindersFor(faceId.session.username);
           saveSession(faceId.session);
         }
       }
@@ -100,6 +105,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback((next: Session) => {
     forgetAllAppData(); // 前にログインしていた人の控え（近道のため）は使わない
     forgetInitAppTexts(); // 画面の定義の控えにも、前のログインの記録が入っている
+    attendanceRemindersFor(next.username); // 前の人の勤怠の通知が残っていたら消す
     setSession(next);
     saveSession(next);
   }, []);

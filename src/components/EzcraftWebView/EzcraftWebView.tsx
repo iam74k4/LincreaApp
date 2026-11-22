@@ -19,7 +19,7 @@ import { pathOf } from '../../api/http';
 import { noteAttendanceDays } from '../../attendance/attendanceReminder';
 import { Icon } from '../../platform/icons';
 import { depositLaunch } from '../../shortcuts/launch';
-import { advanceApplyQueue, applyQueueActive, openApplication, startApplyQueue } from '../../shortcuts/openShortcut';
+import { advanceApplyQueue, applyQueueActive, openApplication, startApplyQueue, stopApplyQueue } from '../../shortcuts/openShortcut';
 import { useSession } from '../../session/SessionContext';
 import { useColors } from '../../core/theme';
 import { GlassButton } from '../GlassButton';
@@ -95,6 +95,8 @@ type Props = {
 
 /** 登録のあとに自動で開く申請の画面を、少し待ってから開く（待つあいだにページが閉じたら、閉じてから開く） */
 const APPLY_DELAY_MS = 700;
+/** どの URL も onShouldStartLoadWithRequest の判定に通す（react-native-webview の originWhitelist） */
+const ALL_URLS = ['*'];
 // 戻ってきた画面に、データだけの読み直しを頼んでから、返事を待つ長さ（来なければ、丸ごと読み直す）
 const REFRESH_REPLY_MS = 1500;
 // 保存の途中で戻ろうとしたとき、保存が終わってから、ページが自分で閉じるのを待つ長さ（閉じなければ、アプリが戻る）
@@ -253,6 +255,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       webRef.current?.injectJavaScript('window.__myappCloseModal && window.__myappCloseModal(); true;');
       return;
     }
+    // シートを閉じようとした（× など）。保存が終わってページが閉じても、まとめて申請の次の1件は開かない
+    if (sheet && (savingRef.current || waitingSave)) stopApplyQueue();
     if (savingRef.current) {
       if (canLeave && moveToBackground()) return;
       updateSaving((run) => ({ ...run, backAfter: true }));
@@ -264,7 +268,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     }
     // 保存も待ちもない（保存が終わった直後に、まだ出ていた ‹ を押した）: この画面を閉じる
     closeThisScreen();
-  }, [canLeave, closeThisScreen, modalOpen, moveToBackground, requestLeaveAfterStart, updateSaving, waitingSave]);
+  }, [canLeave, closeThisScreen, modalOpen, moveToBackground, requestLeaveAfterStart, updateSaving, waitingSave, sheet]);
   // 保存のあいだと、前の保存を待っているあいだは、iOS の戻る動き（‹ とスワイプ）を止める（途中で画面が消えると、保存が切れる）。
   // 裏で続けられるときは、‹ を同じ見た目のボタンに替え、スワイプは保存の知らせの上で受けて、アプリが自分で戻る
   // （iOS の戻る動きを止めると、iOS がいったん動きを取り消すので、画面が一瞬戻ってから去って見える。2026-11-18、実機）。
@@ -282,6 +286,17 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const saveLog = useRef<{ cmd: string; ms: number }[]>([]); // いまの保存の、通信ごとの時間（開発中に Metro へ出す）
   const backAfterSave = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closedByPageRef = useRef(false);
+  const replacedRef = useRef(false); // 近道で押したボタンが開いた画面と、入れ替えた
+  // シートを閉じた（左上の ×・下へのスワイプ・Android の戻るボタン）なら、まとめて申請の残りもやめる。
+  // 続けるのは、ページが申請して自分で閉じたとき（close。次の1件を開く）と、近道で次の画面に入れ替えたとき。
+  // ダイアログが開いていて、× や戻るでダイアログだけを閉じたときは、シートが残るので続く（usePreventRemove）。
+  // × を押したときにやめていたので、ダイアログを閉じただけでも、残りが開かなくなっていた
+  useEffect(
+    () => () => {
+      if (sheet && !closedByPageRef.current && !replacedRef.current) stopApplyQueue();
+    },
+    [sheet],
+  );
   useEffect(() => {
     loadSaveSizes();
     return () => {
@@ -355,6 +370,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         return;
       }
       updateSaving(null);
+      // ページの中の保存の見張りも終わりにする（そのままだと、このページのあとの保存を、終わらない保存の続きとして数える）
+      webRef.current?.injectJavaScript('window.__myappSaveGiveUp && window.__myappSaveGiveUp(); true;');
       if (inBackground.current) completeBackground(false, true);
       else endSave(routeKey, false);
     };
@@ -399,8 +416,17 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   };
   const scroll = useRef({ y: 0, target: '' }); // いまのスクロール位置（ページが知らせてくる。target は動いた箱）
   const [restoreTo, setRestoreTo] = useState({ y: 0, target: '' }); // 読み直したあとに戻すスクロール位置
-  const [launching, setLaunching] = useState(autoClick !== null); // 近道で、ボタンを押して次へ進むのを待っている
-  const launchingRef = useRef(launching);
+  const [launching, setLaunching] = useState(autoClick !== null); // 近道で、ボタンを押して次へ進むのを待っている（「開いています」の覆い）
+  // 近道のボタン（autoClick の1段め）を、まだ押していない。押して開いた画面で、この画面を入れ替える（残りの段と入れておく値も引き継ぐ）。
+  // 読み込めなかったときは覆いを外して「もう一度読み込む」を出すが、これは残す（読み直したら、もう一度覆って押す。
+  // 残さないと、読み直したページが押して開いた画面を、入れ替えずに上に重ね、残りの段と入れておく値も落としていた）。
+  // あきらめたら（15 秒）、押すのもやめる（遅れて押すと、同じく上に重なる）
+  const [autoClickOn, setAutoClickOn] = useState(autoClick !== null);
+  const autoClickPending = useRef(autoClickOn);
+  const stopAutoClick = useCallback(() => {
+    autoClickPending.current = false;
+    setAutoClickOn(false);
+  }, []);
   // 登録のあとに自動で開く申請（ページが閉じるかもしれないので、少し待ってから開く）
   const pendingApply = useRef<{ form: string; prefill: Record<string, string>; timer: ReturnType<typeof setTimeout> } | null>(null);
   // 画面が消えたら、自動で開くはずだった申請もやめる（戻った・ログアウトしたのに、あとからシートが開かないように）
@@ -460,11 +486,14 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   useEffect(() => {
     if (!launching) return;
     const timer = setTimeout(() => {
-      launchingRef.current = false;
       setLaunching(false);
+      if (!autoClickPending.current) return;
+      stopAutoClick();
+      webRef.current?.injectJavaScript('window.__myappAutoClickStop = true; true;');
     }, 15000);
     return () => clearTimeout(timer);
-  }, [launching]);
+    // 読み直したら（reloadKey）、読み直したページの分を、もう一度 15 秒待つ
+  }, [launching, stopAutoClick, reloadKey]);
 
   // 整った合図（ready）が来なくても、8 秒たったら見せる（ページの側で何かがうまく動かなかったときのため）
   useEffect(() => {
@@ -480,6 +509,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const reloadPage = useCallback(() => {
     setRestoreTo(scroll.current); // 読み直しても、見ていた位置に戻す
     setFailure(null);
+    if (autoClickPending.current) setLaunching(true); // 近道のボタンをまだ押していない（読み直したページで押す）
     setShown(false);
     setInitApp(cachedInitApp(uri));
     setRefModes(recallRefModes(screenApp));
@@ -629,7 +659,6 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       // （読み込み直したときにまだ切れていれば、もう一度ここに来る）
       if (result === 'offline') {
         expiredShown.current = false;
-        launchingRef.current = false;
         setLaunching(false);
         setFailure(describeLoadError(-1009));
         return;
@@ -655,8 +684,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     if (pageKey && childHandoff?.appData) rememberAppData(pageKey, childHandoff.appData);
     const data = childHandoff ? depositHandoff(childHandoff) : undefined;
     // 近道で押したボタンが開いた画面は、この画面と入れ替える。ふだんは上に重ねる
-    const replace = launchingRef.current;
-    launchingRef.current = false;
+    const replace = autoClickPending.current;
+    if (replace) stopAutoClick();
     if (!replace) {
       openedChild.current = true;
       othersWritesAtOpen.current = writeCount() - ownWrites.current;
@@ -676,8 +705,10 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     if (replace) {
       // 近道の途中でも、この画面がもう前に出ていない（使う人がほかの画面へ移った）なら、入れ替えない
       // （router.replace は、いちばん上の画面を入れ替えるので、移った先の画面を入れ替えてしまう）
-      if (navigation.isFocused()) router.replace(href);
-      else setLaunching(false); // 入れ替えないなら、「開いています」の覆いを外す（待たせない）
+      if (navigation.isFocused()) {
+        replacedRef.current = true;
+        router.replace(href);
+      } else setLaunching(false); // 入れ替えないなら、「開いています」の覆いを外す（待たせない）
       return;
     }
     router.push(href);
@@ -696,17 +727,23 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       // 裏で続けられるときは、保存の知らせの上で右へなぞると戻る（SaveProgress の onLeave）
       gestureEnabled: !busy,
       // 裏で続けられるときは、保存のあいだの ‹ を、同じ見た目のボタンに替える（押したら、アプリが自分で戻る）。
-      // 保存が終わったら、いつもの ‹ に戻す（options は前の値に重ねられるので、undefined で消す）
-      headerLeft:
-        busy && canLeave
-          ? () => (
-              <Pressable onPress={leaveDuringSave} accessibilityRole="button" accessibilityLabel="戻る" hitSlop={8}>
-                <Icon name="back" size={20} weight="semibold" tintColor={c.text} />
-              </Pressable>
-            )
-          : undefined,
+      // 保存が終わったら、いつもの ‹ に戻す（options は前の値に重ねられるので、undefined で消す）。
+      // シートでは headerLeft を渡さない: 渡すと（undefined でも）、レイアウトが決めた左上の ×（まとめて申請の残りもやめる）を
+      // 消してしまい、iOS では閉じるボタンがなくなっていた（2026-11-22。src/app/(app)/_layout.tsx の sheet/[app]/[form]）
+      ...(sheet
+        ? {}
+        : {
+            headerLeft:
+              busy && canLeave
+                ? () => (
+                    <Pressable onPress={leaveDuringSave} accessibilityRole="button" accessibilityLabel="戻る" hitSlop={8}>
+                      <Icon name="back" size={20} weight="semibold" tintColor={c.text} />
+                    </Pressable>
+                  )
+                : undefined,
+          }),
     }),
-    [heading, title, pageTitle, modalOpen, c, busy, canLeave, leaveDuringSave],
+    [heading, title, pageTitle, modalOpen, c, busy, canLeave, leaveDuringSave, sheet],
   );
 
   // ページに入れるスクリプト（合わせて 700KB ほどになる）。中身が変わるときだけ作り直す。
@@ -736,10 +773,10 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         BRIDGE_JS,
         SAVE_WATCH_JS,
         buildSkinScript(appId),
-        firstStep ? autoClickJs(firstStep, readyKey) : '',
+        firstStep && autoClickOn ? autoClickJs(firstStep, readyKey) : '',
         restoreScrollJs(restoreTo),
       ]),
-    [insets.bottom, appId, firstStep, readyKey, restoreTo],
+    [insets.bottom, appId, firstStep, readyKey, autoClickOn, restoreTo],
   );
   const source = useMemo(() => ({ uri }), [uri]);
   const webStyle = useMemo(() => [styles.web, { backgroundColor: background }], [background]);
@@ -766,7 +803,10 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           injectedJavaScript={afterLoadJs}
           // iOS では onMessage を渡さないと injectedJavaScript が実行されない（react-native-webview の既知の動き）
           // 画面全体は、会社のサイトのページだけを出す。ほかのサイトへのリンクは、アプリの外（Safari）で開く
-          // （アプリが入れる仕組みとデータが、ほかのサイトに渡らないように。src/webview/origin.ts）
+          // （アプリが入れる仕組みとデータが、ほかのサイトに渡らないように。src/webview/origin.ts）。
+          // どの URL も下の判定に通す（originWhitelist の既定は http・https だけで、電話・ほかのアプリのリンクなどは、判定に来ずに
+          // WebView が聞かずにアプリの外で開いていた。枠の中の data: などは、開けずに止められていた）
+          originWhitelist={ALL_URLS}
           onShouldStartLoadWithRequest={(req) => {
             // この画面の中で、ほかのアプリの画面（/runapp/<ほかのアプリ>/）へ移ろうとした。この画面のまま移すと、
             // ほかのアプリのページが、この画面のアプリとして知らせを送れてしまう（src/webview/origin.ts）。新しい画面として重ねて開く
@@ -917,7 +957,6 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             e.preventDefault();
             const { code, description } = e.nativeEvent;
             if (isIgnorableLoadError(code, description)) return;
-            launchingRef.current = false;
             setLaunching(false);
             setFailure(describeLoadError(code, description));
           }}
@@ -930,7 +969,6 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
               return;
             }
             if (status < 500) return;
-            launchingRef.current = false;
             setLaunching(false);
             setFailure({
               icon: 'server-error',

@@ -15,6 +15,16 @@ describe('scoped: CSS の各ルールに、条件（祖先のセレクター）�
   test('[ ] の中のカンマでも分けない', () => {
     expect(css(':root.x', '[data-x="a,b"] { color: red; }')).toBe(':root.x [data-x="a,b"] { color: red; }');
   });
+  test(':root で始まる（テーマなどの）ルールは、条件と同じ :root に付ける（:root の中の :root は、どこにも当たらない）', () => {
+    expect(css(':root.x', ':root[data-myapp-theme="dark"] #a::before { color: red; }')).toBe(
+      ':root.x[data-myapp-theme="dark"] #a::before { color: red; }',
+    );
+    expect(css('#form[data-y]', ':root.dark #a { color: red; }')).toBe(':root.dark #form[data-y] #a { color: red; }');
+    expect(css(':root.x', ':root.dark { color: red; }')).toBe(':root.x.dark { color: red; }');
+  });
+  test(':root で始まる名前の別のもの（:root-ish など）は、ふつうに付ける', () => {
+    expect(css(':root.x', ':rooted a { color: red; }')).toBe(':root.x :rooted a { color: red; }');
+  });
   test('コメントは消して、ルールごとに付ける', () => {
     expect(css(':root.x', '/* メモ, です */ a { color: red; } b { color: blue; }')).toBe(':root.x a { color: red; }\n:root.x b { color: blue; }');
   });

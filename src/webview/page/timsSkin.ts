@@ -1981,6 +1981,13 @@ export const OVERTIME_MATH_JS = `
 // ---------------------------------------------------------------------------
 const SCRIPT = `
 (function () {
+  // 勤務表の一覧の行（「1/05(月)」など。年は書いていない）の年。一覧の見出しの年月から求める。
+  // 締め日の都合で、一覧が年をまたぐ（12 月の一覧に 1 月の行がある・1 月の一覧に 12 月の行がある）ときは、行の年をずらす
+  function rowYear(year, titleMonth, month) {
+    if (titleMonth >= 11 && month <= 2) return year + 1;
+    if (titleMonth && titleMonth <= 2 && month >= 11) return year - 1;
+    return year;
+  }
   function markDays() {
     var rpt = document.getElementById('frmAttendance_rptWork');
     var body = rpt && rpt.querySelector('.tcc-rpt-body');
@@ -2003,11 +2010,7 @@ const SCRIPT = `
       var kind = 'blank';
       var order = 9;
       if (m) {
-        // 締め日の都合で、一覧が年をまたぐ（12 月の一覧に 1 月の行がある・1 月の一覧に 12 月の行がある）ときは、行の年をずらす
-        var year = ym ? +ym[1] : now.getFullYear();
-        var titleMonth = listYm ? +listYm[2] : 0;
-        if (titleMonth >= 11 && +m[1] <= 2) year += 1;
-        else if (titleMonth && titleMonth <= 2 && +m[1] >= 11) year -= 1;
+        var year = rowYear(ym ? +ym[1] : now.getFullYear(), listYm ? +listYm[2] : 0, +m[1]);
         var time = new Date(year, +m[1] - 1, +m[2]).getTime();
         var statusEl = row.querySelector('[id^="frmAttendance_biko"]');
         var status = ((statusEl && statusEl.textContent) || '').trim();
@@ -2143,7 +2146,7 @@ ${APPLY_STATE_JS}
   function dayBadges() {
     var rpt = document.getElementById('frmAttendance_rptWork');
     var ym = ((rpt && rpt.querySelector('.tcc-rpt-title')) || {}).textContent || '';
-    ym = ym.match(/(\\d{4})年/);
+    ym = ym.match(/(\\d{4})年(\\d{1,2})月/);
     var sent = appliedDates();
     var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
     document.querySelectorAll('#frmAttendance_rptWork .tcc-rpt-row').forEach(function (row) {
@@ -2162,7 +2165,7 @@ ${APPLY_STATE_JS}
       var hasOtBadge = !!state && /残業/.test((rib && rib.textContent) || '');
       if (o && +o[1] * 60 + +o[2] > 0 && !hasOtBadge) {
         var d = ((row.querySelector('[id^="frmAttendance_dispDt"]') || {}).textContent || '').trim().match(/^(\\d{1,2})\\/(\\d{1,2})/);
-        var date = ym && d ? ym[1] + '/' + p2(+d[1]) + '/' + p2(+d[2]) : '';
+        var date = ym && d ? rowYear(+ym[1], +ym[2], +d[1]) + '/' + p2(+d[1]) + '/' + p2(+d[2]) : '';
         ot = date && sent.indexOf(date) >= 0 ? 'sent' : 'none';
       }
       if ((row.getAttribute('data-myapp-ot') || '') !== ot) {
@@ -2854,7 +2857,27 @@ ${REASONS_JS}
       return { label: one.length > 14 ? one.slice(0, 14) + '…' : one, run: function () { typeInto(area, t); } };
     }), indent);
   }
-  /** 登録を押したときの理由を控え、書き込みがうまくいってから（bridgeJs.ts の myapp-saved）覚える。弾かれた・失敗したときは覚えない */
+  /**
+   * 登録を押して控えたもの（form[key]）を、その保存が失敗した（bridgeJs.ts の myapp-save-end の ok が false）ときと、
+   * ほかの書き込みのボタン（削除など）を押したときに捨てる。捨てないと、あとのほかの保存の「保存した」で、
+   * 失敗した登録の続き（残業申請を開く・理由と作成済みを覚える）が動いてしまう。buttonSel は、控えを作る登録のボタン
+   */
+  function dropOnFailedSave(form, key, buttonSel) {
+    var mark = '__myappDrop_' + key;
+    if (form[mark]) return;
+    form[mark] = true;
+    window.addEventListener('myapp-save-end', function (e) {
+      if (!(e.detail && e.detail.ok === true)) form[key] = null;
+    });
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest && e.target.closest('.tcc-btn');
+      // 同じ画面のほかのボタンだけ（登録のあとに出る確かめのダイアログ（承認者確認など）のボタンは、その登録の続き）
+      if (!b || b.matches(buttonSel) || !form.contains(b) || b.closest('.tcc-modal, .tcc-msg-box')) return;
+      var label = (b.textContent || '').replace(/\\s+/g, '');
+      if (/登録|削除|申請|更新|保存|取消|取り消|承認|却下|確定|送信/.test(label) && !/コピー|検索|クリア|閉じる|キャンセル|戻る/.test(label)) form[key] = null;
+    }, true);
+  }
+  /** 登録を押したときの理由を控え、保存がうまく終わってから（bridgeJs.ts の myapp-saved）覚える。弾かれた・失敗・取り消しのときは覚えない */
   function rememberReasonOnSave(form, kind, areaSel, doneSel) {
     var done = document.querySelector(doneSel);
     if (done && !done.__myappReasonHook) {
@@ -2864,12 +2887,14 @@ ${REASONS_JS}
         form.__myappReasonSubmit = { text: area ? area.value : '', at: Date.now() };
       }, true);
     }
+    dropOnFailedSave(form, '__myappReasonSubmit', doneSel);
     if (form.__myappReasonSaved) return;
     form.__myappReasonSaved = true;
     window.addEventListener('myapp-saved', function () {
       var s = form.__myappReasonSubmit;
       form.__myappReasonSubmit = null;
-      if (s && Date.now() - s.at < 60000) rememberReason(kind, s.text);
+      // 押してから5分まで（承認者の確かめに答えるのを待ち、保存が確定してから知らせが来るので、長めに待つ）
+      if (s && Date.now() - s.at < 300000) rememberReason(kind, s.text);
     });
   }
   function appliedDates() {
@@ -2936,10 +2961,10 @@ ${REASONS_JS}
     var reasonRow = reason && reason.closest('.myapp-row');
     if (reasonRow && isNew) reasonChips('overtime', reasonRow, reason, false);
     rememberReasonOnSave(form, 'overtime', '#frmApply_zangyo_reason textarea', '#frmApply_zangyo_btnDone .tcc-btn');
-    // 登録を押したら、理由と日付を覚えておき、書き込みがうまくいってから（bridgeJs.ts の myapp-saved）この端末に記録する
-    // （次の申請の「前回の理由」と、勤怠実績登録の「作成済み」のため）。
+    // 登録を押したら、理由と日付を覚えておき、保存がうまく終わってから（bridgeJs.ts の myapp-saved。確定したあとに出る）
+    // この端末に記録する（次の申請の「前回の理由」と、勤怠実績登録の「作成済み」のため）。
     // 押しただけでは記録しない。理由が空で弾かれた・サーバーで失敗した・確かめでやめたときに「作成済み」になり、
-    // その日の残業申請が出されないままになるため。保存が取り消されたら（myapp-save-end の ok が false）、記録も消す
+    // その日の残業申請が出されないままになるため
     var done = document.querySelector('#frmApply_zangyo_btnDone .tcc-btn');
     if (done && !done.__myappRemember) {
       done.__myappRemember = true;
@@ -2947,22 +2972,15 @@ ${REASONS_JS}
         form.__myappOtSubmit = { reason: reason && reason.value.trim(), date: date && date.value.trim(), at: Date.now() };
       }, true);
     }
+    dropOnFailedSave(form, '__myappOtSubmit', '#frmApply_zangyo_btnDone .tcc-btn');
     if (!form.__myappOtSaved) {
       form.__myappOtSaved = true;
       window.addEventListener('myapp-saved', function () {
         var s = form.__myappOtSubmit;
-        if (!s || Date.now() - s.at > 60000) return;
+        if (!s || Date.now() - s.at > 300000) return; // 押してから5分まで（上の理由と同じ）
         form.__myappOtSubmit = null;
         if (s.reason) { try { localStorage.setItem(LAST_REASON, s.reason); } catch (e) {} }
-        if (s.date) {
-          markApplied(s.date, true);
-          form.__myappOtRecorded = { date: s.date, at: Date.now() };
-        }
-      });
-      window.addEventListener('myapp-save-end', function (e) {
-        var rec = form.__myappOtRecorded;
-        form.__myappOtRecorded = null;
-        if (rec && e.detail && e.detail.ok === false && Date.now() - rec.at < 60000) markApplied(rec.date, false);
+        if (s.date) markApplied(s.date, true);
       });
     }
   }
@@ -3123,11 +3141,12 @@ ${OVERTIME_MATH_JS}
         e.preventDefault();
         if (card.__ot) postApply(card.__ot, false);
       });
-      // 登録を押したら覚えておき、書き込みが終わったら（bridgeJs.ts の myapp-saved）すぐアプリに知らせる。
+      // 登録を押したら覚えておき、保存がうまく終わったら（bridgeJs.ts の myapp-saved。確定したあと）すぐアプリに知らせる。
       // 登録のあと EZCraft がすぐ画面を閉じることがあるので、ページの側では待たない（待つのはアプリの側。閉じたら戻ってから開く）
       window.addEventListener('myapp-saved', function () {
         var pending = form.__myappPendingApply;
-        if (!pending || Date.now() - pending.at > 20000) return;
+        // 確定してから知らせるので、確かめに答えるのを待ったり、電波が弱くて保存が長引いたりしても間に合うように、5分まで待つ
+        if (!pending || Date.now() - pending.at > 300000) return;
         form.__myappPendingApply = null;
         postApply(pending.ot, true);
       });
@@ -3141,6 +3160,7 @@ ${OVERTIME_MATH_JS}
       // キーボードで打った（isTrusted）か、時刻のダイヤルで選んだ（__myappDialEdit。openDial）ときだけ数える
       input.addEventListener('input', function (e) { if (e.isTrusted || input.__myappDialEdit) form.__myappTimesEdited = true; });
     });
+    dropOnFailedSave(form, '__myappPendingApply', '#frmAttendanceDtl_btnIns .tcc-btn');
     var save = document.querySelector('#frmAttendanceDtl_btnIns .tcc-btn');
     if (save && !save.__myappOt) {
       save.__myappOt = true;
@@ -3442,12 +3462,23 @@ ${OVERTIME_MATH_JS}
     if (tcc && tcc.lastPage > 1) sum.appendChild(kosuEl('div', 'myapp-kosu-note', '日ごとの一覧の、いま開いているページ（' + tcc.currPage + '/' + tcc.lastPage + '）の分だけのまとめです'));
   }
   // 勤務表のほかのタブ（工数・出力）の一覧を、タブを開かずに裏で読む（読み込み中の印は出さない。見ている勤務表の邪魔をしない）。
-  // 読めたら done(true)。そのタブを開いたときに、もう一度は検索しない
-  function quietSearch(gridId, done) {
+  // 読めたら done(true)。そのタブを開いたときに、もう一度は検索しない。
+  // ym（2026/11 など）を渡したら、そのタブの年月がそれと違えば、その年月にしてから読み直す（タブの年月は、勤務表の年月とは
+  // 別の欄。勤務表で前の月を見ているのに、出力のタブの今月の一覧を使ってしまっていた）
+  function quietSearch(gridId, done, ym) {
     var grid = document.getElementById(gridId);
     var pane = grid && grid.closest('.tcc-tab-pane');
-    var rows = function () { return grid.querySelectorAll('.TccGridBodyScroll tbody tr').length; };
+    var first = function () { return grid.querySelector('.TccGridBodyScroll tbody tr'); };
+    var stale = null; // 違う年月の一覧の、最初の行（読み直して入れ替わるのを待つ）
+    var rows = function () { var tr = first(); return tr && tr !== stale ? grid.querySelectorAll('.TccGridBodyScroll tbody tr').length : 0; };
     if (!pane) { done(false); return; }
+    var ymInput = ym ? pane.querySelector('[id*="_yrm"] input') : null;
+    if (ymInput && monthKey(ymInput.value) !== monthKey(ym)) {
+      if (pane.classList.contains('active')) { done(false); return; }
+      stale = first();
+      typeInto(ymInput, ym);
+      pane.__myappSearched = false;
+    }
     if (rows() > 0) { done(true); return; }
     if (!pane.__myappSearched) {
       if (pane.classList.contains('active')) { done(false); return; }
@@ -3467,6 +3498,11 @@ ${OVERTIME_MATH_JS}
       if (rows() > 0) { clearInterval(timer); done(true); }
       else if (Date.now() - start > 8000) { clearInterval(timer); done(false); }
     }, 200);
+  }
+  /** 年月（2026/11・2026/1 など）を比べられる数に（読めなければ NaN） */
+  function monthKey(value) {
+    var m = /^(\\d{4})\\/(\\d{1,2})$/.exec(String(value || '').trim());
+    return m ? +m[1] * 12 + +m[2] : NaN;
   }
   // 勤務表: 勤怠実績登録で「登録」「削除」をして戻ってきたとき（アプリが呼ぶ。src/webview/page/bridgeJs.ts の childClosedJs）。
   // ページを丸ごと読み直さずに、Web 版と同じく、勤務表が用意した「閉じたあとの処理」を呼ぶ
@@ -3524,7 +3560,7 @@ ${OVERTIME_MATH_JS}
     var rpt = document.getElementById('frmAttendance_rptWork');
     var body = rpt && rpt.querySelector('.tcc-rpt-body');
     if (!body) return [];
-    var ym = ((rpt.querySelector('.tcc-rpt-title') || {}).textContent || '').match(/(\\d{4})年/);
+    var ym = ((rpt.querySelector('.tcc-rpt-title') || {}).textContent || '').match(/(\\d{4})年(\\d{1,2})月/);
     if (!ym) return [];
     var applied = appliedDates();
     var p = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -3536,7 +3572,7 @@ ${OVERTIME_MATH_JS}
       var m = label.match(/^(\\d{1,2})\\/(\\d{1,2})/);
       var o = ((row.querySelector('[id^="frmAttendance_biko"]') || {}).textContent || '').match(/残業\\s*(\\d{1,2}):(\\d{2})/);
       if (!m || !o || +o[1] * 60 + +o[2] <= 0) return;
-      var date = ym[1] + '/' + p(+m[1]) + '/' + p(+m[2]);
+      var date = rowYear(+ym[1], +ym[2], +m[1]) + '/' + p(+m[1]) + '/' + p(+m[2]);
       // 申請済み: この端末から出した日か、勤務表の日の札（サーバーが出す申請の印）に「残業」とある日（Web やほかの端末から出したもの）
       var rib = row.querySelector('.ribon span');
       var onServer = !!rib && /残業/.test(rib.textContent || '');
@@ -3599,11 +3635,13 @@ ${OVERTIME_MATH_JS}
         if (btn.disabled) return;
         btn.disabled = true;
         btn.setAttribute('data-loading', '');
+        // 出力のタブは、勤務表で見ている年月の一覧を読む
+        var viewing = document.querySelector('#frmAttendance_yrmWork input');
         quietSearch('frmAttendance_grdAttd', function (ok) {
           btn.disabled = false;
           btn.removeAttribute('data-loading');
           openOtBulk(ok ? attdTimes() : {});
-        });
+        }, viewing && !isNaN(monthKey(viewing.value)) ? viewing.value.trim() : '');
       });
       body.appendChild(btn);
     }

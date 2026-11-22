@@ -135,6 +135,19 @@ function splitSelectors(list: string): string[] {
 }
 
 /** CSS の各ルールの前に条件（祖先のセレクター）を付けて、条件に合うときだけ効くようにする */
+/**
+ * 1つのセレクターに条件を付ける。:root で始まるもの（:root[data-myapp-theme="dark"] … など、ページ全体の条件）は、
+ * 条件の中に置くと「:root の中の :root」になって効かないので、同じ :root に付ける
+ * （条件も :root.myapp-apply-new のように :root だけなら :root.myapp-apply-new[data-myapp-theme="dark"] …）
+ */
+function withScope(scope: string, selector: string): string {
+  const root = /^:root((?:\[[^\]]*\]|\.[\w-]+)*)(?=\s|$)\s*([\s\S]*)$/.exec(selector);
+  if (!root) return `${scope} ${selector}`;
+  const [, conditions, rest] = root;
+  const head = /^:root\S*$/.test(scope) ? `${scope}${conditions}` : `:root${conditions} ${scope}`;
+  return rest ? `${head} ${rest}` : head;
+}
+
 export function scoped(scope: string, css: string): string {
   return css
     .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -145,7 +158,7 @@ export function scoped(scope: string, css: string): string {
       const selectors = splitSelectors(chunk.slice(0, open))
         .map((selector) => selector.trim())
         .filter(Boolean)
-        .map((selector) => `${scope} ${selector}`)
+        .map((selector) => withScope(scope, selector))
         .join(',\n');
       return `${selectors} {${chunk.slice(open + 1)}}`;
     })

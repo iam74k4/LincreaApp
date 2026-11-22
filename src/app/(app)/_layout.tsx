@@ -7,7 +7,7 @@ import { router, Stack, usePathname } from 'expo-router';
 import { REMINDER_SHORTCUT, useAttendanceReminders } from '../../attendance/attendanceReminder';
 import { BackgroundSaveBanner } from '../../components/BackgroundSaveBanner';
 import { Icon } from '../../platform/icons';
-import { openShortcut, stopApplyQueue } from '../../shortcuts/openShortcut';
+import { openShortcut } from '../../shortcuts/openShortcut';
 import { SHORTCUTS } from '../../shortcuts/shortcuts';
 import { SavePark, SaveParkProvider } from '../../components/SavePark';
 import { useColors } from '../../core/theme';
@@ -45,7 +45,8 @@ export default function AppLayout() {
           {/* ページから受け取った PDF（左上で戻る・右上で保存・共有） */}
           <Stack.Screen name="file" options={webScreen} />
           {/* その場で開く申請などは、シートで重ねる（iOS 26 ではガラスの縁のシート）。左上の × で閉じる
-              （まとめて申請の途中なら、残りもやめる。src/shortcuts/openShortcut.ts） */}
+              （まとめて申請の途中なら、残りもやめる。やめるのは、シートが本当に閉じたとき。
+              ダイアログが開いていれば、× はダイアログだけを閉じる。src/components/EzcraftWebView/EzcraftWebView.tsx） */}
           <Stack.Screen
             name="sheet/[app]/[form]"
             options={{
@@ -53,10 +54,7 @@ export default function AppLayout() {
               presentation: 'modal',
               headerLeft: () => (
                 <Pressable
-                  onPress={() => {
-                    stopApplyQueue();
-                    router.back();
-                  }}
+                  onPress={() => router.back()}
                   accessibilityRole="button"
                   accessibilityLabel="閉じる"
                   hitSlop={8}
