@@ -74,6 +74,7 @@ test('予約を出す前に、通知のチャンネルを作ってから、許�
 
 test('別の人がログインしたら、前の人の通知の予約と、覚えていた勤務表の状態を消す（ログアウトを通らなかったときも）', async () => {
   // 起動したとき: 端末に残っていたのは、前にログインしていた人（ログインが切れていて、入り直せなかった）
+  await AsyncStorage.setItem('myapp.attendanceOwner', 'user-a');
   attendanceRemindersFor('user-a');
   await settled();
   await AsyncStorage.setItem('myapp.attendanceDays', '{}');
@@ -88,21 +89,30 @@ test('別の人がログインしたら、前の人の通知の予約と、覚�
 });
 
 test('同じ人が入り直したとき（大文字・小文字の違いも）は、通知の予約を残す', async () => {
-  attendanceRemindersFor('user-a');
-  await settled();
+  await AsyncStorage.setItem('myapp.attendanceOwner', 'user-a');
   attendanceRemindersFor('User-A');
   await settled();
   expect(notifications.cancelScheduledNotificationAsync).not.toHaveBeenCalled();
 });
 
-test('ログアウトしたら、だれの通知かも忘れる（次の人のときに、何も消さずに始める）', async () => {
-  attendanceRemindersFor('user-a');
-  forgetAttendanceReminders();
+test('だれのものか分からない（前の版が残した）状態と予約は、一度消してから、いまの人のものにする', async () => {
+  // 前の版: 持ち主を覚えていない。別の人が入ったあとだと、前の人のものが残っていることがある
+  await AsyncStorage.setItem('myapp.attendanceDays', '{}');
+  attendanceRemindersFor('user-b');
   await settled();
-  expect(await AsyncStorage.getItem('myapp.attendanceOwner')).toBeNull();
+  expect(notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('attendance-reminder-2026-11-25');
+  expect(await AsyncStorage.getItem('myapp.attendanceDays')).toBeNull();
+  expect(await AsyncStorage.getItem('myapp.attendanceOwner')).toBe('user-b');
+  // 次からは、同じ人なら消さない
   jest.clearAllMocks();
   attendanceRemindersFor('user-b');
   await settled();
   expect(notifications.cancelScheduledNotificationAsync).not.toHaveBeenCalled();
-  expect(await AsyncStorage.getItem('myapp.attendanceOwner')).toBe('user-b');
+});
+
+test('ログアウトしたら、だれの通知かも忘れる', async () => {
+  await AsyncStorage.setItem('myapp.attendanceOwner', 'user-a');
+  forgetAttendanceReminders();
+  await settled();
+  expect(await AsyncStorage.getItem('myapp.attendanceOwner')).toBeNull();
 });

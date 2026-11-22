@@ -33,6 +33,15 @@ export function mayNavigate(url: string, isTopFrame: boolean | undefined): boole
   return isServerUrl(url);
 }
 
+/**
+ * current から next へ、# のあとだけが変わったか（同じページの中の移動で、読み込みではない）。
+ * 同じ URL（読み直し）や、どちらかが空なら false
+ */
+export function onlyHashChanged(current: string, next: string): boolean {
+  if (!current || !next || current === next) return false;
+  return current.split('#')[0] === next.split('#')[0];
+}
+
 /** アプリの外（ブラウザ）で開いてよいリンクか（https のページだけ） */
 export function mayOpenOutside(url: string): boolean {
   try {

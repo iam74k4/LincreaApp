@@ -30,6 +30,7 @@ export type BridgeMessage =
   | { type: 'net'; method: string; path: string; keys: string; at: number; ms: number; status: number; sent: number; received: number; hint: string }
   | { type: 'refMode'; key: string; text: string; contentType: string }
   | { type: 'pageLog'; level: 'error' | 'warn'; text: string }
+  | { type: 'urlChange'; url: string }
   | { type: 'ready' };
 
 /** ページから来た数（0 以上の整数で、大きすぎないもの）。違えば null */
@@ -52,6 +53,8 @@ export function parseBridgeMessage(data: string): BridgeMessage | null {
       return { type: 'file', base64: message.base64, name: text(message.name, ''), mime: text(message.mime, 'application/octet-stream') };
     }
     if (message.type === 'ready') return { type: 'ready' };
+    // ページが、読み込まずにアドレスだけ変える（pushState・replaceState）。変わったあとの URL
+    if (message.type === 'urlChange' && typeof message.url === 'string') return { type: 'urlChange', url: message.url.slice(0, 2048) };
     // 開発中だけ: ページの通信1回ぶんの記録（NET_TRACE_JS）。パス・クエリの名前・かかった時間・大きさ・名前らしい語だけ
     if (message.type === 'net') {
       const str = (value: unknown, max: number) => (typeof value === 'string' ? value.slice(0, max) : '');

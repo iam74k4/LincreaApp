@@ -156,6 +156,18 @@ export const BRIDGE_JS = compactJs(`
   // 3. window.close() → アプリに「閉じて」と知らせる
   window.close = function () { post({ type: 'close' }); };
 
+  // 3b. ページが、読み込まずにアドレスだけ変える（pushState・replaceState）ときは、先にアプリに知らせる。
+  // Android は、これも読み込みの始まり（onLoadStart）として知らせてくるので、アプリはこの URL への始まりを読み込みとして扱わない
+  // （扱うと、保存の見張り・ダイアログの状態を片づけてしまう。src/components/EzcraftWebView/EzcraftWebView.tsx）
+  ['pushState', 'replaceState'].forEach(function (name) {
+    var original = window.history && window.history[name];
+    if (typeof original !== 'function') return;
+    window.history[name] = function (state, title, url) {
+      try { post({ type: 'urlChange', url: url == null ? location.href : new URL(String(url), location.href).href }); } catch (e) {}
+      return original.apply(this, arguments);
+    };
+  });
+
   // 4. スクロールの位置をアプリに知らせる（別の画面から戻って読み直したとき、同じ位置に戻すため）。
   //    EZCraft は、ページ全体ではなく中の箱（#main など）をスクロールさせることがあるので、どれが動いたかも知らせる
   var scrollTimer = null;

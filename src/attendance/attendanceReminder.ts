@@ -93,13 +93,16 @@ async function forgetAll(): Promise<void> {
 /**
  * いまこの端末を使う人を知らせる（起動したとき・ログインしたとき。src/session/SessionContext.tsx）。
  * 覚えている状態と予約が別の人のものなら、消す。ログインが切れていて入り直せないまま、ログイン画面から別の人が入ったとき、
- * ログアウトを通らないので、前の人の通知が届き続けていた
+ * ログアウトを通らないので、前の人の通知が届き続けていた。
+ * だれのものか分からない（持ち主を覚える前の版が残した）ものも、一度消す。持ち主は、勤務表の状態を受け取るより先に
+ * （起動したとき・ログインしたときに）覚えるので、持ち主のない状態は前の版のものだけ。前の版で別の人が入ったあとの端末では、
+ * 前の人の通知が残っていることがある。消しても、次に勤務表を開けば覚え直して、予約し直す
  */
 export function attendanceRemindersFor(username: string): void {
   run(async () => {
     const owner = await AsyncStorage.getItem(OWNER_KEY);
     if (owner !== null && owner.toLowerCase() === username.toLowerCase()) return;
-    if (owner !== null) await forgetAll();
+    await forgetAll();
     await AsyncStorage.setItem(OWNER_KEY, username);
   });
 }
