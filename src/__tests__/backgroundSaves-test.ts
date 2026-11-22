@@ -11,6 +11,7 @@ import {
   resetSaves,
   savesSnapshot,
   savingElsewhere,
+  noteScreenPage,
   savingInForeground,
   savingSamePage,
   updateSave,
@@ -149,7 +150,7 @@ describe('見えている画面の保存のあいだは、アプリが自分で�
     expect(open).toHaveBeenCalledTimes(1);
   });
 
-  test('見えている画面の保存が終わってから、1回だけ開く', () => {
+  test('見えている画面の保存が終わってから、少し待って（ページが自分で閉じるのを待つ）1回だけ開く', () => {
     const open = jest.fn();
     beginSave('dtl-2', '勤怠実績登録', '保存しています（0/9）', '登録', null);
     expect(savingInForeground()).toBe(true);
@@ -157,19 +158,43 @@ describe('見えている画面の保存のあいだは、アプリが自分で�
     updateSave('dtl-2', '保存しています（3/9）');
     expect(open).not.toHaveBeenCalled();
     endSave('dtl-2', true);
+    expect(open).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1000);
     expect(open).toHaveBeenCalledTimes(1);
     beginSave('dtl-3', '勤怠実績登録', '保存しています（0/9）', '登録', null);
     endSave('dtl-3', true);
+    jest.advanceTimersByTime(1000);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('保存が裏に回ったときも、画面の入れ替えが済んでから開く（すぐ開くと、入れ替えで消えていた）', () => {
+    const open = jest.fn();
+    beginSave('dtl-1', '勤怠実績登録', '保存しています（0/9）', '登録', null);
+    afterForegroundSave(open);
+    moveSaveToBackground('dtl-1', 'list-1');
+    expect(savingInForeground()).toBe(false);
+    expect(open).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1000);
     expect(open).toHaveBeenCalledTimes(1);
   });
 
   test('裏で続けている保存は待たない（見えている画面は止まらない）', () => {
     const open = jest.fn();
     beginSave('dtl-1', '勤怠実績登録', '保存しています（0/9）', '登録', null);
-    moveSaveToBackground('dtl-1', 'list-1', 'l_tims/frmattendance');
+    moveSaveToBackground('dtl-1', 'list-1');
     expect(savingInForeground()).toBe(false);
+    jest.advanceTimersByTime(1000);
     afterForegroundSave(open);
     expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('ログアウトしたら、待っていた画面は開かない', () => {
+    const open = jest.fn();
+    beginSave('dtl-2', '勤怠実績登録', '保存しています（0/9）', '登録', null);
+    afterForegroundSave(open);
+    resetSaves();
+    jest.advanceTimersByTime(5000);
+    expect(open).not.toHaveBeenCalled();
   });
 
   test('待つのをやめたら、開かない', () => {
@@ -178,19 +203,24 @@ describe('見えている画面の保存のあいだは、アプリが自分で�
     const cancel = afterForegroundSave(open);
     cancel();
     endSave('dtl-2', true);
+    jest.advanceTimersByTime(1000);
     expect(open).not.toHaveBeenCalled();
   });
 });
 
-test('裏に回した保存は、戻った先がどの画面かと、始めた時刻を覚える（戻った先を閉じて開き直した画面も、終わったら新しくするため）', () => {
+test('裏に回した保存は、戻った先がどのページかと、始めた時刻を覚える（戻った先を閉じて開き直した画面も、終わったら新しくするため）', () => {
   jest.setSystemTime(new Date(2026, 10, 22, 10, 0, 0));
+  const page = 'https://example.test/runapp/L_Tims/frmAttendance/';
+  const forget = noteScreenPage('list-1', page);
   const done = jest.fn();
   const off = onBackgroundSaveDone(done);
   beginSave('dtl-1', '勤怠実績登録', '保存しています（0/9）', '登録', null);
-  moveSaveToBackground('dtl-1', 'list-1', 'l_tims/frmattendance');
+  moveSaveToBackground('dtl-1', 'list-1');
+  // 戻った先の画面を閉じても、覚えたページはそのまま（開き直した同じページの画面と見比べる）
+  forget();
   endSave('dtl-1', true);
   expect(done).toHaveBeenCalledWith(
-    expect.objectContaining({ parentKey: 'list-1', parentPage: 'l_tims/frmattendance', startedAt: new Date(2026, 10, 22, 10, 0, 0).getTime() }),
+    expect.objectContaining({ parentKey: 'list-1', parentPage: page, startedAt: new Date(2026, 10, 22, 10, 0, 0).getTime() }),
     true,
   );
   off();

@@ -61,6 +61,7 @@ import {
   beginSave,
   endSave,
   moveSaveToBackground,
+  noteScreenPage,
   onBackgroundSaveDone,
   savingElsewhere,
   savingSamePage,
@@ -175,11 +176,10 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // この画面のアプリ（開いた URL の /runapp/<アプリ>/。runapp でない /page の画面は ''）。ページは変えられないので、
   // アプリごとの知らせ・控えを、どのアプリのものとして受け付けるかは、これで決める（下の onMessage）
   const screenApp = runappOf(uri)?.app ?? '';
-  // この画面が、どのアプリのどの画面か（"l_tims/frmattendance"。裏の保存の戻った先と見比べる。runapp でなければ ''）
-  const screenPage = (() => {
-    const run = runappOf(uri);
-    return run ? `${run.app}/${run.form}`.toLowerCase() : '';
-  })();
+  const userClosing = useRef(false); // 保存のあいだに、使う人がシートを閉じようとした（まとめて申請の次を開かない）
+  // この画面のページ（URL と、開いた元が渡した引数。勤怠実績登録なら、どの日か）。裏の保存の戻った先と見比べる
+  // （戻った先を閉じて、同じページを開き直していたら、それも新しくする。ほかの日の勤怠実績登録などは、新しくしない）
+  const screenPage = handoff?.params ? `${uri}|${handoff.params}` : uri;
   const loadedAt = useRef(0); // ページを読み終えた時刻（裏の保存の途中に読んだかを見る）
   // この画面の定義（initApp）の控え。あれば、ページは読まずにこれを使う（src/webview/initAppCache.ts）。
   // 開いたとき（と読み直すとき）に決めて、そのあいだは変えない（変えると、ページに入れるスクリプトが入れ替わる）
@@ -195,6 +195,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // この画面（重ねた画面の1枚）。裏で保存を続けるとき、重ねる順を入れ替えるのに使う（src/webview/backgroundSaves.ts）
   const navigation = useNavigation<NativeStackNavigationProp<Record<string, object | undefined>>>();
   const routeKey = useRoute().key;
+  useEffect(() => noteScreenPage(routeKey, screenPage), [routeKey, screenPage]);
   // この画面だけを閉じる。navigation.goBack() や router.back() は、いちばん上の画面を閉じる（そのあいだに申請のシートが
   // 重なっていると、それを閉じてしまう）。どの画面を閉じるか（source。dispatch が付ける）と、どの画面の組か（target）を
   // 両方付けた POP だけが、この画面を閉じる（expo-router の StackRouter の POP）
@@ -231,11 +232,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     if (!state || me < 1 || me !== routes.length - 1) return false;
     const others = routes.filter((r) => r.key !== routeKey);
     inBackground.current = true;
-    const parent = routes[me - 1];
-    const parentParams = parent.params as { app?: unknown; form?: unknown } | undefined;
-    const parentPage =
-      typeof parentParams?.app === 'string' && typeof parentParams.form === 'string' ? `${parentParams.app}/${parentParams.form}`.toLowerCase() : null;
-    moveSaveToBackground(routeKey, parent.key, parentPage);
+    moveSaveToBackground(routeKey, routes[me - 1].key);
     navigation.dispatch({ type: 'RESET', payload: { ...state, routes: [routes[me], ...others], index: others.length } });
     // ページを、画面の後ろの置き場へ移す。この画面が横へ去る動きが終わってから移す
     // （先に移すと、去っていく画面が空になって見える。動き終わってから移すまでの一瞬なら、iOS はページを止めない）
@@ -261,12 +258,12 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const leaveAfterStartRef = useRef(false);
   const leaveAfterStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestLeaveAfterStart = useCallback((on: boolean) => {
+    if (!on) userClosing.current = false; // 戻るのをやめた（押し直した「登録」で保存が始まらなかった）
     leaveAfterStartRef.current = on;
     setLeaveAfterStart(on);
     if (leaveAfterStartTimer.current) clearTimeout(leaveAfterStartTimer.current);
     leaveAfterStartTimer.current = null;
   }, []);
-  const userClosing = useRef(false); // 保存のあいだに、使う人がシートを閉じようとした（まとめて申請の次を開かない）
   const leaveDuringSave = useCallback(() => {
     // 保存の途中で、ページが確かめのダイアログ（承認者確認フォームなど）を開いて答えを待っている。
     // 戻る代わりにダイアログを閉じる（ページが保存を取り消す）。裏へ回すと、見えないダイアログが答えを待ったまま止まるため
@@ -539,6 +536,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   }, []);
   // ページを丸ごと読み直す（白い画面と読み込み中の印が、数秒出る）
   const reloadPage = useCallback(() => {
+    userClosing.current = false; // 読み直したページは、閉じようとしていた保存の続きではない
     // 作り直す WebView の最初の読み込みは、前のページの続きではない
     docUrl.current = '';
     sameDocUrls.current = [];
@@ -625,17 +623,21 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     else reloadWhenShown.current = true;
   };
   // ほかの画面がこの画面の上に重なった（ページが開いたものに限らず、アプリが開いた申請のシート・知らせのボタン・近道なども）。
-  // そのときの書き込みの数を控えておき、戻ってきたときに、そのあいだに書き込みがあれば新しくする（refreshAfterChild）。
-  // ページが開いたとき（openWindow）は、その前に控えてあるので、そのまま
+  // 戻ってきたときに、そのあいだに書き込みがあれば、見た目だけ整え直す（勤務表の「未申請」の札・まとめて申請の日数。
+  // この端末で出した申請は、ページの中に覚えてある）。読み直しはしない（打ちかけの入力を消さない。勤怠実績登録の上で申請したときなど）。
+  // データを読み直すのは、ページが開いた画面から戻ったとき（refreshAfterChild）と、裏の保存が終わったとき
+  const coveredWrites = useRef<number | null>(null);
   useFocusEffect(
-    useCallback(
-      () => () => {
-        if (openedChild.current) return;
-        openedChild.current = true;
-        othersWritesAtOpen.current = writeCount() - ownWrites.current;
-      },
-      [],
-    ),
+    useCallback(() => {
+      const before = coveredWrites.current;
+      coveredWrites.current = null;
+      if (before !== null && writeCount() - ownWrites.current !== before) {
+        webRef.current?.injectJavaScript('window.__myappRestyleNow && window.__myappRestyleNow(); true;');
+      }
+      return () => {
+        coveredWrites.current = writeCount() - ownWrites.current;
+      };
+    }, []),
   );
   // 重ねた画面が保存を裏で続けているあいだは、まだ新しくしない（保存が終わってから。下の onBackgroundSaveDone）
   useFocusEffect(
@@ -911,10 +913,13 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             // ページが、読み込まずにアドレスだけ変える・変えた。その URL への読み込みの始まりは、片づけない（上の SAME_DOC_WAIT_MS）。
             // 変えたあとの知らせ（moved。# の付け替え・戻る進む）も、いまのページの URL を覚え直したうえで、始まりと見比べる
             // （Android は、知らせより先にも後にも、始まりを知らせてくる。後に来たとき、覚え直した URL と同じなので読み込みと見誤る）
+            // ただし、始まりをもう受け取っていた（いまの URL がもうそれ）なら入れない（iOS は始まりが先。残すと、そのすぐあとの
+            // 同じ URL の本当の読み直しを見逃す）
             if (message?.type === 'urlChange') {
+              const handled = message.moved && docUrl.current === message.url;
               docUrl.current = message.url;
               const fresh = sameDocUrls.current.filter((u) => Date.now() - u.at < SAME_DOC_KEEP_MS);
-              sameDocUrls.current = [...fresh, { url: message.url, at: Date.now() }];
+              sameDocUrls.current = handled ? fresh : [...fresh, { url: message.url, at: Date.now() }];
               if (loadReset.current?.url === message.url) {
                 clearTimeout(loadReset.current.timer);
                 loadReset.current = null;
