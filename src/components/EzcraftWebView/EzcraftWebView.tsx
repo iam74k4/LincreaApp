@@ -387,7 +387,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         return;
       }
       updateSaving(null);
-      userClosing.current = false; // 保存は終わったことにする。シートは残るので、閉じようとしたしるしも外す
+      // 閉じようとしたしるし（userClosing）は外さない。ページは、あきらめたあとも保存を終えて自分で閉じることがあり、
+      // そのとき close が、まとめて申請の次を開かずにやめられるように
       // ページの中の保存の見張りも終わりにする（そのままだと、このページのあとの保存を、終わらない保存の続きとして数える）
       webRef.current?.injectJavaScript('window.__myappSaveGiveUp && window.__myappSaveGiveUp(); true;');
       if (inBackground.current) completeBackground(false, true);
