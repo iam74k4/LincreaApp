@@ -36,6 +36,7 @@ import {
   BRIDGE_JS,
   childClosedJs,
   healthFlagJs,
+  HISTORY_WATCH_JS,
   joinScripts,
   NET_TRACE_JS,
   openerStubJs,
@@ -115,8 +116,8 @@ const SAVE_STALL_MS = 60_000;
  * Android は pushState でも読み込みの始まりを知らせ、知らせとどちらが先に届くか決まっていないので、少し待ってから片づける
  */
 const SAME_DOC_WAIT_MS = 300;
-/** ページが知らせたアドレスの変更を、読み込みの始まりと見比べるあいだ覚えておく時間 */
-const SAME_DOC_KEEP_MS = 2000;
+/** ページが知らせたアドレスの変更を、読み込みの始まりと見比べるあいだ覚えておく時間（1回使ったら消す） */
+const SAME_DOC_KEEP_MS = 500;
 // 裏で続けている保存は、もっと長く待つ。見張りをやめるとページごと片づけるので、通信の途中で消すと、
 // サーバーに書きかけのやりとりが残る（次の保存が「Lock wait timeout」になる）。EZCraft は 100 秒を超えたやりとりを
 // 取り消すので、それより十分長く待ってから片づける
@@ -512,8 +513,19 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     return () => clearTimeout(timer);
   }, [shown, reloadKey]);
 
+  // 読み込みの始まりを、本当の読み込みか見分けるためのもの（下の onLoadStart）: いまのページの URL・ページが知らせたアドレスの変更・
+  // 片づけるのを少し待っている読み込みの始まり
+  const docUrl = useRef('');
+  const sameDocUrls = useRef<{ url: string; at: number }[]>([]);
+  const loadReset = useRef<{ url: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  useEffect(() => () => {
+    if (loadReset.current) clearTimeout(loadReset.current.timer);
+  }, []);
   // ページを丸ごと読み直す（白い画面と読み込み中の印が、数秒出る）
   const reloadPage = useCallback(() => {
+    // 作り直す WebView の最初の読み込みは、前のページの続きではない
+    docUrl.current = '';
+    sameDocUrls.current = [];
     setRestoreTo(scroll.current); // 読み直しても、見ていた位置に戻す
     setFailure(null);
     if (autoClickPending.current) setLaunching(true); // 近道のボタンをまだ押していない（読み直したページで押す）
@@ -524,14 +536,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   }, [uri, screenApp]);
   // データだけの読み直しを頼んで、返事を待っているあいだのタイマー（返事がなければ、丸ごと読み直す）
   const refreshWait = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 読み込みの始まりを、本当の読み込みか見分けるためのもの（下の onLoadStart）: いまのページの URL・ページが知らせたアドレスの変更・
-  // 片づけるのを少し待っている読み込みの始まり
-  const docUrl = useRef('');
-  const sameDocUrls = useRef<{ url: string; at: number }[]>([]);
-  const loadReset = useRef<{ url: string; timer: ReturnType<typeof setTimeout> } | null>(null);
-  useEffect(() => () => {
-    if (loadReset.current) clearTimeout(loadReset.current.timer);
-  }, []);
+
   useEffect(() => () => {
     if (refreshWait.current) clearTimeout(refreshWait.current);
   }, []);
@@ -771,6 +776,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         // 開発中だけ: ページの通信を1回ずつ Metro のログに出す（保存の遅さを調べるため。src/webview/page/bridgeJs.ts の NET_TRACE_JS）
         __DEV__ ? NET_TRACE_JS : '',
         bootJs(background),
+        HISTORY_WATCH_JS,
         openerStubJs(handoff),
         prefillJs(prefill),
         initAppJs(initApp),
@@ -866,10 +872,12 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
               receivePageFile(message, title || pageTitle || 'ファイル', payslipPassword.payslip ? payslipPassword.afterPayslipOpened : undefined);
             }
             if (message?.type === 'title') setHeading(message.text);
-            // ページが、読み込まずにアドレスだけ変える。その URL への読み込みの始まりは、片づけない（上の SAME_DOC_WAIT_MS）
+            // ページが、読み込まずにアドレスだけ変える・変えた。その URL への読み込みの始まりは、片づけない（上の SAME_DOC_WAIT_MS）。
+            // 変えたあとの知らせ（moved）は、いまのページの URL を覚え直すだけ（このあとに始まりは来ない）
             if (message?.type === 'urlChange') {
               docUrl.current = message.url;
-              sameDocUrls.current = [...sameDocUrls.current.filter((u) => Date.now() - u.at < SAME_DOC_KEEP_MS), { url: message.url, at: Date.now() }];
+              const fresh = sameDocUrls.current.filter((u) => Date.now() - u.at < SAME_DOC_KEEP_MS);
+              sameDocUrls.current = message.moved ? fresh : [...fresh, { url: message.url, at: Date.now() }];
               if (loadReset.current?.url === message.url) {
                 clearTimeout(loadReset.current.timer);
                 loadReset.current = null;
@@ -964,8 +972,16 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             // ページを読み込まずに、アドレスだけ変わった（# のあとだけ・ページが知らせた pushState）なら、何も切れていない。
             // Android は、これも読み込みの始まりとして知らせてくる（doUpdateVisitedHistory）
             const url = e.nativeEvent.url;
-            if (onlyHashChanged(docUrl.current, url)) return;
-            if (sameDocUrls.current.some((u) => u.url === url && Date.now() - u.at < SAME_DOC_KEEP_MS)) return;
+            if (onlyHashChanged(docUrl.current, url)) {
+              docUrl.current = url;
+              return;
+            }
+            const known = sameDocUrls.current.findIndex((u) => u.url === url && Date.now() - u.at < SAME_DOC_KEEP_MS);
+            if (known >= 0) {
+              sameDocUrls.current.splice(known, 1); // 1回だけ使う（同じ URL への、あとの本当の読み込みを見逃さない）
+              docUrl.current = url;
+              return;
+            }
             if (loadReset.current) clearTimeout(loadReset.current.timer);
             loadReset.current = {
               url,

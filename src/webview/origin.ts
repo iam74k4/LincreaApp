@@ -35,10 +35,10 @@ export function mayNavigate(url: string, isTopFrame: boolean | undefined): boole
 
 /**
  * current から next へ、# のあとだけが変わったか（同じページの中の移動で、読み込みではない）。
- * 同じ URL（読み直し）や、どちらかが空なら false
+ * 同じ URL（読み直し）・next に # がない（# を外した URL へ移るのは、読み込み）・どちらかが空なら false
  */
 export function onlyHashChanged(current: string, next: string): boolean {
-  if (!current || !next || current === next) return false;
+  if (!current || !next || current === next || !next.includes('#')) return false;
   return current.split('#')[0] === next.split('#')[0];
 }
 
