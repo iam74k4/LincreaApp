@@ -179,7 +179,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const userClosing = useRef(false); // 保存のあいだに、使う人がシートを閉じようとした（まとめて申請の次を開かない）
   // この画面のページ（URL と、開いた元が渡した引数。勤怠実績登録なら、どの日か）。裏の保存の戻った先と見比べる
   // （戻った先を閉じて、同じページを開き直していたら、それも新しくする。ほかの日の勤怠実績登録などは、新しくしない）
-  const screenPage = handoff?.params ? `${uri}|${handoff.params}` : uri;
+  const screenParams = handoff?.params && handoff.params !== '{}' && handoff.params !== 'null' ? handoff.params : '';
+  const screenPage = `${uri.toLowerCase()}${screenParams ? `|${screenParams}` : ''}`;
   const loadedAt = useRef(0); // ページを読み終えた時刻（裏の保存の途中に読んだかを見る）
   // この画面の定義（initApp）の控え。あれば、ページは読まずにこれを使う（src/webview/initAppCache.ts）。
   // 開いたとき（と読み直すとき）に決めて、そのあいだは変えない（変えると、ページに入れるスクリプトが入れ替わる）
@@ -258,7 +259,6 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const leaveAfterStartRef = useRef(false);
   const leaveAfterStartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestLeaveAfterStart = useCallback((on: boolean) => {
-    if (!on) userClosing.current = false; // 戻るのをやめた（押し直した「登録」で保存が始まらなかった）
     leaveAfterStartRef.current = on;
     setLeaveAfterStart(on);
     if (leaveAfterStartTimer.current) clearTimeout(leaveAfterStartTimer.current);
@@ -568,18 +568,22 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // （データだけ読み直す）をページで走らせる。一覧はそのまま見えていて、変わった行だけが少しあとで新しくなる
   // （読み込み中の印・ページの高さ・見ていた位置の保ち方は src/webview/page/bridgeJs.ts の childClosedJs）。
   // できない画面（処理を用意していない・ページが消えていた）や、ボタンが分からないときは、丸ごと読み直す
+  // mayReload が false なら、データだけ読み直せないときも、丸ごとは読み直さない（打ちかけの入力を消さない）
+  const refreshMayReload = useRef(true);
   const refreshData = useCallback(
-    (label: string | null) => {
+    (label: string | null, mayReload = true) => {
       if (!label || !webRef.current) {
+        if (!mayReload) return;
         if (__DEV__) console.log('[読み直し] 丸ごと');
         reloadPage();
         return;
       }
       if (__DEV__) console.log(`[読み直し] データだけ（${label}）`);
+      refreshMayReload.current = mayReload;
       if (refreshWait.current) clearTimeout(refreshWait.current);
       refreshWait.current = setTimeout(() => {
         refreshWait.current = null;
-        reloadPage();
+        if (refreshMayReload.current) reloadPage();
       }, REFRESH_REPLY_MS);
       webRef.current.injectJavaScript(childClosedJs(label, scroll.current));
     },
@@ -623,21 +627,26 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     else reloadWhenShown.current = true;
   };
   // ほかの画面がこの画面の上に重なった（ページが開いたものに限らず、アプリが開いた申請のシート・知らせのボタン・近道なども）。
-  // 戻ってきたときに、そのあいだに書き込みがあれば、見た目だけ整え直す（勤務表の「未申請」の札・まとめて申請の日数。
-  // この端末で出した申請は、ページの中に覚えてある）。読み直しはしない（打ちかけの入力を消さない。勤怠実績登録の上で申請したときなど）。
-  // データを読み直すのは、ページが開いた画面から戻ったとき（refreshAfterChild）と、裏の保存が終わったとき
+  // 戻ってきたときに、そのあいだに書き込みがあれば:
+  //   - 重なった画面が「登録」などを終えて自分で閉じたなら、データだけ読み直す（勤務表。できない画面は何もしない）
+  //   - 見た目を整え直す（勤務表の「未申請」の札・まとめて申請の日数。この端末で出した申請は、ページの中に覚えてある）
+  // 丸ごとは読み直さない（打ちかけの入力を消さない。勤怠実績登録の上で残業申請を出したときなど）。
+  // ページが開いた画面から戻ったとき（refreshAfterChild）と、裏の保存を待っているとき（onBackgroundSaveDone）は、そちらで新しくする
   const coveredWrites = useRef<number | null>(null);
   useFocusEffect(
     useCallback(() => {
       const before = coveredWrites.current;
       coveredWrites.current = null;
-      if (before !== null && writeCount() - ownWrites.current !== before) {
+      const wrote = before !== null && writeCount() - ownWrites.current !== before;
+      if (wrote && !openedChild.current && !backgroundSavePendingFor(routeKey)) {
+        const child = takeChildResult();
+        if (child.closedByPage && child.label) refreshData(child.label, false);
         webRef.current?.injectJavaScript('window.__myappRestyleNow && window.__myappRestyleNow(); true;');
       }
       return () => {
         coveredWrites.current = writeCount() - ownWrites.current;
       };
-    }, []),
+    }, [refreshData, routeKey]),
   );
   // 重ねた画面が保存を裏で続けているあいだは、まだ新しくしない（保存が終わってから。下の onBackgroundSaveDone）
   useFocusEffect(
@@ -673,7 +682,13 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       if (next) return;
       setWaitingSave(false);
       // 戻ろうとしていたのに、押し直した「登録」で保存が始まらない（確かめの知らせが出たなど）: 戻るのをやめる
-      if (leaveAfterStartRef.current) leaveAfterStartTimer.current = setTimeout(() => requestLeaveAfterStart(false), LEAVE_AFTER_START_WAIT_MS);
+      if (leaveAfterStartRef.current) {
+        leaveAfterStartTimer.current = setTimeout(() => {
+          // 押し直した「登録」で保存が始まらなかった: 戻るのをやめる。閉じようとしたしるしも外す（シートは残る）
+          userClosing.current = false;
+          requestLeaveAfterStart(false);
+        }, LEAVE_AFTER_START_WAIT_MS);
+      }
     };
     sync();
     return subscribeSaves(sync);
@@ -916,7 +931,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             // ただし、始まりをもう受け取っていた（いまの URL がもうそれ）なら入れない（iOS は始まりが先。残すと、そのすぐあとの
             // 同じ URL の本当の読み直しを見逃す）
             if (message?.type === 'urlChange') {
-              const handled = message.moved && docUrl.current === message.url;
+              const handled = message.moved && (docUrl.current === message.url || loadReset.current?.url === message.url);
               docUrl.current = message.url;
               const fresh = sameDocUrls.current.filter((u) => Date.now() - u.at < SAME_DOC_KEEP_MS);
               sameDocUrls.current = handled ? fresh : [...fresh, { url: message.url, at: Date.now() }];
@@ -942,7 +957,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
               if (refreshWait.current) {
                 clearTimeout(refreshWait.current);
                 refreshWait.current = null;
-                if (!message.ok) reloadPage();
+                if (!message.ok && refreshMayReload.current) reloadPage();
               }
             }
             if (message?.type === 'write') {
