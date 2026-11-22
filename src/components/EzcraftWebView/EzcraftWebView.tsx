@@ -387,6 +387,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         return;
       }
       updateSaving(null);
+      userClosing.current = false; // 保存は終わったことにする。シートは残るので、閉じようとしたしるしも外す
       // ページの中の保存の見張りも終わりにする（そのままだと、このページのあとの保存を、終わらない保存の続きとして数える）
       webRef.current?.injectJavaScript('window.__myappSaveGiveUp && window.__myappSaveGiveUp(); true;');
       if (inBackground.current) completeBackground(false, true);
@@ -640,7 +641,9 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       const wrote = before !== null && writeCount() - ownWrites.current !== before;
       if (wrote && !openedChild.current && !backgroundSavePendingFor(routeKey)) {
         const child = takeChildResult();
-        if (child.closedByPage && child.label) refreshData(child.label, false);
+        // 裏の保存の読み直しを待っている（すぐあとの onBackgroundSaveDone の続きで読み直す）なら、ここでは読み直さない
+        // （2つ重ねると、先の返事で、あとの読み直しが丸ごとの読み直しになっていた）
+        if (child.closedByPage && child.label && pendingBackgroundRefresh.current === null) refreshData(child.label, false);
         webRef.current?.injectJavaScript('window.__myappRestyleNow && window.__myappRestyleNow(); true;');
       }
       return () => {
@@ -1047,6 +1050,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
                 // 読み直したら、ダイアログは閉じていて、保存も終わっている（保存の途中なら、切れている）
                 setModalOpen(false);
                 setWaitingSave(false);
+                userClosing.current = false; // 読み直したページは、閉じようとしていた保存の続きではない
                 if (savingRef.current) {
                   updateSaving(null);
                   // 確定（commit）まで届いていたかもしれないので、結果が分からなかったとして片づける
