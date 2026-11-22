@@ -61,6 +61,7 @@ import {
   beginSave,
   endSave,
   moveSaveToBackground,
+  noteScreenPage,
   onBackgroundSaveDone,
   savingElsewhere,
   savingSamePage,
@@ -175,6 +176,12 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // この画面のアプリ（開いた URL の /runapp/<アプリ>/。runapp でない /page の画面は ''）。ページは変えられないので、
   // アプリごとの知らせ・控えを、どのアプリのものとして受け付けるかは、これで決める（下の onMessage）
   const screenApp = runappOf(uri)?.app ?? '';
+  const userClosing = useRef(false); // 保存のあいだに、使う人がシートを閉じようとした（まとめて申請の次を開かない）
+  // この画面のページ（URL と、開いた元が渡した引数。勤怠実績登録なら、どの日か）。裏の保存の戻った先と見比べる
+  // （戻った先を閉じて、同じページを開き直していたら、それも新しくする。ほかの日の勤怠実績登録などは、新しくしない）
+  const screenParams = handoff?.params && handoff.params !== '{}' && handoff.params !== 'null' ? handoff.params : '';
+  const screenPage = `${uri.toLowerCase()}${screenParams ? `|${screenParams}` : ''}`;
+  const loadedAt = useRef(0); // ページを読み終えた時刻（裏の保存の途中に読んだかを見る）
   // この画面の定義（initApp）の控え。あれば、ページは読まずにこれを使う（src/webview/initAppCache.ts）。
   // 開いたとき（と読み直すとき）に決めて、そのあいだは変えない（変えると、ページに入れるスクリプトが入れ替わる）
   const [initApp, setInitApp] = useState(() => cachedInitApp(uri));
@@ -189,6 +196,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // この画面（重ねた画面の1枚）。裏で保存を続けるとき、重ねる順を入れ替えるのに使う（src/webview/backgroundSaves.ts）
   const navigation = useNavigation<NativeStackNavigationProp<Record<string, object | undefined>>>();
   const routeKey = useRoute().key;
+  useEffect(() => noteScreenPage(routeKey, screenPage), [routeKey, screenPage]);
   // この画面だけを閉じる。navigation.goBack() や router.back() は、いちばん上の画面を閉じる（そのあいだに申請のシートが
   // 重なっていると、それを閉じてしまう）。どの画面を閉じるか（source。dispatch が付ける）と、どの画面の組か（target）を
   // 両方付けた POP だけが、この画面を閉じる（expo-router の StackRouter の POP）
@@ -263,8 +271,9 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       webRef.current?.injectJavaScript('window.__myappCloseModal && window.__myappCloseModal(); true;');
       return;
     }
-    // シートを閉じようとした（× など）。保存が終わってページが閉じても、まとめて申請の次の1件は開かない
-    if (sheet && (savingRef.current || waitingSave)) stopApplyQueue();
+    // シートを閉じようとした（× など）。保存が終わってページが閉じても、まとめて申請の次の1件は開かない（下の close）。
+    // ここではまだやめない（保存に失敗するとシートは残り、直して申請し直したら、続きを開く。finishSave がしるしを外す）
+    if (sheet && (savingRef.current || waitingSave)) userClosing.current = true;
     if (savingRef.current) {
       if (canLeave && moveToBackground()) return;
       updateSaving((run) => ({ ...run, backAfter: true }));
@@ -378,6 +387,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         return;
       }
       updateSaving(null);
+      userClosing.current = false; // 保存は終わったことにする。シートは残るので、閉じようとしたしるしも外す
       // ページの中の保存の見張りも終わりにする（そのままだと、このページのあとの保存を、終わらない保存の続きとして数える）
       webRef.current?.injectJavaScript('window.__myappSaveGiveUp && window.__myappSaveGiveUp(); true;');
       if (inBackground.current) completeBackground(false, true);
@@ -391,6 +401,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const finishSave = (end: { ok: boolean; steps: number; writes: number; ms: number }) => {
     const run = savingRef.current;
     updateSaving(null);
+    // 保存に失敗した: シートは閉じずに残る（ページが出したエラーを見て、直してもらう）。閉じようとしたしるしは外す
+    if (!end.ok) userClosing.current = false;
     if (run) {
       if (__DEV__) console.log(describeSave(run.key, end, saveLog.current) + (inBackground.current ? '（裏で保存）' : ''));
       if (end.ok) rememberSaveSize(run.key, { writes: end.writes, steps: end.steps });
@@ -471,7 +483,9 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       clearTimeout(waiting.timer);
       pendingApply.current = null;
     }
-    const nextInQueue = !waiting && sheet && ownWrites.current > 0 && applyQueueActive();
+    const nextInQueue = !waiting && sheet && ownWrites.current > 0 && applyQueueActive() && !userClosing.current;
+    // 保存のあいだに閉じようとしていた: まとめて申請の残りもやめる（ページが閉じたので、下の画面を消すときにはやめない）
+    if (sheet && userClosing.current) stopApplyQueue();
     noteClosedByPage(); // 元の画面は、これを見て、丸ごと読み直さずにデータだけ読み直す
     closedByPageRef.current = true;
     updateSaving(null);
@@ -523,6 +537,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   }, []);
   // ページを丸ごと読み直す（白い画面と読み込み中の印が、数秒出る）
   const reloadPage = useCallback(() => {
+    userClosing.current = false; // 読み直したページは、閉じようとしていた保存の続きではない
     // 作り直す WebView の最初の読み込みは、前のページの続きではない
     docUrl.current = '';
     sameDocUrls.current = [];
@@ -554,18 +569,22 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // （データだけ読み直す）をページで走らせる。一覧はそのまま見えていて、変わった行だけが少しあとで新しくなる
   // （読み込み中の印・ページの高さ・見ていた位置の保ち方は src/webview/page/bridgeJs.ts の childClosedJs）。
   // できない画面（処理を用意していない・ページが消えていた）や、ボタンが分からないときは、丸ごと読み直す
+  // mayReload が false なら、データだけ読み直せないときも、丸ごとは読み直さない（打ちかけの入力を消さない）
+  const refreshMayReload = useRef(true);
   const refreshData = useCallback(
-    (label: string | null) => {
+    (label: string | null, mayReload = true) => {
       if (!label || !webRef.current) {
+        if (!mayReload) return;
         if (__DEV__) console.log('[読み直し] 丸ごと');
         reloadPage();
         return;
       }
       if (__DEV__) console.log(`[読み直し] データだけ（${label}）`);
+      refreshMayReload.current = mayReload;
       if (refreshWait.current) clearTimeout(refreshWait.current);
       refreshWait.current = setTimeout(() => {
         refreshWait.current = null;
-        reloadPage();
+        if (refreshMayReload.current) reloadPage();
       }, REFRESH_REPLY_MS);
       webRef.current.injectJavaScript(childClosedJs(label, scroll.current));
     },
@@ -608,6 +627,30 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     if (inBackground.current || navigation.isFocused()) reloadPage();
     else reloadWhenShown.current = true;
   };
+  // ほかの画面がこの画面の上に重なった（ページが開いたものに限らず、アプリが開いた申請のシート・知らせのボタン・近道なども）。
+  // 戻ってきたときに、そのあいだに書き込みがあれば:
+  //   - 重なった画面が「登録」などを終えて自分で閉じたなら、データだけ読み直す（勤務表。できない画面は何もしない）
+  //   - 見た目を整え直す（勤務表の「未申請」の札・まとめて申請の日数。この端末で出した申請は、ページの中に覚えてある）
+  // 丸ごとは読み直さない（打ちかけの入力を消さない。勤怠実績登録の上で残業申請を出したときなど）。
+  // ページが開いた画面から戻ったとき（refreshAfterChild）と、裏の保存を待っているとき（onBackgroundSaveDone）は、そちらで新しくする
+  const coveredWrites = useRef<number | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      const before = coveredWrites.current;
+      coveredWrites.current = null;
+      const wrote = before !== null && writeCount() - ownWrites.current !== before;
+      if (wrote && !openedChild.current && !backgroundSavePendingFor(routeKey)) {
+        const child = takeChildResult();
+        // 裏の保存の読み直しを待っている（すぐあとの onBackgroundSaveDone の続きで読み直す）なら、ここでは読み直さない
+        // （2つ重ねると、先の返事で、あとの読み直しが丸ごとの読み直しになっていた）
+        if (child.closedByPage && child.label && pendingBackgroundRefresh.current === null) refreshData(child.label, false);
+        webRef.current?.injectJavaScript('window.__myappRestyleNow && window.__myappRestyleNow(); true;');
+      }
+      return () => {
+        coveredWrites.current = writeCount() - ownWrites.current;
+      };
+    }, [refreshData, routeKey]),
+  );
   // 重ねた画面が保存を裏で続けているあいだは、まだ新しくしない（保存が終わってから。下の onBackgroundSaveDone）
   useFocusEffect(
     useCallback(() => {
@@ -618,12 +661,15 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   useEffect(
     () =>
       onBackgroundSaveDone((save, ok) => {
-        if (save.parentKey !== routeKey) return;
+        // 戻った先の画面を閉じて、同じ画面を開き直していた（その保存の途中に読んだので、保存の前のデータかもしれない）。
+        // 戻った先の画面と同じに、読み直す（勤務表を閉じてすぐ開き直すと、登録した日が未登録のまま残っていた）
+        const reopened = ok && save.parentKey !== routeKey && !!save.parentPage && save.parentPage === screenPage && loadedAt.current >= save.startedAt;
+        if (save.parentKey !== routeKey && !reopened) return;
         if (ok) pendingBackgroundRefresh.current = save.label;
         // 失敗した保存の終わりでも、前に終わっていた保存の読み直しが残っていれば、ここで読み直す
         if (navigation.isFocused() && !backgroundSavePendingFor(routeKey)) consumeBackgroundRefresh();
       }),
-    [consumeBackgroundRefresh, navigation, routeKey],
+    [consumeBackgroundRefresh, navigation, routeKey, screenPage],
   );
 
   // ほかの画面が保存しているあいだは、この画面の「登録」などを待たせる（SAVE_WATCH_JS）。終わったら、待たせていたボタンを押す
@@ -639,7 +685,13 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       if (next) return;
       setWaitingSave(false);
       // 戻ろうとしていたのに、押し直した「登録」で保存が始まらない（確かめの知らせが出たなど）: 戻るのをやめる
-      if (leaveAfterStartRef.current) leaveAfterStartTimer.current = setTimeout(() => requestLeaveAfterStart(false), LEAVE_AFTER_START_WAIT_MS);
+      if (leaveAfterStartRef.current) {
+        leaveAfterStartTimer.current = setTimeout(() => {
+          // 押し直した「登録」で保存が始まらなかった: 戻るのをやめる。閉じようとしたしるしも外す（シートは残る）
+          userClosing.current = false;
+          requestLeaveAfterStart(false);
+        }, LEAVE_AFTER_START_WAIT_MS);
+      }
     };
     sync();
     return subscribeSaves(sync);
@@ -720,7 +772,11 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     const runPath = replace && sheet ? ('/sheet/[app]/[form]' as const) : ('/run/[app]/[form]' as const);
     const href =
       next.kind === 'runapp'
-        ? { pathname: runPath, params: { app: next.app, form: next.form, q: next.query, data, ...orders } }
+        ? {
+            pathname: runPath,
+            // 近道で入れ替えるときは、近道が付けた名前（まとめて申請の「（2/3）」など）も引き継ぐ
+            params: { app: next.app, form: next.form, q: next.query, data, ...(replace && title ? { title } : {}), ...orders },
+          }
         : { pathname: '/page' as const, params: { path: next.path, app: appId, data } };
     if (replace) {
       // 近道の途中でも、この画面がもう前に出ていない（使う人がほかの画面へ移った）なら、入れ替えない
@@ -873,11 +929,15 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             }
             if (message?.type === 'title') setHeading(message.text);
             // ページが、読み込まずにアドレスだけ変える・変えた。その URL への読み込みの始まりは、片づけない（上の SAME_DOC_WAIT_MS）。
-            // 変えたあとの知らせ（moved）は、いまのページの URL を覚え直すだけ（このあとに始まりは来ない）
+            // 変えたあとの知らせ（moved。# の付け替え・戻る進む）も、いまのページの URL を覚え直したうえで、始まりと見比べる
+            // （Android は、知らせより先にも後にも、始まりを知らせてくる。後に来たとき、覚え直した URL と同じなので読み込みと見誤る）
+            // ただし、始まりをもう受け取っていた（いまの URL がもうそれ）なら入れない（iOS は始まりが先。残すと、そのすぐあとの
+            // 同じ URL の本当の読み直しを見逃す）
             if (message?.type === 'urlChange') {
+              const handled = message.moved && (docUrl.current === message.url || loadReset.current?.url === message.url);
               docUrl.current = message.url;
               const fresh = sameDocUrls.current.filter((u) => Date.now() - u.at < SAME_DOC_KEEP_MS);
-              sameDocUrls.current = message.moved ? fresh : [...fresh, { url: message.url, at: Date.now() }];
+              sameDocUrls.current = handled ? fresh : [...fresh, { url: message.url, at: Date.now() }];
               if (loadReset.current?.url === message.url) {
                 clearTimeout(loadReset.current.timer);
                 loadReset.current = null;
@@ -900,7 +960,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
               if (refreshWait.current) {
                 clearTimeout(refreshWait.current);
                 refreshWait.current = null;
-                if (!message.ok) reloadPage();
+                if (!message.ok && refreshMayReload.current) reloadPage();
               }
             }
             if (message?.type === 'write') {
@@ -990,6 +1050,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
                 // 読み直したら、ダイアログは閉じていて、保存も終わっている（保存の途中なら、切れている）
                 setModalOpen(false);
                 setWaitingSave(false);
+                userClosing.current = false; // 読み直したページは、閉じようとしていた保存の続きではない
                 if (savingRef.current) {
                   updateSaving(null);
                   // 確定（commit）まで届いていたかもしれないので、結果が分からなかったとして片づける
@@ -1002,6 +1063,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           // 読み直したページにも、ほかの画面が保存しているかを伝えておく
           onLoadEnd={(e) => {
             docUrl.current = e.nativeEvent.url;
+            loadedAt.current = Date.now();
             if (savingElsewhere(routeKey)) webRef.current?.injectJavaScript('window.__myappSaveBusy = true; true;');
           }}
           // 読み込めなかった（電波がない・サーバーにつながらない）。WebView が出す英語の開発者向けの文の代わりに、

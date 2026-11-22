@@ -87,6 +87,14 @@ async function forgetAll(): Promise<void> {
   months = {};
   // 先に予約を消す（覚えていた状態を消せなくても、前の人の通知は届かないように）
   await cancel((await scheduledReminders()).map((n) => n.identifier));
+  // もう届いて通知センターに残っているものも消す（前の人の「まだ登録していない勤務日が N 日」を、次の人に見せない）
+  try {
+    const shown = await Notifications.getPresentedNotificationsAsync();
+    const ids = shown.map((n) => n.request.identifier).filter((id) => id.startsWith(ID_PREFIX));
+    await Promise.all(ids.map((id) => Notifications.dismissNotificationAsync(id)));
+  } catch {
+    // 消せなくても、予約は消してある（届いたものは、押しても勤務表を開くだけ）
+  }
   await AsyncStorage.removeItem(STORE_KEY);
 }
 

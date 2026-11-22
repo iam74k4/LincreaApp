@@ -11,6 +11,8 @@ jest.mock('expo-notifications', () => ({
   SchedulableTriggerInputTypes: { DATE: 'date' },
   DEFAULT_ACTION_IDENTIFIER: 'expo.modules.notifications.actions.DEFAULT',
   getAllScheduledNotificationsAsync: jest.fn(),
+  getPresentedNotificationsAsync: jest.fn(),
+  dismissNotificationAsync: jest.fn(),
   cancelScheduledNotificationAsync: jest.fn(),
   scheduleNotificationAsync: jest.fn(),
   getPermissionsAsync: jest.fn(),
@@ -33,6 +35,11 @@ beforeEach(async () => {
     { identifier: 'other-app-reminder' } as Notifications.NotificationRequest,
   ]);
   notifications.cancelScheduledNotificationAsync.mockResolvedValue(undefined);
+  notifications.getPresentedNotificationsAsync.mockResolvedValue([
+    { request: { identifier: 'attendance-reminder-2026-11-18' } } as Notifications.Notification,
+    { request: { identifier: 'other-app-message' } } as Notifications.Notification,
+  ]);
+  notifications.dismissNotificationAsync.mockResolvedValue(undefined);
 });
 
 test('ログアウト: このアプリの勤怠の通知の予約だけを消す（ほかの予約は消さない）', async () => {
@@ -115,4 +122,20 @@ test('ログアウトしたら、だれの通知かも忘れる', async () => {
   forgetAttendanceReminders();
   await settled();
   expect(await AsyncStorage.getItem('myapp.attendanceOwner')).toBeNull();
+});
+
+test('ログアウトしたら、もう届いて通知センターに残っている勤怠の通知も消す（ほかの通知は消さない）', async () => {
+  forgetAttendanceReminders();
+  await settled();
+  expect(notifications.dismissNotificationAsync).toHaveBeenCalledWith('attendance-reminder-2026-11-18');
+  expect(notifications.dismissNotificationAsync).not.toHaveBeenCalledWith('other-app-message');
+});
+
+test('届いた通知を消せなくても、予約は消してあり、覚えていた状態も消す', async () => {
+  notifications.getPresentedNotificationsAsync.mockRejectedValueOnce(new Error('not available'));
+  await AsyncStorage.setItem('myapp.attendanceDays', '{}');
+  forgetAttendanceReminders();
+  await settled();
+  expect(notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('attendance-reminder-2026-11-25');
+  expect(await AsyncStorage.getItem('myapp.attendanceDays')).toBeNull();
 });

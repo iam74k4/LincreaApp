@@ -32,6 +32,13 @@ export type SaveStatus = {
   background: boolean;
   /** 裏に回したときに戻った先の画面（保存が終わったら、ここのデータを新しくする） */
   parentKey: string | null;
+  /**
+   * 戻った先の画面が、どのページか（画面の URL と、開いた元が渡した引数。noteScreenPage で画面が知らせたもの）。分からなければ null。
+   * 戻った先の画面を閉じて、同じページを開き直していたら、その画面も新しくする（保存の途中に読んだので、保存の前のデータかもしれない）
+   */
+  parentPage: string | null;
+  /** 保存を始めた時刻 */
+  startedAt: number;
   state: 'saving' | 'done' | 'failed';
   /** 「保存しています（3/9）」の文（画面の側で作る） */
   text: string;
@@ -50,6 +57,16 @@ type Snapshot = {
 };
 
 let snapshot: Snapshot = { current: null, banner: null };
+/** 開いている画面（ルートの key）が、どのページか（noteScreenPage） */
+const screenPages = new Map<string, string>();
+/** 見えている画面の保存が終わるのを待って開く画面（afterForegroundSave） */
+let waiting: (() => void)[] = [];
+let waitingTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * 見えている画面の保存が終わって（または裏に回って）から、待たせていた画面を開くまでの間。
+ * 終わってすぐは、保存したページが自分で閉じる（form.close）・裏に回した画面の入れ替えが済んでいないので、それを待つ
+ */
+const AFTER_FOREGROUND_SAVE_MS = 1000;
 const listeners = new Set<() => void>();
 const doneListeners = new Set<(save: SaveStatus, ok: boolean) => void>();
 let bannerTimer: ReturnType<typeof setTimeout> | null = null;
@@ -61,6 +78,28 @@ const FAILED_MS = 20000;
 function set(next: Partial<Snapshot>) {
   snapshot = { ...snapshot, ...next };
   listeners.forEach((listener) => listener());
+  flushWaiting();
+}
+
+/** 見えている画面の保存が終わっていれば、少し待ってから、待たせていた画面を順に開く */
+function flushWaiting(): void {
+  if (waiting.length === 0 || waitingTimer || savingInForeground()) return;
+  waitingTimer = setTimeout(() => {
+    waitingTimer = null;
+    // 待っているあいだに、また見えている画面で保存が始まった: その保存が終わってから
+    if (savingInForeground()) return;
+    const runs = waiting;
+    waiting = [];
+    runs.forEach((run) => run());
+  }, AFTER_FOREGROUND_SAVE_MS);
+}
+
+/** 画面が、どのページかを知らせる（裏の保存の戻った先と見比べるため）。画面を閉じたら、戻り値を呼ぶ */
+export function noteScreenPage(routeKey: string, page: string): () => void {
+  screenPages.set(routeKey, page);
+  return () => {
+    if (screenPages.get(routeKey) === page) screenPages.delete(routeKey);
+  };
 }
 
 export function subscribeSaves(listener: () => void): () => void {
@@ -80,6 +119,31 @@ export function useSaves(): Snapshot {
 export function onBackgroundSaveDone(listener: (save: SaveStatus, ok: boolean) => void): () => void {
   doneListeners.add(listener);
   return () => doneListeners.delete(listener);
+}
+
+/**
+ * 見えている画面で保存しているか。そのあいだに、その画面の上にほかの画面を重ねると、iOS が隠れたページを止めて、
+ * 保存が途中で切れる（src/components/SavePark.tsx）。アプリが自分で画面を開くとき（知らせのボタン・通知）は、終わるまで待つ
+ */
+export function savingInForeground(): boolean {
+  const current = snapshot.current;
+  return current !== null && !current.background;
+}
+
+/**
+ * 見えている画面の保存が終わってから run する（保存していなければ、すぐ）。待つのをやめるときは、戻り値を呼ぶ。
+ * ログアウトしたら（resetSaves）、待っていたものは開かない
+ */
+export function afterForegroundSave(run: () => void): () => void {
+  if (!savingInForeground() && waiting.length === 0) {
+    run();
+    return () => {};
+  }
+  waiting.push(run);
+  flushWaiting();
+  return () => {
+    waiting = waiting.filter((r) => r !== run);
+  };
 }
 
 /** ほかの画面が保存しているか（id の画面の保存は、待たなくてよい） */
@@ -105,6 +169,8 @@ export function beginSave(id: string, title: string, text: string, label: string
     pageKey,
     background: keep,
     parentKey: keep ? current.parentKey : null,
+    parentPage: keep ? current.parentPage : null,
+    startedAt: keep ? current.startedAt : Date.now(),
     state: 'saving',
     text,
     apply: null,
@@ -134,7 +200,7 @@ export function updateSave(id: string, text: string): void {
 export function moveSaveToBackground(id: string, parentKey: string): void {
   const current = snapshot.current;
   if (!current || current.id !== id) return;
-  const next = { ...current, background: true, parentKey };
+  const next = { ...current, background: true, parentKey, parentPage: screenPages.get(parentKey) ?? null };
   if (bannerTimer) clearTimeout(bannerTimer);
   set({ current: next, banner: next });
 }
@@ -175,5 +241,9 @@ export function dismissBanner(): void {
 export function resetSaves(): void {
   if (bannerTimer) clearTimeout(bannerTimer);
   bannerTimer = null;
+  // 待たせていた画面は開かない（ログアウトした。前の人の画面・入れておく値を、あとから開かない）
+  waiting = [];
+  if (waitingTimer) clearTimeout(waitingTimer);
+  waitingTimer = null;
   set({ current: null, banner: null });
 }

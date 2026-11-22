@@ -4,6 +4,8 @@
 //   失敗:    同じ見た目のカード。！＋「保存できませんでした」と、何が起きて、どうすればよいか（src/webview/saveErrors.ts）。
 //            右上の × で閉じる。「開き直す」で同じ画面をもう一度開く（保存は取り消されているので、入力し直してもらう）
 // どの画面の上にも出るので、押せるのはボタンだけにする（ほかの所は、下の画面を押せるようにしておく）。
+// ボタンで画面を開くのは、見えている画面の保存が終わってから（保存している画面の上に重ねると、iOS がそのページを止め、
+// 保存が途中で切れる。src/webview/backgroundSaves.ts の afterForegroundSave）。
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
@@ -13,7 +15,7 @@ import { Icon } from '../platform/icons';
 import { openApplication } from '../shortcuts/openShortcut';
 import { SHORTCUTS } from '../shortcuts/shortcuts';
 import { useColors } from '../core/theme';
-import { dismissBanner, useSaves } from '../webview/backgroundSaves';
+import { afterForegroundSave, dismissBanner, useSaves } from '../webview/backgroundSaves';
 import { describeSaveFailure } from '../webview/saveErrors';
 
 /** ヘッダー（戻るボタンと名前の行）の高さ。知らせはその下に出す */
@@ -50,7 +52,7 @@ export function BackgroundSaveBanner() {
             trailing
             onPress={() => {
               dismissBanner();
-              router.push({ pathname: reopen.pathname, params: reopen.params } as Href);
+              afterForegroundSave(() => router.push({ pathname: reopen.pathname, params: reopen.params } as Href));
             }}
           />
         )}
@@ -77,7 +79,7 @@ export function BackgroundSaveBanner() {
           title={`${applyTitle}を開く`}
           onPress={() => {
             dismissBanner();
-            openApplication(apply.form, apply.prefill);
+            afterForegroundSave(() => openApplication(apply.form, apply.prefill));
           }}
         />
       )}
