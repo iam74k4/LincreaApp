@@ -1178,8 +1178,17 @@ ${fillButton('LIT_main_btn_Execel')}
         // 取得する前は「files : 0, total size : 0.00MB」と出るだけなので隠す（取得したら出す）
         var att = document.getElementById('LPJZ_Main_att_file');
         if (!att) return;
-        var none = /files\\s*[:：]\\s*0(?![\\d.])/.test(att.textContent || '');
+        var none = /files\\s*[:：]\\s*0(?![\\d.])|ファイル 0 件/.test(att.textContent || '');
         if (att.style.visibility !== (none ? 'hidden' : '')) att.style.visibility = none ? 'hidden' : '';
+        // 一覧の見出し（EZCraft の「files：2, total size：0.40MB」）を、日本語で「ファイル 2 件（0.40MB）」に
+        var head = att.querySelector('#att-header');
+        if (!head) return;
+        var walker = document.createTreeWalker(head, NodeFilter.SHOW_TEXT);
+        var node;
+        while ((node = walker.nextNode())) {
+          var m = /files\\s*[:：]\\s*(\\d+)\\s*,\\s*total size\\s*[:：]\\s*([\\d.]+)\\s*MB/i.exec(node.nodeValue || '');
+          if (m) node.nodeValue = 'ファイル ' + m[1] + ' 件（' + m[2] + 'MB）';
+        }
       };
     `,
     // 「通知書を取得する」は、画面の下に浮かせたガラスのボタンに
@@ -1259,7 +1268,7 @@ ${row('LPJZ_Main_lbl_kome', 90, 32)}
 #LPJZ_Main_att_file > .att-body [id*="_att-fileName_"] .tcc-label-text { color: var(--myapp-accent) !important; text-decoration: none !important; }
 /* カードの下に、何ができる画面かの説明（年度は、会社のシステムがその年のものを出す。ほかの年度は選べない） */
 #LPJZ_Main::after {
-  content: '「通知書を取得する」を押すと、この年度の特別徴収税額の通知書（PDF）を開きます。保存や印刷は、開いた画面の共有ボタンから。';
+  content: '「通知書を取得する」を押すと、この年度の特別徴収税額の通知書のファイルが並びます。名前を押すと開きます。保存や印刷は、開いた画面の共有ボタンから。';
   display: block;
   margin: 16px 20px 0;
   font-size: 13px;
