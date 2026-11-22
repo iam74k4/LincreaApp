@@ -3576,7 +3576,7 @@ ${OVERTIME_MATH_JS}
       // 申請済み: この端末から出した日か、勤務表の日の札（サーバーが出す申請の印）に「残業」とある日（Web やほかの端末から出したもの）
       var rib = row.querySelector('.ribon span');
       var onServer = !!rib && /残業/.test(rib.textContent || '');
-      out.push({ date: date, label: label, applied: onServer || applied.indexOf(date) >= 0 });
+      out.push({ date: date, label: label, applied: onServer || applied.indexOf(date) >= 0, onServer: onServer });
     });
     return out.sort(function (a, b) { return a.date.localeCompare(b.date); });
   }
@@ -3654,7 +3654,7 @@ ${OVERTIME_MATH_JS}
       var t = times[d.date];
       // 申請の時刻は、その日の出勤〜退勤（出勤が分からなければ、退勤から残業のぶんさかのぼった時刻〜退勤）
       var from = t ? (t.start !== null ? t.start : t.end - t.ot) : null;
-      return { date: d.date, label: d.label, applied: d.applied, from: t ? clock(from) : '', to: t ? clock(t.end) : '', ot: t ? t.ot : 0 };
+      return { date: d.date, label: d.label, applied: d.applied, onServer: d.onServer, from: t ? clock(from) : '', to: t ? clock(t.end) : '', ot: t ? t.ot : 0 };
     }).filter(function (d) { return d.to; });
     var back = document.createElement('div');
     back.className = 'myapp-pick-back';
@@ -3700,7 +3700,8 @@ ${OVERTIME_MATH_JS}
       name.appendChild(document.createTextNode(d.from + '〜' + d.to));
       var meta = document.createElement('span');
       meta.className = 'myapp-pick-meta';
-      meta.textContent = '残業 ' + hhmm(d.ot) + (d.applied ? '　この端末から申請済み' : '');
+      // 申請済み: 勤務表の札にある（Web・ほかの端末から出したものも）なら「申請済み」、この端末で出しただけなら「この端末から申請済み」
+      meta.textContent = '残業 ' + hhmm(d.ot) + (d.onServer ? '　申請済み' : d.applied ? '　この端末から申請済み' : '');
       b.appendChild(name);
       b.appendChild(meta);
       b.addEventListener('click', function (e) {

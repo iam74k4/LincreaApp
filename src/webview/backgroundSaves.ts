@@ -32,6 +32,13 @@ export type SaveStatus = {
   background: boolean;
   /** 裏に回したときに戻った先の画面（保存が終わったら、ここのデータを新しくする） */
   parentKey: string | null;
+  /**
+   * 戻った先の画面が、どのアプリのどの画面か（"l_tims/frmattendance" のように小文字）。分からなければ null。
+   * 戻った先の画面を閉じて、同じ画面を開き直していたら、その画面も新しくする（保存の途中に読んだので、保存の前のデータかもしれない）
+   */
+  parentPage: string | null;
+  /** 保存を始めた時刻 */
+  startedAt: number;
   state: 'saving' | 'done' | 'failed';
   /** 「保存しています（3/9）」の文（画面の側で作る） */
   text: string;
@@ -82,6 +89,29 @@ export function onBackgroundSaveDone(listener: (save: SaveStatus, ok: boolean) =
   return () => doneListeners.delete(listener);
 }
 
+/**
+ * 見えている画面で保存しているか。そのあいだに、その画面の上にほかの画面を重ねると、iOS が隠れたページを止めて、
+ * 保存が途中で切れる（src/components/SavePark.tsx）。アプリが自分で画面を開くとき（知らせのボタン・通知）は、終わるまで待つ
+ */
+export function savingInForeground(): boolean {
+  const current = snapshot.current;
+  return current !== null && !current.background;
+}
+
+/** 見えている画面の保存が終わってから run する（保存していなければ、すぐ）。待つのをやめるときは、戻り値を呼ぶ */
+export function afterForegroundSave(run: () => void): () => void {
+  if (!savingInForeground()) {
+    run();
+    return () => {};
+  }
+  const unsubscribe = subscribeSaves(() => {
+    if (savingInForeground()) return;
+    unsubscribe();
+    run();
+  });
+  return unsubscribe;
+}
+
 /** ほかの画面が保存しているか（id の画面の保存は、待たなくてよい） */
 export function savingElsewhere(id: string): boolean {
   return snapshot.current !== null && snapshot.current.id !== id;
@@ -105,6 +135,8 @@ export function beginSave(id: string, title: string, text: string, label: string
     pageKey,
     background: keep,
     parentKey: keep ? current.parentKey : null,
+    parentPage: keep ? current.parentPage : null,
+    startedAt: keep ? current.startedAt : Date.now(),
     state: 'saving',
     text,
     apply: null,
@@ -130,11 +162,11 @@ export function updateSave(id: string, text: string): void {
   set({ current: next, banner: current.background ? next : snapshot.banner });
 }
 
-/** 保存の途中で戻った。この画面の保存を裏で続ける（parentKey は、戻った先の画面） */
-export function moveSaveToBackground(id: string, parentKey: string): void {
+/** 保存の途中で戻った。この画面の保存を裏で続ける（parentKey は、戻った先の画面。parentPage は、それがどの画面か） */
+export function moveSaveToBackground(id: string, parentKey: string, parentPage: string | null = null): void {
   const current = snapshot.current;
   if (!current || current.id !== id) return;
-  const next = { ...current, background: true, parentKey };
+  const next = { ...current, background: true, parentKey, parentPage };
   if (bannerTimer) clearTimeout(bannerTimer);
   set({ current: next, banner: next });
 }

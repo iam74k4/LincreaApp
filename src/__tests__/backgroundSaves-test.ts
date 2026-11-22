@@ -1,5 +1,6 @@
 // 保存の受付（src/webview/backgroundSaves.ts）。保存はアプリ全体で1つずつ・裏に回した保存の知らせと、終わったときの合図。
 import {
+  afterForegroundSave,
   attachApply,
   backgroundSavePendingFor,
   beginSave,
@@ -10,6 +11,7 @@ import {
   resetSaves,
   savesSnapshot,
   savingElsewhere,
+  savingInForeground,
   savingSamePage,
   updateSave,
 } from '../webview/backgroundSaves';
@@ -138,4 +140,58 @@ test('前で保存していた画面が、続けて保存を始めたときは�
   expect(savesSnapshot().current).toMatchObject({ background: false, parentKey: null });
   expect(savesSnapshot().banner).toBeNull();
   endSave('dtl-1', true);
+});
+
+describe('見えている画面の保存のあいだは、アプリが自分で画面を開かない（重ねると、iOS がそのページを止めて保存が切れる）', () => {
+  test('保存していなければ、すぐ開く', () => {
+    const open = jest.fn();
+    afterForegroundSave(open);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('見えている画面の保存が終わってから、1回だけ開く', () => {
+    const open = jest.fn();
+    beginSave('dtl-2', '勤怠実績登録', '保存しています（0/9）', '登録', null);
+    expect(savingInForeground()).toBe(true);
+    afterForegroundSave(open);
+    updateSave('dtl-2', '保存しています（3/9）');
+    expect(open).not.toHaveBeenCalled();
+    endSave('dtl-2', true);
+    expect(open).toHaveBeenCalledTimes(1);
+    beginSave('dtl-3', '勤怠実績登録', '保存しています（0/9）', '登録', null);
+    endSave('dtl-3', true);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('裏で続けている保存は待たない（見えている画面は止まらない）', () => {
+    const open = jest.fn();
+    beginSave('dtl-1', '勤怠実績登録', '保存しています（0/9）', '登録', null);
+    moveSaveToBackground('dtl-1', 'list-1', 'l_tims/frmattendance');
+    expect(savingInForeground()).toBe(false);
+    afterForegroundSave(open);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('待つのをやめたら、開かない', () => {
+    const open = jest.fn();
+    beginSave('dtl-2', '勤怠実績登録', '保存しています（0/9）', '登録', null);
+    const cancel = afterForegroundSave(open);
+    cancel();
+    endSave('dtl-2', true);
+    expect(open).not.toHaveBeenCalled();
+  });
+});
+
+test('裏に回した保存は、戻った先がどの画面かと、始めた時刻を覚える（戻った先を閉じて開き直した画面も、終わったら新しくするため）', () => {
+  jest.setSystemTime(new Date(2026, 10, 22, 10, 0, 0));
+  const done = jest.fn();
+  const off = onBackgroundSaveDone(done);
+  beginSave('dtl-1', '勤怠実績登録', '保存しています（0/9）', '登録', null);
+  moveSaveToBackground('dtl-1', 'list-1', 'l_tims/frmattendance');
+  endSave('dtl-1', true);
+  expect(done).toHaveBeenCalledWith(
+    expect.objectContaining({ parentKey: 'list-1', parentPage: 'l_tims/frmattendance', startedAt: new Date(2026, 10, 22, 10, 0, 0).getTime() }),
+    true,
+  );
+  off();
 });

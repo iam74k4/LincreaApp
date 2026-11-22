@@ -11,6 +11,7 @@ import { openShortcut } from '../../shortcuts/openShortcut';
 import { SHORTCUTS } from '../../shortcuts/shortcuts';
 import { SavePark, SaveParkProvider } from '../../components/SavePark';
 import { useColors } from '../../core/theme';
+import { afterForegroundSave } from '../../webview/backgroundSaves';
 
 export default function AppLayout() {
   const c = useColors();
@@ -21,9 +22,13 @@ export default function AppLayout() {
   useEffect(() => {
     pathnameRef.current = pathname;
   }, [pathname]);
+  // 見えている画面で保存しているあいだは、終わってから開く（保存している画面の上に重ねると、保存が途中で切れる。
+  // src/webview/backgroundSaves.ts の afterForegroundSave）
   const openTimesheet = useCallback(() => {
-    const shortcut = SHORTCUTS.find((s) => s.key === REMINDER_SHORTCUT);
-    if (shortcut && !pathnameRef.current.endsWith(`/${shortcut.direct.form}`)) openShortcut(shortcut);
+    afterForegroundSave(() => {
+      const shortcut = SHORTCUTS.find((s) => s.key === REMINDER_SHORTCUT);
+      if (shortcut && !pathnameRef.current.endsWith(`/${shortcut.direct.form}`)) openShortcut(shortcut);
+    });
   }, []);
   useAttendanceReminders(openTimesheet);
   // アプリの画面（WebView）は、ヘッダーを地の色で塗る。

@@ -175,6 +175,12 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   // この画面のアプリ（開いた URL の /runapp/<アプリ>/。runapp でない /page の画面は ''）。ページは変えられないので、
   // アプリごとの知らせ・控えを、どのアプリのものとして受け付けるかは、これで決める（下の onMessage）
   const screenApp = runappOf(uri)?.app ?? '';
+  // この画面が、どのアプリのどの画面か（"l_tims/frmattendance"。裏の保存の戻った先と見比べる。runapp でなければ ''）
+  const screenPage = (() => {
+    const run = runappOf(uri);
+    return run ? `${run.app}/${run.form}`.toLowerCase() : '';
+  })();
+  const loadedAt = useRef(0); // ページを読み終えた時刻（裏の保存の途中に読んだかを見る）
   // この画面の定義（initApp）の控え。あれば、ページは読まずにこれを使う（src/webview/initAppCache.ts）。
   // 開いたとき（と読み直すとき）に決めて、そのあいだは変えない（変えると、ページに入れるスクリプトが入れ替わる）
   const [initApp, setInitApp] = useState(() => cachedInitApp(uri));
@@ -225,7 +231,11 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     if (!state || me < 1 || me !== routes.length - 1) return false;
     const others = routes.filter((r) => r.key !== routeKey);
     inBackground.current = true;
-    moveSaveToBackground(routeKey, routes[me - 1].key);
+    const parent = routes[me - 1];
+    const parentParams = parent.params as { app?: unknown; form?: unknown } | undefined;
+    const parentPage =
+      typeof parentParams?.app === 'string' && typeof parentParams.form === 'string' ? `${parentParams.app}/${parentParams.form}`.toLowerCase() : null;
+    moveSaveToBackground(routeKey, parent.key, parentPage);
     navigation.dispatch({ type: 'RESET', payload: { ...state, routes: [routes[me], ...others], index: others.length } });
     // ページを、画面の後ろの置き場へ移す。この画面が横へ去る動きが終わってから移す
     // （先に移すと、去っていく画面が空になって見える。動き終わってから移すまでの一瞬なら、iOS はページを止めない）
@@ -256,6 +266,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     if (leaveAfterStartTimer.current) clearTimeout(leaveAfterStartTimer.current);
     leaveAfterStartTimer.current = null;
   }, []);
+  const userClosing = useRef(false); // 保存のあいだに、使う人がシートを閉じようとした（まとめて申請の次を開かない）
   const leaveDuringSave = useCallback(() => {
     // 保存の途中で、ページが確かめのダイアログ（承認者確認フォームなど）を開いて答えを待っている。
     // 戻る代わりにダイアログを閉じる（ページが保存を取り消す）。裏へ回すと、見えないダイアログが答えを待ったまま止まるため
@@ -263,8 +274,9 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       webRef.current?.injectJavaScript('window.__myappCloseModal && window.__myappCloseModal(); true;');
       return;
     }
-    // シートを閉じようとした（× など）。保存が終わってページが閉じても、まとめて申請の次の1件は開かない
-    if (sheet && (savingRef.current || waitingSave)) stopApplyQueue();
+    // シートを閉じようとした（× など）。保存が終わってページが閉じても、まとめて申請の次の1件は開かない（下の close）。
+    // ここではまだやめない（保存に失敗するとシートは残り、直して申請し直したら、続きを開く。finishSave がしるしを外す）
+    if (sheet && (savingRef.current || waitingSave)) userClosing.current = true;
     if (savingRef.current) {
       if (canLeave && moveToBackground()) return;
       updateSaving((run) => ({ ...run, backAfter: true }));
@@ -391,6 +403,8 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   const finishSave = (end: { ok: boolean; steps: number; writes: number; ms: number }) => {
     const run = savingRef.current;
     updateSaving(null);
+    // 保存に失敗した: シートは閉じずに残る（ページが出したエラーを見て、直してもらう）。閉じようとしたしるしは外す
+    if (!end.ok) userClosing.current = false;
     if (run) {
       if (__DEV__) console.log(describeSave(run.key, end, saveLog.current) + (inBackground.current ? '（裏で保存）' : ''));
       if (end.ok) rememberSaveSize(run.key, { writes: end.writes, steps: end.steps });
@@ -471,7 +485,9 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
       clearTimeout(waiting.timer);
       pendingApply.current = null;
     }
-    const nextInQueue = !waiting && sheet && ownWrites.current > 0 && applyQueueActive();
+    const nextInQueue = !waiting && sheet && ownWrites.current > 0 && applyQueueActive() && !userClosing.current;
+    // 保存のあいだに閉じようとしていた: まとめて申請の残りもやめる（ページが閉じたので、下の画面を消すときにはやめない）
+    if (sheet && userClosing.current) stopApplyQueue();
     noteClosedByPage(); // 元の画面は、これを見て、丸ごと読み直さずにデータだけ読み直す
     closedByPageRef.current = true;
     updateSaving(null);
@@ -608,6 +624,19 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     if (inBackground.current || navigation.isFocused()) reloadPage();
     else reloadWhenShown.current = true;
   };
+  // ほかの画面がこの画面の上に重なった（ページが開いたものに限らず、アプリが開いた申請のシート・知らせのボタン・近道なども）。
+  // そのときの書き込みの数を控えておき、戻ってきたときに、そのあいだに書き込みがあれば新しくする（refreshAfterChild）。
+  // ページが開いたとき（openWindow）は、その前に控えてあるので、そのまま
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        if (openedChild.current) return;
+        openedChild.current = true;
+        othersWritesAtOpen.current = writeCount() - ownWrites.current;
+      },
+      [],
+    ),
+  );
   // 重ねた画面が保存を裏で続けているあいだは、まだ新しくしない（保存が終わってから。下の onBackgroundSaveDone）
   useFocusEffect(
     useCallback(() => {
@@ -618,12 +647,15 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   useEffect(
     () =>
       onBackgroundSaveDone((save, ok) => {
-        if (save.parentKey !== routeKey) return;
+        // 戻った先の画面を閉じて、同じ画面を開き直していた（その保存の途中に読んだので、保存の前のデータかもしれない）。
+        // 戻った先の画面と同じに、読み直す（勤務表を閉じてすぐ開き直すと、登録した日が未登録のまま残っていた）
+        const reopened = ok && save.parentKey !== routeKey && !!save.parentPage && save.parentPage === screenPage && loadedAt.current >= save.startedAt;
+        if (save.parentKey !== routeKey && !reopened) return;
         if (ok) pendingBackgroundRefresh.current = save.label;
         // 失敗した保存の終わりでも、前に終わっていた保存の読み直しが残っていれば、ここで読み直す
         if (navigation.isFocused() && !backgroundSavePendingFor(routeKey)) consumeBackgroundRefresh();
       }),
-    [consumeBackgroundRefresh, navigation, routeKey],
+    [consumeBackgroundRefresh, navigation, routeKey, screenPage],
   );
 
   // ほかの画面が保存しているあいだは、この画面の「登録」などを待たせる（SAVE_WATCH_JS）。終わったら、待たせていたボタンを押す
@@ -720,7 +752,11 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     const runPath = replace && sheet ? ('/sheet/[app]/[form]' as const) : ('/run/[app]/[form]' as const);
     const href =
       next.kind === 'runapp'
-        ? { pathname: runPath, params: { app: next.app, form: next.form, q: next.query, data, ...orders } }
+        ? {
+            pathname: runPath,
+            // 近道で入れ替えるときは、近道が付けた名前（まとめて申請の「（2/3）」など）も引き継ぐ
+            params: { app: next.app, form: next.form, q: next.query, data, ...(replace && title ? { title } : {}), ...orders },
+          }
         : { pathname: '/page' as const, params: { path: next.path, app: appId, data } };
     if (replace) {
       // 近道の途中でも、この画面がもう前に出ていない（使う人がほかの画面へ移った）なら、入れ替えない
@@ -873,11 +909,12 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
             }
             if (message?.type === 'title') setHeading(message.text);
             // ページが、読み込まずにアドレスだけ変える・変えた。その URL への読み込みの始まりは、片づけない（上の SAME_DOC_WAIT_MS）。
-            // 変えたあとの知らせ（moved）は、いまのページの URL を覚え直すだけ（このあとに始まりは来ない）
+            // 変えたあとの知らせ（moved。# の付け替え・戻る進む）も、いまのページの URL を覚え直したうえで、始まりと見比べる
+            // （Android は、知らせより先にも後にも、始まりを知らせてくる。後に来たとき、覚え直した URL と同じなので読み込みと見誤る）
             if (message?.type === 'urlChange') {
               docUrl.current = message.url;
               const fresh = sameDocUrls.current.filter((u) => Date.now() - u.at < SAME_DOC_KEEP_MS);
-              sameDocUrls.current = message.moved ? fresh : [...fresh, { url: message.url, at: Date.now() }];
+              sameDocUrls.current = [...fresh, { url: message.url, at: Date.now() }];
               if (loadReset.current?.url === message.url) {
                 clearTimeout(loadReset.current.timer);
                 loadReset.current = null;
@@ -1002,6 +1039,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
           // 読み直したページにも、ほかの画面が保存しているかを伝えておく
           onLoadEnd={(e) => {
             docUrl.current = e.nativeEvent.url;
+            loadedAt.current = Date.now();
             if (savingElsewhere(routeKey)) webRef.current?.injectJavaScript('window.__myappSaveBusy = true; true;');
           }}
           // 読み込めなかった（電波がない・サーバーにつながらない）。WebView が出す英語の開発者向けの文の代わりに、
