@@ -23,7 +23,8 @@ export function MyAppRow({ app, onPress, first, last }: { app: MyApp; onPress: (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${name}を起動`}
+      // 読み上げは、この名前だけを読む（中の「停止中」は読まない）ので、止まっているアプリはここで伝える
+      accessibilityLabel={app.isAvailable ? `${name}を起動` : `${name}、停止中`}
       accessibilityHint={description || undefined}
       style={({ pressed }) => [styles.row, first && styles.first, last && styles.last, pressed && styles.rowPressed]}
     >

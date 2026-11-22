@@ -36,6 +36,7 @@ import {
   BRIDGE_JS,
   childClosedJs,
   healthFlagJs,
+  HISTORY_WATCH_JS,
   joinScripts,
   NET_TRACE_JS,
   openerStubJs,
@@ -51,7 +52,7 @@ import { CAN_PARK, Parkable } from '../SavePark';
 import { appDataKeyOfUrl, rememberAppData } from '../../webview/appDataCache';
 import { depositHandoff, type Handoff } from '../../webview/handoff';
 import { initAppJs, refModeJs } from '../../webview/page/initApp';
-import { isServerUrl, leavesForOtherApp, mayNavigate, resolveTarget, runappOf, trustedSenderApp } from '../../webview/origin';
+import { isServerUrl, leavesForOtherApp, mayNavigate, onlyHashChanged, resolveTarget, runappOf, trustedSenderApp } from '../../webview/origin';
 import { initAppFormOfUrl, recallInitApp, rememberInitApp } from '../../webview/initAppCache';
 import { recallRefModes, rememberRefMode } from '../../webview/refModeCache';
 import {
@@ -110,6 +111,13 @@ const BACKGROUND_CLOSE_WAIT_MS = 10_000;
 const LEAVE_AFTER_START_WAIT_MS = 3000;
 // 保存の通信がこれだけ止まったら、見張りをやめる（ページの側で何かが止まった。戻れないままにしない）
 const SAVE_STALL_MS = 60_000;
+/**
+ * 読み込みの始まり（onLoadStart）から、ページが読み込まずにアドレスだけ変えた知らせ（urlChange）を待つ時間。
+ * Android は pushState でも読み込みの始まりを知らせ、知らせとどちらが先に届くか決まっていないので、少し待ってから片づける
+ */
+const SAME_DOC_WAIT_MS = 300;
+/** ページが知らせたアドレスの変更を、読み込みの始まりと見比べるあいだ覚えておく時間（1回使ったら消す） */
+const SAME_DOC_KEEP_MS = 500;
 // 裏で続けている保存は、もっと長く待つ。見張りをやめるとページごと片づけるので、通信の途中で消すと、
 // サーバーに書きかけのやりとりが残る（次の保存が「Lock wait timeout」になる）。EZCraft は 100 秒を超えたやりとりを
 // 取り消すので、それより十分長く待ってから片づける
@@ -505,8 +513,19 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
     return () => clearTimeout(timer);
   }, [shown, reloadKey]);
 
+  // 読み込みの始まりを、本当の読み込みか見分けるためのもの（下の onLoadStart）: いまのページの URL・ページが知らせたアドレスの変更・
+  // 片づけるのを少し待っている読み込みの始まり
+  const docUrl = useRef('');
+  const sameDocUrls = useRef<{ url: string; at: number }[]>([]);
+  const loadReset = useRef<{ url: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  useEffect(() => () => {
+    if (loadReset.current) clearTimeout(loadReset.current.timer);
+  }, []);
   // ページを丸ごと読み直す（白い画面と読み込み中の印が、数秒出る）
   const reloadPage = useCallback(() => {
+    // 作り直す WebView の最初の読み込みは、前のページの続きではない
+    docUrl.current = '';
+    sameDocUrls.current = [];
     setRestoreTo(scroll.current); // 読み直しても、見ていた位置に戻す
     setFailure(null);
     if (autoClickPending.current) setLaunching(true); // 近道のボタンをまだ押していない（読み直したページで押す）
@@ -517,6 +536,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
   }, [uri, screenApp]);
   // データだけの読み直しを頼んで、返事を待っているあいだのタイマー（返事がなければ、丸ごと読み直す）
   const refreshWait = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => () => {
     if (refreshWait.current) clearTimeout(refreshWait.current);
   }, []);
@@ -756,6 +776,7 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
         // 開発中だけ: ページの通信を1回ずつ Metro のログに出す（保存の遅さを調べるため。src/webview/page/bridgeJs.ts の NET_TRACE_JS）
         __DEV__ ? NET_TRACE_JS : '',
         bootJs(background),
+        HISTORY_WATCH_JS,
         openerStubJs(handoff),
         prefillJs(prefill),
         initAppJs(initApp),
@@ -851,6 +872,17 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
               receivePageFile(message, title || pageTitle || 'ファイル', payslipPassword.payslip ? payslipPassword.afterPayslipOpened : undefined);
             }
             if (message?.type === 'title') setHeading(message.text);
+            // ページが、読み込まずにアドレスだけ変える・変えた。その URL への読み込みの始まりは、片づけない（上の SAME_DOC_WAIT_MS）。
+            // 変えたあとの知らせ（moved）は、いまのページの URL を覚え直すだけ（このあとに始まりは来ない）
+            if (message?.type === 'urlChange') {
+              docUrl.current = message.url;
+              const fresh = sameDocUrls.current.filter((u) => Date.now() - u.at < SAME_DOC_KEEP_MS);
+              sameDocUrls.current = message.moved ? fresh : [...fresh, { url: message.url, at: Date.now() }];
+              if (loadReset.current?.url === message.url) {
+                clearTimeout(loadReset.current.timer);
+                loadReset.current = null;
+              }
+            }
             // Walk the Talk: 歩数の登録の欄に入れる、端末の歩数（初めてなら、端末が読んでよいかを聞く）
             if (message?.type === 'steps') {
               const { id, day } = message;
@@ -936,19 +968,40 @@ export function EzcraftWebView({ uri, appId, title, handoff = null, autoClick = 
               othersWritesAtOpen.current = writeCount() - ownWrites.current;
             }
           }}
-          onLoadStart={() => {
-            // 読み直したら、ダイアログは閉じていて、保存も終わっている（保存の途中なら、切れている）
-            setModalOpen(false);
-            setWaitingSave(false);
-            if (savingRef.current) {
-              updateSaving(null);
-              // 確定（commit）まで届いていたかもしれないので、結果が分からなかったとして片づける
-              if (inBackground.current) completeBackground(false, true);
-              else endSave(routeKey, false);
+          onLoadStart={(e) => {
+            // ページを読み込まずに、アドレスだけ変わった（# のあとだけ・ページが知らせた pushState）なら、何も切れていない。
+            // Android は、これも読み込みの始まりとして知らせてくる（doUpdateVisitedHistory）
+            const url = e.nativeEvent.url;
+            if (onlyHashChanged(docUrl.current, url)) {
+              docUrl.current = url;
+              return;
             }
+            const known = sameDocUrls.current.findIndex((u) => u.url === url && Date.now() - u.at < SAME_DOC_KEEP_MS);
+            if (known >= 0) {
+              sameDocUrls.current.splice(known, 1); // 1回だけ使う（同じ URL への、あとの本当の読み込みを見逃さない）
+              docUrl.current = url;
+              return;
+            }
+            if (loadReset.current) clearTimeout(loadReset.current.timer);
+            loadReset.current = {
+              url,
+              timer: setTimeout(() => {
+                loadReset.current = null;
+                // 読み直したら、ダイアログは閉じていて、保存も終わっている（保存の途中なら、切れている）
+                setModalOpen(false);
+                setWaitingSave(false);
+                if (savingRef.current) {
+                  updateSaving(null);
+                  // 確定（commit）まで届いていたかもしれないので、結果が分からなかったとして片づける
+                  if (inBackground.current) completeBackground(false, true);
+                  else endSave(routeKey, false);
+                }
+              }, SAME_DOC_WAIT_MS),
+            };
           }}
           // 読み直したページにも、ほかの画面が保存しているかを伝えておく
-          onLoadEnd={() => {
+          onLoadEnd={(e) => {
+            docUrl.current = e.nativeEvent.url;
             if (savingElsewhere(routeKey)) webRef.current?.injectJavaScript('window.__myappSaveBusy = true; true;');
           }}
           // 読み込めなかった（電波がない・サーバーにつながらない）。WebView が出す英語の開発者向けの文の代わりに、

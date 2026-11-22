@@ -34,13 +34,16 @@ public class MyAppHealthModule: Module {
       }
     }
 
-    // その日（端末の暦で 0:00〜24:00）の歩数の合計。day は "yyyy-MM-dd"。記録がなければ 0
+    // その日（端末の時間帯で 0:00〜24:00）の歩数の合計。day は "yyyy-MM-dd"（西暦）。記録がなければ 0
     AsyncFunction("stepsOnDay") { (day: String, promise: Promise) in
       guard let steps = HKQuantityType.quantityType(forIdentifier: .stepCount) else {
         promise.resolve(0)
         return
       }
-      let calendar = Calendar.current
+      // 暦は、端末の設定（和暦・仏暦など）ではなく西暦で読む。Calendar.current のままだと、和暦の端末では
+      // "2026" を令和 2026 年（西暦 4044 年）と読み、どの日も 0 歩になっていた（Android の LocalDate.parse は西暦で読む）
+      var calendar = Calendar(identifier: .gregorian)
+      calendar.timeZone = .current
       let parser = DateFormatter()
       parser.calendar = calendar
       parser.locale = Locale(identifier: "en_US_POSIX")

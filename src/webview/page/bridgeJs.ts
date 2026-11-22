@@ -602,6 +602,34 @@ export const SAVE_WATCH_JS = compactJs(`
 true;
 `);
 
+/**
+ * ページが、読み込まずにアドレスだけ変えるときに、アプリに知らせる（ページが動き出す前に入れる。ページが pushState を控えておく前に包む）。
+ *   - pushState・replaceState: 変える前に知らせる（moved なし）。Android は、これも読み込みの始まり（onLoadStart）として知らせてくるので、
+ *     アプリはこの URL への始まりを読み込みとして扱わない（扱うと、保存の見張り・ダイアログの状態を片づけてしまう）
+ *   - # の付け替え・戻る進む（hashchange・popstate）: 変わったあとに知らせる（moved）。アプリが、いまのページの URL を覚えておくため
+ * src/components/EzcraftWebView/EzcraftWebView.tsx の onLoadStart
+ */
+export const HISTORY_WATCH_JS = compactJs(`
+(function () {
+  if (window.__myappHistoryWatch) return;
+  window.__myappHistoryWatch = true;
+  var post = function (url, moved) {
+    try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'urlChange', url: url, moved: moved })); } catch (e) {}
+  };
+  ['pushState', 'replaceState'].forEach(function (name) {
+    var original = window.history && window.history[name];
+    if (typeof original !== 'function') return;
+    window.history[name] = function (state, title, url) {
+      try { post(url == null ? location.href : new URL(String(url), document.baseURI).href, false); } catch (e) {}
+      return original.apply(this, arguments);
+    };
+  });
+  window.addEventListener('hashchange', function () { post(location.href, true); });
+  window.addEventListener('popstate', function () { post(location.href, true); });
+})();
+true;
+`);
+
 /** ページが動き出す前に入れる（2の開いた側）。handoff は開いた元から預かったもの */
 export function openerStubJs(handoff: Handoff | null): string {
   if (!handoff || (!handoff.appData && !handoff.name)) return 'true;';
