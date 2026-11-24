@@ -40,7 +40,7 @@ A folder may import from its own layer and from lower layers, never from a highe
 | 7 | `app/` | Expo Router routes only. A route wires a screen: it reads params, sets navigator options and passes callbacks; the screen UI lives in `screens/` or `components/`. |
 | 6 | `screens/` | Screens (`LoginScreen`, `MyAppsScreen`). |
 | 5 | `components/` | UI parts. A large part gets its own folder with its hooks (`components/EzcraftWebView/`). |
-| 4 | `myApps/` `shortcuts/` `attendance/` `session/` | Features. Provider-independent: they work with `models/` types. The only file in a feature that may import a provider folder is its `*Source.ts`. |
+| 4 | `myApps/` `shortcuts/` `attendance/` `session/` `demo/` | Features. Provider-independent: they work with `models/` types. The only file in a feature that may import a provider folder is its `*Source.ts`. `demo/` is the App Review demo mode (sample data, never touches the server; see below). |
 | 3 | `auth/` `webview/` | The login flow and credential storage / the EZCraft page integration. `webview/page/` builds the scripts and CSS injected into pages (pure string builders, checked by `npm run check:pages`); the rest of `webview/` is the app side (messages from pages, caches, background saves). |
 | 2 | `api/` | External APIs. `api/http.ts` is the transport shared by every API (timeouts, network errors, error text). Each provider has its own folder: `api/ezcraft/`. |
 | 1 | `models/` `platform/` `core/` `shims/` | Provider-independent data types / per-device adapters / config, clock, theme / Metro shims. |
@@ -51,6 +51,10 @@ Adding an external API (e.g. a new REST API next to EZCraft):
 2. Convert responses into a type in `src/models/` inside the client; nothing outside `api/<provider>/` sees the raw response shape.
 3. Screens and components never import `src/api/<provider>/`. Expose the call through a feature module that names the source in one place — e.g. `src/myApps/myAppsSource.ts` re-exports today's EZCraft `fetchMyApps`; switching the list to another API means changing that file only.
 4. Put base URLs and other endpoint settings in `src/core/config.ts`.
+
+## Demo mode (App Review)
+
+TestFlight external testing and App Store review need a way into the app, and no EZCraft account can be given to Apple. Signing in with `DEMO_USERNAME` / `DEMO_PASSWORD` (`src/demo/demoAccount.ts`) opens a demo session (`session.demo`): My Apps lists `DEMO_APPS`, and `RunApp` shows `components/DemoAppView.tsx` (pages built from `src/demo/` with in-memory sample data) instead of `EzcraftWebView`. A demo session never calls the server (no login, list, page load or logout request). When adding a screen or feature that talks to the server, make it skip or fake the call for a demo session, and add the matching demo page if reviewers should see it. Credentials and review notes: `docs/distribution.md`.
 
 ## Building and distributing (TestFlight via GitHub Actions — no EAS)
 

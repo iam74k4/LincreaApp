@@ -40,6 +40,8 @@ const HOME_URL = `${SERVER_URL}/main/`;
 
 export type Session = {
   username: string;
+  /** 審査用のデモ（サーバーにつながず、見本のデータで見せる。src/demo/demoAccount.ts） */
+  demo?: boolean;
 };
 
 /** 利用者に伝えるべき失敗（パスワード違いなど）。message をそのまま画面に出す */

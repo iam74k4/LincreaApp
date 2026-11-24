@@ -9,6 +9,8 @@
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
+import { DEMO_SESSION, isDemoSession, rememberDemo, wasDemo } from '../demo/demoAccount';
+import { resetDemo } from '../demo/demoStore';
 import { forgetCachedApps } from '../myApps/myAppsCache';
 import { attendanceRemindersFor, forgetAttendanceReminders } from '../attendance/attendanceReminder';
 import { forgetServerLogin, type Session } from '../auth/login';
@@ -71,6 +73,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     (async () => {
+      // 審査用のデモのままだった: サーバーには確かめずに、デモで始める（src/demo/demoAccount.ts）
+      if (await wasDemo()) {
+        if (!active) return;
+        setSession((current) => current ?? DEMO_SESSION);
+        setRestoring(false);
+        return;
+      }
       // 前の版が端末に残したトークンを消す（src/auth/cognitoStorage.ts）。サーバーへの確かめと同時に進める（起動を待たせない）
       const [, result] = await Promise.all([loadCognitoStorage(), restoreSession()]);
       // 端末に残っている勤怠の通知は、前にログインしていた人のもの（ログアウトで消すので）。
@@ -107,7 +116,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     forgetInitAppTexts(); // 画面の定義の控えにも、前のログインの記録が入っている
     attendanceRemindersFor(next.username); // 前の人の勤怠の通知が残っていたら消す
     setSession(next);
-    saveSession(next);
+    // 審査用のデモは、ユーザー名を控えない（次の起動でサーバーに確かめに行かないように。デモの印だけを覚える）
+    if (isDemoSession(next)) rememberDemo(true);
+    else {
+      rememberDemo(false);
+      saveSession(next);
+    }
   }, []);
 
   const signOut = useCallback((options?: { byUser?: boolean }) => {
@@ -125,12 +139,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // 使う人がログアウトしたときは、明細のパスワード（イントラのパスワード）も消す。ログアウトが、覚えさせたパスワードを消す方法になる。
     // ログインが切れて戻るときは消さない。ログインの Face ID の鍵は、どちらでも残す（次から Face ID でログインできるように。docs/device-testing.md）
     if (options?.byUser) forgetPayslipPassword();
+    rememberDemo(false); // 審査用のデモの印と、デモで登録した見本も消す
+    resetDemo();
     setSession(null);
     clearSavedSession();
   }, []);
 
   const reauthenticating = useRef<Promise<Reauth> | null>(null);
   const reauthenticate = useCallback(() => {
+    // 審査用のデモは、ログインが切れない（サーバーにつないでいない）
+    if (isDemoSession(sessionRef.current)) return Promise.resolve<Reauth>('ok');
     if (!reauthenticating.current) {
       // いまの人の鍵でだけ入り直す（別の人の鍵で入ると、画面の人とサーバーにログインした人が食い違う）
       reauthenticating.current = loginWithFaceId(null, sessionRef.current?.username ?? null)

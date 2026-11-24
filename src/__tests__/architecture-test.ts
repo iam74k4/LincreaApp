@@ -4,7 +4,7 @@
 //   7 app/          ルート（画面を出すだけ）
 //   6 screens/      画面
 //   5 components/   画面の部品
-//   4 myApps/ shortcuts/ attendance/ session/   機能（相手の API に依存しない）
+//   4 myApps/ shortcuts/ attendance/ session/ demo/   機能（相手の API に依存しない）
 //   3 auth/ webview/                             ログインの流れ / EZCraft のページとの連携
 //   2 api/                                       外部 API（http.ts は共通。相手ごとに api/<相手>/）
 //   1 models/ platform/ core/ shims/             相手に依存しない型 / 端末ごとの部品 / 設定・時計・テーマ
@@ -23,6 +23,7 @@ const LAYERS: Record<string, number> = {
   shortcuts: 4,
   attendance: 4,
   session: 4,
+  demo: 4,
   auth: 3,
   webview: 3,
   api: 2,
