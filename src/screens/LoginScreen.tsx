@@ -22,6 +22,7 @@ import { login, LoginError, type Session } from '../auth/login';
 import { biometry, disableFaceId, enableFaceId, faceIdUser, loginWithFaceId, renewFaceIdToken, type Biometry } from '../auth/faceId';
 import { loadRememberedUsername, saveRememberedUsername } from '../auth/rememberedUsername';
 import { versionLabel } from '../core/appVersion';
+import { DEMO_SESSION, isDemoCredentials } from '../demo/demoAccount';
 import { GlassButton } from '../components/GlassButton';
 import { Icon } from '../platform/icons';
 import { sizes, useColors, type Colors } from '../core/theme';
@@ -87,6 +88,13 @@ export function LoginScreen({ onLoggedIn, onForgotPassword, onLoginHelp }: Props
     }
 
     Keyboard.dismiss();
+    // 審査用のデモ: サーバーにはつながず、見本のデータで開く（Face ID・ユーザー名の保持は使わない。src/demo/demoAccount.ts）
+    if (isDemoCredentials(name, password)) {
+      setPassword('');
+      setError(null);
+      onLoggedIn(DEMO_SESSION);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {

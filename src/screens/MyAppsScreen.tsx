@@ -23,6 +23,8 @@ import { MyAppRow } from '../components/MyAppRow';
 import { Icon } from '../platform/icons';
 import { appOrder, displayName } from '../myApps/knownApps';
 import { useSession } from '../session/SessionContext';
+import { isDemoSession } from '../demo/demoAccount';
+import { DEMO_APPS } from '../demo/demoStore';
 import { SHORTCUTS, type Shortcut } from '../shortcuts/shortcuts';
 import { appDataKey, recallAppData, useAppDataVersion } from '../webview/appDataCache';
 import { savesSnapshot } from '../webview/backgroundSaves';
@@ -59,9 +61,12 @@ export function MyAppsScreen() {
   // 起動してすぐは、前回の一覧（端末の控え。src/myApps/myAppsCache.ts）を出しておき、サーバーの返事が来たら入れ替える
   // （サーバーに聞き終わるまで、一覧が空のまま待たせない）。聞けなかったときは、控えの一覧は引っ込めて、失敗を出す
   const username = session?.username ?? '';
+  // 審査用のデモ: 一覧は見本（サーバーに聞かない・控えも使わない）。近道はメニューを通さずに見本のページを開く（src/demo/）
+  const demo = isDemoSession(session);
   const fresh = useRef(false); // サーバーから読んだ一覧を出したか（出したあとは、控えで上書きしない）
   const fromCache = useRef(false); // いま出している一覧が、控えか
   useEffect(() => {
+    if (demo) return;
     let active = true;
     loadCachedApps(username).then((cached) => {
       if (!active || !cached || fresh.current) return;
@@ -71,7 +76,7 @@ export function MyAppsScreen() {
     return () => {
       active = false;
     };
-  }, [username]);
+  }, [username, demo]);
   const handleError = useCallback(
     (e: unknown) => {
       // 控えの一覧を出していたら引っ込める（つながらないことを、空の一覧の「もう一度読み込む」で伝える）
@@ -102,7 +107,7 @@ export function MyAppsScreen() {
       try {
         let result: MyApp[];
         try {
-          result = await fetchMyApps();
+          result = demo ? DEMO_APPS : await fetchMyApps();
         } catch (e) {
           // ログインが切れていても、Face ID で入り直せたら、もう一度読む。
           // 入り直すときにつながらなかっただけなら、ログアウトさせずに「つながりません」を出す
@@ -117,7 +122,7 @@ export function MyAppsScreen() {
           fromCache.current = false;
           setApps(result);
           setError(null);
-          saveCachedApps(username, result);
+          if (!demo) saveCachedApps(username, result);
         }
       } catch (e) {
         if (focusedRef.current) handleError(e);
@@ -127,7 +132,7 @@ export function MyAppsScreen() {
     });
     loading.current = run;
     return run;
-  }, [handleError, reauthenticate, username]);
+  }, [handleError, reauthenticate, username, demo]);
 
   // この画面が前に出るたびに読み直す。
   //   - 最初に開いたとき
@@ -193,7 +198,7 @@ export function MyAppsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [menu, appDataVersion, focused],
   );
-  const prefetching = menu !== null && focused && !menuReady && !prefetchFailed;
+  const prefetching = !demo && menu !== null && focused && !menuReady && !prefetchFailed;
   // よく使う画面の定義（initApp）を、マイアプリを見ているあいだに裏で読んでおく（src/webview/initAppCache.ts）。
   //   - 一覧の読み込みと取り合わないよう、少し待ってから
   //   - 近道の下準備（AppDataPrefetch）が終わってから。下準備のページもメニューの定義を読んで控えに入れるので、
@@ -201,7 +206,7 @@ export function MyAppsScreen() {
   //   - マイアプリから離れたら、やめる（開いた画面が自分で読む定義と、通信を取り合わないように）
   useFocusEffect(
     useCallback(() => {
-      if (prefetching) return;
+      if (prefetching || demo) return;
       const timer = setTimeout(() => {
         prefetchInitApps();
       }, 1500);
@@ -209,7 +214,7 @@ export function MyAppsScreen() {
         clearTimeout(timer);
         stopPrefetchInitApps();
       };
-    }, [prefetching]),
+    }, [prefetching, demo]),
   );
 
   // 続けて押しても（二度押し）、画面は1枚だけ開く
@@ -217,6 +222,10 @@ export function MyAppsScreen() {
 
   const openShortcut = (shortcut: Shortcut) => {
     if (isDoubleTap(lastOpenAt) || pendingRef.current) return;
+    if (demo) {
+      router.push({ pathname: '/run/[app]/[form]', params: { app: shortcut.app, form: shortcut.direct.form, title: shortcut.title } });
+      return;
+    }
     const appData = recallAppData(appDataKey(shortcut.app, shortcut.form));
     if (appData) {
       openDirect(shortcut, appData);
@@ -279,7 +288,7 @@ export function MyAppsScreen() {
         text: 'ログアウト',
         style: 'destructive',
         onPress: async () => {
-          await logout(); // サーバー側のログインも終わらせる
+          if (!demo) await logout(); // サーバー側のログインも終わらせる（デモはつないでいない）
           signOut({ byUser: true }); // 守り役がログイン画面へ戻す。覚えさせた明細のパスワードも消す
         },
       },
@@ -328,6 +337,11 @@ export function MyAppsScreen() {
         ListHeaderComponent={
           apps ? (
             <View>
+              {demo && (
+                <Text style={styles.demoNote}>
+                  デモ: 見本のデータです。保存してもサーバーには送りません。{'\n'}Demo mode: sample data only. Nothing is sent to the server.
+                </Text>
+              )}
               {/* よく使う: 1枚のカードに横1列。アイコンの下に短い名前（小見出しは出さない） */}
               {shortcuts.length > 0 && (
                 <View style={styles.shortcuts}>
@@ -426,6 +440,19 @@ function createStyles(c: Colors) {
     },
     listContent: {
       paddingBottom: 32,
+    },
+    // 審査用のデモの知らせ（デモのページの上の知らせと同じ色）
+    demoNote: {
+      marginHorizontal: 16,
+      marginTop: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 12,
+      overflow: 'hidden',
+      fontSize: 13,
+      lineHeight: 18,
+      color: c.developing.text,
+      backgroundColor: c.developing.background,
     },
     // 小見出しは、アプリの中の画面（お知らせ・今日と未登録の日 など）と同じ 13pt の太字の灰色
     sectionTitle: {

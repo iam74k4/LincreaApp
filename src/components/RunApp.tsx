@@ -7,6 +7,9 @@ import { SERVER_URL } from '../core/config';
 import { screenTitleOf } from '../webview/page/appStyles';
 import { takeLaunch } from '../shortcuts/launch';
 import { takeHandoff } from '../webview/handoff';
+import { isDemoSession } from '../demo/demoAccount';
+import { useSession } from '../session/SessionContext';
+import { DemoAppView } from './DemoAppView';
 import { EzcraftWebView } from './EzcraftWebView/EzcraftWebView';
 
 export function RunApp({ sheet }: { sheet: boolean }) {
@@ -22,6 +25,9 @@ export function RunApp({ sheet }: { sheet: boolean }) {
   }>();
   const [handoff] = useState(() => takeHandoff(data)); // 開いた元から預かったもの（最初の1回だけ取り出す）
   const [orders] = useState(() => takeLaunch(launch));
+  // 審査用のデモ: サーバーのページは開かず、見本のページを出す（src/demo/）
+  const { session } = useSession();
+  if (isDemoSession(session)) return <DemoAppView app={app} form={form} q={q ?? ''} title={title} />;
   const uri = `${SERVER_URL}/runapp/${encodeURIComponent(app)}/${encodeURIComponent(form)}/${q ? `?${q}` : ''}`;
   return (
     <EzcraftWebView

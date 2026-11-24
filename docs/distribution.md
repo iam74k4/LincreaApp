@@ -63,7 +63,7 @@ LINCREA は TestFlight で配る。develop にプルリクエストをマージ�
 | テスター | 人数 | 何が要るか |
 | --- | --- | --- |
 | 内部テスター | 100 人まで | App Store Connect のユーザーとして招く（「ユーザとアクセス」）。Apple の審査なし。版ができたらすぐ届く |
-| 外部テスター | 10,000 人まで | メールか公開リンクで招く（App Store Connect のアカウントは要らない）。版ごとに Apple の簡単な審査（ふつう 1 日以内） |
+| 外部テスター | 10,000 人まで | メールか公開リンクで招く（App Store Connect のアカウントは要らない）。版ごとに Apple の簡単な審査（ふつう 1 日以内）。審査ではデモのアカウントを渡す（下の「外部テストの審査」） |
 
 - **先に少人数で確かめてから、全員に配る**（保存は本物の勤怠のデータに書き込むので、まちがった版が全員に一度に届かないように）:
   | グループ | 配り方 | 入る人 |
@@ -76,6 +76,41 @@ LINCREA は TestFlight で配る。develop にプルリクエストをマージ�
 - TestFlight の版は **90 日で使えなくなる**。毎月 1 日に自動で作り直して「先行」に届く（上の「流れ」）。
   「社内」は手で足すので、**毎月1回は「社内」に新しい版を足す**（足し忘れると、「社内」の人のアプリが 90 日で起動できなくなる）
 - 前の配り方（EAS のリンク・Ad Hoc。版10 まで）で入れていた人は、TestFlight から入れ直す（同じアプリなので上書きされ、ログインの情報も残る）
+
+## 外部テストの審査（デモのアカウント）
+
+外部テスターに配る版は、Apple が中を見て審査する。会社の EZCraft には審査用のアカウントを作れないので、
+**決まったユーザー名とパスワードでログインすると、サーバーにつながずに見本のデータで動く「デモ」になる**（src/demo/）。
+ログインがないと「中を確かめられない」（Guideline 2.1(a) Information Needed）で断られる（2026-11-24 に一度断られた）。
+
+- ユーザー名 `appreview`、パスワード `LincreaDemo2026`（src/demo/demoAccount.ts。リポジトリは公開なので誰でも分かるが、見本のデータしか出ない）
+- デモで見られるもの: マイアプリの一覧と「よく使う」、勤怠 TiMS（お知らせ・勤務表・1日の登録・残業と有給の申請・申請の状況と取り下げ）、
+  給与・賞与明細（明細のパスワードは `1234`）、住民税の通知書、健康診断（予約と結果）、資格取得者の検索、
+  Walk the Talk（ヘルスケアから歩数を読んで登録）
+- 登録・申請は、アプリのメモリの中の見本に入るだけ（アプリを閉じるか、ログアウトすると初めに戻る）。Face ID でのログインは、デモでは使わない
+- 画面の上に「デモ: 見本のデータです」と出る
+
+**App Store Connect に入れる**: TestFlight →「テスト情報」→「ベータ版 App Review 情報」→「サインインが必要」にチェック →
+「ユーザ名」と「パスワード」に上のものを入れ、「メモ」に次を貼って「保存」。断られていたら、そのメッセージに返信する（英語でよい）。
+
+```
+LINCREA is an internal app for employees of our company (a mobile client for our
+company portal). Accounts are issued by the company, so we cannot provide a real
+account. Signing in with the credentials above opens a demo mode with sample data:
+no company server is contacted and nothing is saved.
+
+Things to try after signing in:
+- My Apps: the list of portal apps and the shortcuts at the top
+- Attendance (勤怠 TiMS): timesheet, register a day (勤怠実績登録),
+  overtime / paid leave requests and their status (cancel a pending request)
+- Payslips (給与・賞与明細): password for opening payslips is 1234
+- Health check (健康診断): book a checkup and see last year's results
+- Walk the Talk: open a day and tap "ヘルスケアから読み込む" to read that day's
+  step count from HealthKit (read only; the app never writes to HealthKit)
+- Face ID sign-in is available for real accounts only
+```
+
+App Store に出すときの「App Review に関する情報」にも、同じものを入れる。
 
 ## 版の名前と番号
 
@@ -175,8 +210,7 @@ LINCREA は TestFlight で配る。develop にプルリクエストをマージ�
 
 - **配り方**: Apple Business Manager の「カスタム App」（決まった会社にだけ配る）か、「非表示（unlisted）」の配布を申し込む。
   ふつうの公開は、会社の外の人も使えるようにするときだけ
-- **審査用のアカウント**: 審査の人がログインして中を見られる、本番でないデータのアカウント（保存は本物のデータに書き込むため、本番のアカウントは渡さない。
-  docs/device-testing.md）。App Store Connect の「App Review に関する情報」に入れる
+- **審査用のアカウント**: デモのアカウント（上の「外部テストの審査」）を、App Store Connect の「App Review に関する情報」に入れる
 - **プライバシーポリシーとサポートの URL**: ヘルスケアを使うアプリは、プライバシーポリシーが要る
 - **App のプライバシー**（App Store Connect の「App のプライバシー」）: 歩数（ヘルスケア → 「健康とフィットネス」の「フィットネス」）を、
   名前と結びつけて会社のサーバーに送っている（Walk the Talk）。アプリの機能のため・追跡には使わない、と答える。
