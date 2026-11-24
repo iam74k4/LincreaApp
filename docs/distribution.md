@@ -16,6 +16,7 @@ LINCREA は TestFlight で配る。develop にプルリクエストをマージ�
                                                     │ 3. ios フォルダを作る（npx expo prebuild）→ CocoaPods
                                                     │ 4. Xcode で作る（署名は Xcode が API キーで自動で用意。キーは Environment「testflight」）
                                                     │ 5. App Store Connect に送る。JavaScript のソースマップを Actions に残す
+                                                    │ 6. 4 で Xcode が作った開発用の証明書を、Apple から取り消す（増えすぎると 4 が止まる）
                                                     ▼ 20〜40 分
                   App Store Connect（Apple の処理に 10〜30 分）→ TestFlight → 使う人の iPhone
 ```
@@ -165,8 +166,15 @@ App Store に出すときの「App Review に関する情報」にも、同じ�
     使っていない機能でも、部品が触れていれば要る（例: ヘルスケアは読むだけだが、書く説明 `NSHealthUpdateUsageDescription` も要った）。
     app.json の `ios.infoPlist` に足して、develop へ
   - **91053（Missing API declaration）**: プライバシーの書類（PrivacyInfo）に、使っている API の理由が足りない。app.json の `ios.privacyManifests` に足す
-- **証明書が増えすぎて送れない**: 署名は、Actions の実行ごとに Apple に用意してもらう。開発用の証明書が実行ごとに増えると、上限で止まることがある。
-  ときどき Apple Developer の「Certificates」を見て、使っていない「Apple Development」の証明書（作った日が古いもの）を取り消す
+- **証明書が増えすぎて送れない**（「作る（署名して archive）」が `Choose a certificate to revoke. Your account has reached the maximum number of certificates.` で止まる）:
+  署名は、Actions の実行ごとに Apple に用意してもらう。archive のとき Xcode が開発用の証明書を1つ作るが、秘密鍵は実行環境といっしょに消えるので、二度と使えない。
+  そのため、実行の最後の「開発用の証明書を取り消す」が、その実行で作ったものを取り消す（.github/testflight/revoke-dev-certs.mjs）。
+  これが入る前（2026-11-24 まで）は取り消していなかったので、10 回ほど送ったところで上限に達して止まった
+  - 止まったら: Apple Developer（developer.apple.com）→「Certificates, Identifiers & Profiles」→「Certificates」で、
+    種類が「Development」のものを開いて「Revoke」で取り消し、Actions の「Run workflow」で develop を出し直す。
+    自分の Mac で使っている証明書（Xcode →「設定」→「Accounts」→「Manage Certificates」に出るもの）は残す。
+    取り消しても、Xcode が次に要るときに作り直すだけ。「Distribution」の証明書には触れない
+  - 「開発用の証明書を取り消す」が黄色の警告（取り消せなかった）を出していたら、上と同じく手で取り消す
 - **Xcode を上げる時期**: 2027 年 4 月からは iOS 27 SDK（Xcode 27）で作った版しか送れない（いまは Xcode 26。Apple の警告）。
   それまでに testflight.yml の `runs-on` を Xcode 27 の環境にし、「送る」を外した手動の実行で作れるかを確かめてから切り替える。
   実行環境の Xcode は、GitHub が macOS の環境を新しくしたときに変わることがある（ログの「CocoaPods の控えの鍵を決める」の先頭に、使った Xcode の版が出る。
