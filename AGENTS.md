@@ -60,7 +60,7 @@ TestFlight external testing and App Store review need a way into the app, and no
 
 This project does not use EAS (no `eas.json`, no `eas build` / `eas submit` / `eas update`, no `expo-updates`).
 Every push to `develop` (a merged pull request, except docs/tests/scripts-only changes) and a monthly schedule run the `release` job of `.github/workflows/testflight.yml` on a GitHub-hosted macOS runner:
-checks → `npx expo prebuild --platform ios` → `xcodebuild archive` (automatic signing with the App Store Connect API key, stored only in the `testflight` GitHub Environment) → upload to TestFlight. Pull requests run the unsigned `build` job (no secrets). The shared steps live in `.github/actions/prepare-ios/`.
+checks → `npx expo prebuild --platform ios` → `xcodebuild archive` (automatic signing with the App Store Connect API key, stored only in the `testflight` GitHub Environment) → upload to TestFlight → revoke the Apple Development certificate Xcode created for the archive (`.github/testflight/revoke-dev-certs.mjs`; its private key dies with the runner, and leftover ones hit Apple's certificate limit and stop the archive). Pull requests run the unsigned `build` job (no secrets). The shared steps live in `.github/actions/prepare-ios/`.
 The build number and commit are set by the workflow (`ios.buildNumber`, `extra.gitSha`); do not add them to `app.json`.
 `develop` is what testers run via TestFlight; `main` (when it exists) records what was released on the App Store. Details: `docs/distribution.md`.
 To ship a fix, merge it into `develop` — there are no over-the-air updates.
