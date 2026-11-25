@@ -75,7 +75,8 @@ describe('使うか聞く・使えるようにする', () => {
   });
   test('「使う」: Face ID で確かめてから、Face ID 付き・この端末だけで入れる', async () => {
     expect(await enablePayslipFaceId('taro', PASSWORD, 'Face ID')).toBe(true);
-    expect(auth.authenticateAsync).toHaveBeenCalledWith(expect.objectContaining({ disableDeviceFallback: true }));
+    // パスコードでは通さない。指（顔）が合わなかったときの「パスワードを入力」のボタンも出さない（src/auth/faceId.ts）
+    expect(auth.authenticateAsync).toHaveBeenCalledWith(expect.objectContaining({ disableDeviceFallback: true, fallbackLabel: '' }));
     expect(store.deleteItemAsync).toHaveBeenCalled(); // 上書きでは Face ID を求められるので、消してから入れる
     expect(store.setItemAsync).toHaveBeenCalledWith(
       'password',

@@ -150,6 +150,7 @@ Expo のトンネル（ngrok）を通すので、iPhone がモバイル回線で
 
 Face ID・ヘルスケア・裏で続ける保存は、Expo Go では使えない。Mac で `npx expo run:ios` を実行して作る開発ビルド（アプリ名は LINCREA）で試す。
 シミュレーターでは、Face ID はメニューの Features → Face ID → Enrolled にしてから、顔を合わせるときに Matching Face を選ぶ。
+Touch ID は、指紋の機種（iPhone SE (3rd generation)）のシミュレーターで試す（`npx expo run:ios --device "iPhone SE (3rd generation)"`）。Features → Touch ID → Enrolled にしてから、指を当てるときに Matching Touch、合わない指は Non-matching Touch を選ぶ。
 
 #### iPhone に開発ビルドを入れる
 
@@ -175,6 +176,7 @@ Face ID・ヘルスケア・裏で続ける保存は、Expo Go では使えな�
 無料の Apple ID で入れたアプリは、7 日で開けなくなる。そのときは手順 2 をやり直す。
 
 - [ ] ログイン画面に「次から Face ID でログイン」のスイッチがある（指紋の端末では Touch ID）。オンにしてログインすると、Face ID を1回求められる
+- [ ] 指紋の端末: スイッチをオンにしてログインし、合わない指を当てても、「パスワードを入力」のボタンは出ない（ボタンは「やめる」だけで、指を当て直せる）。「Touch ID でログイン」のボタンに指紋のアイコンが出る
 - [ ] ログアウトしてからアプリを終了して開き直すと、Face ID のあと、パスワードを打たずにマイアプリが開く（シミュレーターでは、ここで Face ID が出ないことがある。実機で確かめる）
 - [ ] 使っているあいだにログインが切れても、Face ID のあと、同じ画面のまま続けられる（EZCraft の「401 Authorization Required」のページが見えない）
 - [ ] ログアウトしたあとのログイン画面に「Face ID でログイン」のボタンがある。スイッチをオフにしてログインすると、ボタンが消える

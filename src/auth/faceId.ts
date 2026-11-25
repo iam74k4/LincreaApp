@@ -75,11 +75,7 @@ export async function enableFaceId(username: string, refreshToken: string, kind:
   const prompt = `次から ${kind} でログインします`;
   // 入れるときに端末が確かめる（Android）なら、その確かめだけにする（同じ確かめを2回続けて出さない）
   if (!saveAsksBiometrics()) {
-    const check = await LocalAuthentication.authenticateAsync({
-      promptMessage: prompt,
-      cancelLabel: 'やめる',
-      disableDeviceFallback: true, // 鍵も Face ID でしか読めないので、ここもパスコードでは通さない
-    });
+    const check = await LocalAuthentication.authenticateAsync(biometricCheckOptions(prompt));
     if (!check.success) return false;
   }
   let saved = false;
@@ -193,6 +189,16 @@ const RENEW_PROMPT = 'ログインの鍵を新しくします';
  */
 export function saveAsksBiometrics(): boolean {
   return Platform.OS === 'android';
+}
+
+/**
+ * 生体認証付きで入れる前に、本人か確かめるときの決まり（鍵・明細のパスワードで同じ）。prompt は、確かめの画面に出す説明。
+ *   - 入れたものも生体認証でしか読めないので、ここもパスコードでは通さない（disableDeviceFallback）
+ *   - 合わなかったときに iOS が出す「パスワードを入力」のボタンも出さない（fallbackLabel を空に）。
+ *     Touch ID は指が1回合わないとこのボタンを出すが、パスコードでは通さないので、押しても何も起きずに終わってしまう
+ */
+export function biometricCheckOptions(prompt: string): LocalAuthentication.LocalAuthenticationOptions {
+  return { promptMessage: prompt, cancelLabel: 'やめる', disableDeviceFallback: true, fallbackLabel: '' };
 }
 
 /** 生体認証付きで入れる値の決まり（鍵・明細のパスワードで同じ）。prompt は、入れるときに確かめる端末で出す説明 */
