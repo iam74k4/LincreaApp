@@ -12,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
-import { biometricStoreOptions, biometry, saveAsksBiometrics, type Biometry } from './faceId';
+import { biometricCheckOptions, biometricStoreOptions, biometry, saveAsksBiometrics, type Biometry } from './faceId';
 
 /** パスワードを入れる場所（ログインの鍵とは分ける） */
 const STORE = { keychainService: 'myapp.payslip' };
@@ -53,11 +53,7 @@ export async function enablePayslipFaceId(username: string, password: string, ki
   const prompt = `次から ${kind} で明細を開きます`;
   // 入れるときに端末が確かめる（Android）なら、その確かめだけにする（同じ確かめを2回続けて出さない。src/auth/faceId.ts）
   if (!saveAsksBiometrics()) {
-    const check = await LocalAuthentication.authenticateAsync({
-      promptMessage: prompt,
-      cancelLabel: 'やめる',
-      disableDeviceFallback: true, // パスワードも Face ID でしか読めないので、ここもパスコードでは通さない
-    });
+    const check = await LocalAuthentication.authenticateAsync(biometricCheckOptions(prompt));
     if (!check.success) return false;
   }
   let saved = false;

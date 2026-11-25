@@ -125,8 +125,8 @@ describe('enableFaceId: Face ID でログインできるようにする', () => 
     auth.authenticateAsync.mockResolvedValue({ success: true });
     expect(await enableFaceId('taro', TOKEN, 'Face ID')).toBe(true);
 
-    // パスコードでは通さない（鍵も Face ID でしか読めないので）
-    expect(auth.authenticateAsync).toHaveBeenCalledWith(expect.objectContaining({ disableDeviceFallback: true }));
+    // パスコードでは通さない（鍵も Face ID でしか読めないので）。合わなかったときの「パスワードを入力」のボタンも出さない
+    expect(auth.authenticateAsync).toHaveBeenCalledWith(expect.objectContaining({ disableDeviceFallback: true, fallbackLabel: '' }));
     // 上書きだと iOS が Face ID を求めるので、先に消してから入れる
     expect(store.deleteItemAsync.mock.invocationCallOrder[0]).toBeLessThan(store.setItemAsync.mock.invocationCallOrder[0]);
     expect(store.setItemAsync).toHaveBeenCalledWith(
@@ -138,6 +138,21 @@ describe('enableFaceId: Face ID でログインできるようにする', () => 
         keychainService: 'myapp.faceid',
       }),
     );
+    expect(await faceIdUser()).toBe('taro');
+  });
+
+  test('Touch ID の iPhone: 確かめの画面は Touch ID の名前で出す。指が合わなくても「パスワードを入力」は出さない', async () => {
+    auth.supportedAuthenticationTypesAsync.mockResolvedValue([LocalAuthentication.AuthenticationType.FINGERPRINT]);
+    const kind = await biometry();
+    expect(kind).toBe('Touch ID');
+    auth.authenticateAsync.mockResolvedValue({ success: true });
+    expect(await enableFaceId('taro', TOKEN, kind!)).toBe(true);
+    expect(auth.authenticateAsync).toHaveBeenCalledWith({
+      promptMessage: '次から Touch ID でログインします',
+      cancelLabel: 'やめる',
+      disableDeviceFallback: true,
+      fallbackLabel: '',
+    });
     expect(await faceIdUser()).toBe('taro');
   });
 
@@ -293,9 +308,14 @@ describe('loginWithFaceId: Face ID でログインし直す', () => {
     expect(await faceIdUser()).toBeNull();
   });
 
-  test('登録が変わった知らせは、その端末の呼び名で出す（iPhone は Face ID、Android は顔認証）', async () => {
+  test('登録が変わった知らせは、その端末の呼び名で出す（iPhone は Face ID か Touch ID、Android は顔認証）', async () => {
     store.getItemAsync.mockResolvedValue(null);
     expect(await loginWithFaceId()).toMatchObject({ reason: 'reset', message: expect.stringContaining('Face ID の登録') });
+
+    await AsyncStorage.setItem('faceid.username', 'taro');
+    auth.supportedAuthenticationTypesAsync.mockResolvedValue([LocalAuthentication.AuthenticationType.FINGERPRINT]);
+    expect(await loginWithFaceId()).toMatchObject({ reason: 'reset', message: expect.stringContaining('Touch ID の登録') });
+    faceIdDevice();
 
     await AsyncStorage.setItem('faceid.username', 'taro'); // 前の実行で消えているので、また使っていることにする
     Platform.OS = 'android';
